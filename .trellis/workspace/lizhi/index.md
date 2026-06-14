@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-06-14
+- **Total Sessions**: 6
+- **Last Active**: 2026-06-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~175 | Active |
+| `journal-1.md` | ~209 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-06-15 | Tauri dev 启动复验 | `852770f` | `remote-job-intelligence` |
 | 5 | 2026-06-14 | 外部依赖诊断面板 | `1bae364` | `remote-job-intelligence` |
 | 4 | 2026-06-14 | 恢复 Mac DMG 打包验收 | `5daf5a9` | `remote-job-intelligence` |
 | 3 | 2026-06-14 | 采集页 worker 事件烟测 | `7360d4e` | `remote-job-intelligence` |

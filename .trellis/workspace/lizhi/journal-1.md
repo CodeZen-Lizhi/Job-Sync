@@ -173,3 +173,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Tauri dev 启动复验
+
+**Date**: 2026-06-15
+**Task**: Tauri dev 启动复验
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+复验 npm run tauri:dev 的 worker build、Vite、Rust/Tauri dev shell 启动链路，确认中断后无端口或进程残留；复跑 worker 生命周期测试，并更新覆盖审计与 Phase 0 baseline。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `852770f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
