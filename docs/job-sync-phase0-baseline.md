@@ -262,7 +262,7 @@ flowchart TD
 - `npm run test:worker` 覆盖 worker stdio 生命周期：本机 Node 启动 `dist/main.js` 后能收到 `boss-crawler-worker started`，写入 `STOP` 命令后能收到 `STOP received`，关闭 stdin 后能收到 `FINISHED` 并以 0 退出。
 - `npm run stage:worker:runtime` 通过；已生成当前平台 `src-tauri/bin/node` 和 `src-tauri/bin/boss-crawler-worker/` staged runtime。
 - `npm run verify:worker:runtime` 通过；已验证 staged runtime 的启动、`STOP received`、`FINISHED` 和 0 退出码。
-- `npm run tauri:build:app` 通过；已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并完成 `.app` 签名和包内 worker runtime 生命周期校验。当前 `npm run tauri:build` 仍需重新确认 DMG 生成与 `hdiutil verify`。
+- `npm run tauri:build:app` 通过；已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并完成 `.app` 签名和包内 worker runtime 生命周期校验。当前 `npm run tauri:build` 已复现失败在 `bundle_dmg.sh`，需后续单独修复 DMG 生成与 `hdiutil verify`。
 - `cargo test --manifest-path src-tauri/Cargo.toml` 覆盖登录状态必须同时具备 Cookie 和 LocalStorage 文件。
 
 仍需端到端实机确认：
