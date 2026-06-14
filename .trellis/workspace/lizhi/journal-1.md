@@ -105,3 +105,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 恢复 Mac DMG 打包验收
+
+**Date**: 2026-06-14
+**Task**: 恢复 Mac DMG 打包验收
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+复跑 npm run tauri:build 未再复现旧 bundle_dmg.sh 失败，生成 .app 和 job-sync_0.1.0_aarch64.dmg，并通过 codesign、包内 worker runtime 与 hdiutil verify；更新 Phase 0 基线、需求覆盖审计和子任务验收。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5daf5a9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

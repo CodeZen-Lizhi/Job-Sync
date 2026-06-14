@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-06-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~107 | Active |
+| `journal-1.md` | ~141 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-06-14 | 恢复 Mac DMG 打包验收 | `5daf5a9` | `remote-job-intelligence` |
 | 3 | 2026-06-14 | 采集页 worker 事件烟测 | `7360d4e` | `remote-job-intelligence` |
 | 2 | 2026-06-14 | Tauri fixture 桌面核心流程烟测 | `e8905dd` | `remote-job-intelligence` |
 | 1 | 2026-06-14 | 推进 Job-Sync 核心筛选排序闭环 | `1ae147d` | `remote-job-intelligence` |
