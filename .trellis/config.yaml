@@ -113,4 +113,4 @@ channel:
 packages:
   boss-crawler-worker:
     path: packages/boss-crawler-worker
-default_package: @job-sync/boss-crawler-worker
+default_package: boss-crawler-worker
