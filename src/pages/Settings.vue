@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 
 import UiSelect from "../components/ui/UiSelect.vue";
 import { invoke, isTauri } from "../lib/tauri";
+import { useCopy } from "../lib/useCopy";
 
 interface AppSettings {
   browser_executable_path?: string | null;
@@ -94,6 +95,7 @@ const diagnosticsLoading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const success = ref(false);
+const { copy, copyLabel } = useCopy();
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -227,6 +229,50 @@ async function runExternalDiagnostics(): Promise<void> {
   } finally {
     diagnosticsLoading.value = false;
   }
+}
+
+function availabilityLabel(value: boolean): string {
+  return value ? "是" : "否";
+}
+
+function parseabilityLabel(value: boolean): string {
+  return value ? "可解析" : "不可解析或缺失";
+}
+
+function buildExternalDiagnosticsSummary(value: ExternalDependencyDiagnostics): string {
+  const modelLines = [
+    `模型服务：${diagnosticStatusLabel(value.model_service.status)}`,
+    `- 供应商：${value.model_service.provider || provider.value || "-"}`,
+    typeof value.model_service.model_count === "number"
+      ? `- 模型数：${value.model_service.model_count}`
+      : "- 模型数：未读取",
+  ];
+
+  if (value.model_service.model_sample.length > 0) {
+    modelLines.push(`- 样例：${value.model_service.model_sample.join("、")}`);
+  }
+
+  return [
+    "Job-Sync 外部依赖诊断摘要",
+    `检查时间：${value.checked_at}`,
+    "使用边界：仅用于本机依赖验收记录；不会触发采集、投递、开聊或企业微信发送；不包含 Key、Webhook、Cookie 或 LocalStorage。",
+    "",
+    `Boss 登录复用：${diagnosticStatusLabel(value.boss_session.status)}`,
+    `- Cookie 文件：${availabilityLabel(value.boss_session.cookies_present)} / JSON：${parseabilityLabel(value.boss_session.cookies_valid_json)}`,
+    `- LocalStorage 文件：${availabilityLabel(value.boss_session.local_storage_present)} / JSON：${parseabilityLabel(value.boss_session.local_storage_valid_json)}`,
+    "",
+    ...modelLines,
+    "",
+    `企业微信通知：${diagnosticStatusLabel(value.wecom.status)}`,
+    `- Webhook 已保存：${availabilityLabel(value.wecom.has_webhook_url)}`,
+    `- Webhook 地址格式：${value.wecom.webhook_url_valid ? "有效" : "待检查"}`,
+    "- 发送边界：只通过每日岗位情报手动触发，不由设置页自动发送。",
+  ].join("\n");
+}
+
+async function copyExternalDiagnosticsSummary(): Promise<void> {
+  if (!diagnostics.value) return;
+  await copy("external_diagnostics_summary", buildExternalDiagnosticsSummary(diagnostics.value));
 }
 
 async function save(): Promise<void> {
@@ -519,14 +565,24 @@ onMounted(() => {
             <div class="text-xs font-medium text-content-primary">本机依赖状态</div>
             <div class="text-xs text-content-muted">诊断只返回状态摘要，不回显 Key、Webhook、Cookie 或 LocalStorage。</div>
           </div>
-          <button
-            class="ui-btn-secondary px-3 py-1.5 text-xs"
-            type="button"
-            :disabled="!tauri || diagnosticsLoading"
-            @click="runExternalDiagnostics"
-          >
-            {{ diagnosticsLoading ? "诊断中…" : "运行诊断" }}
-          </button>
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="ui-btn-secondary px-3 py-1.5 text-xs"
+              type="button"
+              :disabled="!tauri || diagnosticsLoading"
+              @click="runExternalDiagnostics"
+            >
+              {{ diagnosticsLoading ? "诊断中…" : "运行诊断" }}
+            </button>
+            <button
+              v-if="diagnostics"
+              class="ui-btn-secondary px-3 py-1.5 text-xs"
+              type="button"
+              @click="copyExternalDiagnosticsSummary"
+            >
+              {{ copyLabel("external_diagnostics_summary", "复制诊断摘要") }}
+            </button>
+          </div>
         </div>
 
         <div v-if="diagnostics" class="mt-4 grid gap-3 lg:grid-cols-3">

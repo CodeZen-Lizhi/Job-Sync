@@ -251,7 +251,7 @@ flowchart TD
 - Rust worker runtime 会在没有 bundled runtime 时回退本机 `node`。
 - macOS Chrome 默认路径已在 Rust 设置和 worker browser launch 中覆盖。
 - 登录状态必须同时存在 `boss-cookies.json` 和 `boss-local-storage.json` 才算已登录，避免 UI 在 session 不完整时误判。
-- 设置页外部依赖诊断会读取 Boss Cookie/LocalStorage 文件的存在性和 JSON 可解析性、模型列表请求结果、企业微信 Webhook 保存状态和格式；诊断结果不回显 API Key、Webhook、Cookie 或 LocalStorage。
+- 设置页外部依赖诊断会读取 Boss Cookie/LocalStorage 文件的存在性和 JSON 可解析性、模型列表请求结果、企业微信 Webhook 保存状态和格式；诊断结果和可复制摘要不回显 API Key、Webhook、Cookie 或 LocalStorage。
 - release 配置会 stage `bin/` runtime，且 runtime 查找支持 `node` 与 `node.exe`。
 - SQLite schema 已包含统一来源模型、筛选画像、过滤结果、沟通记录、黑名单、Company Score 和 AI 报告缓存。
 
@@ -265,9 +265,9 @@ flowchart TD
 - `npm run verify:worker:runtime` 通过；已验证 staged runtime 的启动、`STOP received`、`FINISHED` 和 0 退出码。
 - `npm run tauri:build:app` 通过；已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并完成 `.app` 签名和包内 worker runtime 生命周期校验。2026-06-14 复跑通过，确认 release `.app` 和包内 worker runtime 仍可用。
 - `npm run tauri:build` 通过；2026-06-14 复跑正式发布构建未复现旧 `bundle_dmg.sh` 失败，生成 `src-tauri/target/release/bundle/macos/job-sync.app` 和 `src-tauri/target/release/bundle/dmg/job-sync_0.1.0_aarch64.dmg`，并自动完成 `.app` `codesign --verify --deep --strict --verbose=2`、包内 worker runtime 生命周期校验和 `hdiutil verify`。
-- `npm run test:review-workflow` 通过；覆盖设置页外部依赖诊断的 Tauri command 注册、手动触发、敏感值不回显和企业微信不自动发送边界。
+- `npm run test:review-workflow` 通过；覆盖设置页外部依赖诊断的 Tauri command 注册、手动触发、脱敏摘要复制、敏感值不回显和企业微信不自动发送边界。
 - `cargo test --manifest-path src-tauri/Cargo.toml` 通过；覆盖 Boss Cookie/LocalStorage 诊断状态和企业微信 Webhook 诊断不泄露 secret。
-- `npm run dev -- --host 127.0.0.1` 后使用 Browser 打开 `http://127.0.0.1:1430/#/settings` 通过；桌面和 390px 移动宽度均能渲染 `外部依赖诊断`、`运行诊断`、敏感值不回显文案和未运行空状态，控制台无 warn/error，移动端无横向溢出。
+- `npm run dev -- --host 127.0.0.1` 后使用 Browser 打开 `http://127.0.0.1:1430/#/settings` 通过；桌面和 390px 移动宽度均能渲染 `外部依赖诊断`、`运行诊断`、敏感值不回显文案和未运行空状态，控制台无 warn/error，移动端无横向溢出。2026-06-15 复验确认设置页在桌面和 390px 移动宽度继续渲染外部依赖诊断区域，无控制台 warn/error 且移动端无横向溢出。
 - `npm run seed:desktop:smoke -- /tmp/job-sync-desktop-smoke` 通过；生成 4 条 Boss fixture 职位、3 条 AI 报告、4 条 Company Score、1 个联动简历工作区和 PDF 文件。
 - `src-tauri/target/release/bundle/macos/job-sync.app/Contents/MacOS/job-sync --data-dir /tmp/job-sync-desktop-smoke` 已通过 Computer Use 桌面烟测：采集页可读取登录状态和 worker 面板，职位库可显示 `Top 20 人工审核队列`、`每日岗位情报`、`投递准备台`、沟通回溯和报告选择器，简历工作区可显示 `AI Infra 投递烟测简历`、联动岗位、4/4 模块确认、最终稿和 PDF 状态。
 - `npm run seed:desktop:smoke -- /tmp/job-sync-crawl-worker-smoke` 通过；`src-tauri/target/release/bundle/macos/job-sync.app/Contents/MacOS/job-sync --data-dir /tmp/job-sync-crawl-worker-smoke` 通过 Computer Use 采集页 worker 事件烟测：在自动采集页点击 `同步城市、行业与筛选项` 后，UI 从 `空闲` 变为 `运行中`，运行日志显示 `boss-crawler-worker started`、`同步 Boss 城市、行业与筛选项…`、`已同步城市、行业与筛选项。` 和 `任务已结束。`，并回到 `空闲`；该路径不依赖真实 Boss 登录态，也不触发投递或开聊。
@@ -275,6 +275,6 @@ flowchart TD
 
 仍需端到端实机确认：
 
-- 用户真实 Boss 登录后，通过设置页外部依赖诊断确认 Cookie / LocalStorage 能持久化并复用。
-- 用户本地模型服务或 API Key 可用时，通过设置页外部依赖诊断确认 Ollama / DeepSeek / OpenAI Compatible 模型列表可访问。
-- 用户保存企业微信 Webhook 后，通过设置页外部依赖诊断确认保存状态和格式；真实发送仍由每日岗位情报的手动通知入口触发。
+- 用户真实 Boss 登录后，通过设置页外部依赖诊断确认 Cookie / LocalStorage 能持久化并复用，并复制脱敏诊断摘要留证。
+- 用户本地模型服务或 API Key 可用时，通过设置页外部依赖诊断确认 Ollama / DeepSeek / OpenAI Compatible 模型列表可访问，并复制脱敏诊断摘要留证。
+- 用户保存企业微信 Webhook 后，通过设置页外部依赖诊断确认保存状态和格式，并复制脱敏诊断摘要留证；真实发送仍由每日岗位情报的手动通知入口触发。

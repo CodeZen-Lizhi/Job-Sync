@@ -31,6 +31,8 @@
   `ready`, `cookies_present`, `cookies_valid_json`, `local_storage_present`, `local_storage_valid_json`.
 - `ModelServiceDiagnostic` may expose provider, effective Base URL, model count, and up to a small model sample. It must never expose API keys.
 - `WecomDiagnostic` may expose only `has_webhook_url` and `webhook_url_valid`. It must never expose the webhook URL or key.
+- Copyable diagnostic summaries may be generated on the Settings page after diagnostics have run, but they must be derived from the redacted diagnostics object and must not read raw form state such as `apiKey`, `baseUrl`, or `wecomWebhookUrl`.
+- The copied summary should describe local evidence and manual boundaries only. It must not include raw API keys, webhook URLs, Cookie contents, LocalStorage contents, or trigger any external side effect.
 
 ### 4. Validation & Error Matrix
 

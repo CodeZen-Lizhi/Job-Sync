@@ -1483,6 +1483,7 @@ describe("review workflow contract", () => {
     const commands = invokedCommands(settingsPage);
     const modelDiagnostic = settingsCommand.match(/pub struct ModelServiceDiagnostic \{[\s\S]*?\n\}/)?.[0] ?? "";
     const wecomDiagnostic = settingsCommand.match(/pub struct WecomDiagnostic \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const diagnosticSummaryBlock = settingsPage.match(/function buildExternalDiagnosticsSummary[\s\S]*?async function save/)?.[0] ?? "";
 
     assert.match(settingsCommand, /pub struct BossSessionDiagnostic/);
     assert.match(settingsCommand, /pub struct ModelServiceDiagnostic/);
@@ -1498,11 +1499,16 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(modelDiagnostic, /api_key|webhook|cookie|local_storage/);
     assert.doesNotMatch(wecomDiagnostic, /webhook_url: Option<String>/);
     assert.doesNotMatch(settingsPage, /diagnostics\.wecom\.webhook_url\b/);
+    assert.doesNotMatch(diagnosticSummaryBlock, /apiKey\.value|wecomWebhookUrl\.value|baseUrl\.value/);
 
     assert.match(settingsPage, /外部依赖诊断/);
     assert.match(settingsPage, /运行诊断/);
+    assert.match(settingsPage, /复制诊断摘要/);
+    assert.match(settingsPage, /copyExternalDiagnosticsSummary/);
+    assert.match(settingsPage, /仅用于本机依赖验收记录/);
     assert.match(settingsPage, /不回显 Key、Webhook、Cookie 或 LocalStorage/);
     assert.match(settingsPage, /手动通知入口，不自动投递/);
+    assert.match(settingsPage, /不会触发采集、投递、开聊或企业微信发送/);
     assert.match(settingsPage, /apiKey: apiKey\.value\.trim\(\) \|\| null/);
     assert.match(settingsPage, /baseUrl: baseUrl\.value\.trim\(\) \|\| null/);
   });
