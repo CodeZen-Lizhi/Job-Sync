@@ -21,7 +21,8 @@
   "children": [
     "06-13-filter-profile-persistence",
     "06-13-review-queue-blacklist",
-    "06-13-scoring-candidate-ranking"
+    "06-13-scoring-candidate-ranking",
+    "06-14-tauri-fixture-desktop-smoke"
   ],
   "parent": null,
   "relatedFiles": [],

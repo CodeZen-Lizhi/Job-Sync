@@ -263,6 +263,8 @@ flowchart TD
 - `npm run stage:worker:runtime` 通过；已生成当前平台 `src-tauri/bin/node` 和 `src-tauri/bin/boss-crawler-worker/` staged runtime。
 - `npm run verify:worker:runtime` 通过；已验证 staged runtime 的启动、`STOP received`、`FINISHED` 和 0 退出码。
 - `npm run tauri:build:app` 通过；已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并完成 `.app` 签名和包内 worker runtime 生命周期校验。当前 `npm run tauri:build` 已复现失败在 `bundle_dmg.sh`，需后续单独修复 DMG 生成与 `hdiutil verify`。
+- `npm run seed:desktop:smoke -- /tmp/job-sync-desktop-smoke` 通过；生成 4 条 Boss fixture 职位、3 条 AI 报告、4 条 Company Score、1 个联动简历工作区和 PDF 文件。
+- `src-tauri/target/release/bundle/macos/job-sync.app/Contents/MacOS/job-sync --data-dir /tmp/job-sync-desktop-smoke` 已通过 Computer Use 桌面烟测：采集页可读取登录状态和 worker 面板，职位库可显示 `Top 20 人工审核队列`、`每日岗位情报`、`投递准备台`、沟通回溯和报告选择器，简历工作区可显示 `AI Infra 投递烟测简历`、联动岗位、4/4 模块确认、最终稿和 PDF 状态。
 - `cargo test --manifest-path src-tauri/Cargo.toml` 覆盖登录状态必须同时具备 Cookie 和 LocalStorage 文件。
 
 仍需端到端实机确认：
