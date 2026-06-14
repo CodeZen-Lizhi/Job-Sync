@@ -241,3 +241,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 外部依赖诊断摘要复制
+
+**Date**: 2026-06-15
+**Task**: 外部依赖诊断摘要复制
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+设置页外部依赖诊断结果新增脱敏摘要复制入口，摘要覆盖 Boss 登录态、模型服务、企业微信状态和人工边界；同步 contract 测试、覆盖审计、Phase 0 baseline 与前端诊断规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9911060` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

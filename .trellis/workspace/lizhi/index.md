@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
+- **Total Sessions**: 8
 - **Last Active**: 2026-06-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~243 | Active |
+| `journal-1.md` | ~277 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-06-15 | 外部依赖诊断摘要复制 | `9911060` | `remote-job-intelligence` |
 | 7 | 2026-06-15 | 多来源统一模型验证 | `f0e33bd` | `remote-job-intelligence` |
 | 6 | 2026-06-15 | Tauri dev 启动复验 | `852770f` | `remote-job-intelligence` |
 | 5 | 2026-06-14 | 外部依赖诊断面板 | `1bae364` | `remote-job-intelligence` |
