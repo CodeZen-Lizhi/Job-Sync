@@ -71,3 +71,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 采集页 worker 事件烟测
+
+**Date**: 2026-06-14
+**Task**: 采集页 worker 事件烟测
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+验证 release 桌面端采集页可通过同步元数据按钮启动 sidecar worker，并在运行日志渲染 worker 生命周期事件；更新 Phase 0 基线、需求覆盖审计和子任务验收。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7360d4e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
