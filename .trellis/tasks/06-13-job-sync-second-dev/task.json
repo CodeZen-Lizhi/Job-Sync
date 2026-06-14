@@ -24,7 +24,8 @@
     "06-13-scoring-candidate-ranking",
     "06-14-tauri-fixture-desktop-smoke",
     "06-14-crawl-worker-event-smoke",
-    "06-14-mac-dmg-build-fix"
+    "06-14-mac-dmg-build-fix",
+    "06-14-external-dependency-diagnostics"
   ],
   "parent": null,
   "relatedFiles": [],

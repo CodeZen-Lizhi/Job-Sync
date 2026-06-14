@@ -1470,6 +1470,38 @@ describe("review workflow contract", () => {
     assert.match(settingsPage, /已保存，当前不回显/);
   });
 
+  it("keeps external dependency diagnostics manual and redacted", () => {
+    const settingsCommand = readProjectFile("src-tauri/src/commands/settings.rs");
+    const settingsPage = readProjectFile("src/pages/Settings.vue");
+    const tauriLib = readProjectFile("src-tauri/src/lib.rs");
+
+    const commands = invokedCommands(settingsPage);
+    const modelDiagnostic = settingsCommand.match(/pub struct ModelServiceDiagnostic \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const wecomDiagnostic = settingsCommand.match(/pub struct WecomDiagnostic \{[\s\S]*?\n\}/)?.[0] ?? "";
+
+    assert.match(settingsCommand, /pub struct BossSessionDiagnostic/);
+    assert.match(settingsCommand, /pub struct ModelServiceDiagnostic/);
+    assert.match(settingsCommand, /pub struct WecomDiagnostic/);
+    assert.match(settingsCommand, /pub struct ExternalDependencyDiagnostics/);
+    assert.match(settingsCommand, /pub fn diagnose_external_dependencies/);
+    assert.match(settingsCommand, /crate::commands::ai::list_models\(app, api_key, base_url\)/);
+    assert.match(tauriLib, /commands::settings::diagnose_external_dependencies/);
+
+    assert.ok(commands.includes("diagnose_external_dependencies"));
+    assert.ok(!commands.includes("send_daily_job_intelligence_wecom_notification"));
+    assert.doesNotMatch(settingsCommand, /send_daily_job_intelligence_wecom_notification/);
+    assert.doesNotMatch(modelDiagnostic, /api_key|webhook|cookie|local_storage/);
+    assert.doesNotMatch(wecomDiagnostic, /webhook_url: Option<String>/);
+    assert.doesNotMatch(settingsPage, /diagnostics\.wecom\.webhook_url\b/);
+
+    assert.match(settingsPage, /外部依赖诊断/);
+    assert.match(settingsPage, /运行诊断/);
+    assert.match(settingsPage, /不回显 Key、Webhook、Cookie 或 LocalStorage/);
+    assert.match(settingsPage, /手动通知入口，不自动投递/);
+    assert.match(settingsPage, /apiKey: apiKey\.value\.trim\(\) \|\| null/);
+    assert.match(settingsPage, /baseUrl: baseUrl\.value\.trim\(\) \|\| null/);
+  });
+
   it("keeps first-class model provider, temperature and prompt-extra settings wired end to end", () => {
     const settingsPage = readProjectFile("src/pages/Settings.vue");
     const settingsCommand = readProjectFile("src-tauri/src/commands/settings.rs");

@@ -14,6 +14,20 @@ use serde_json::Value;
 pub use models::ModelInfo;
 pub use report_meta::AiReportMeta;
 
+pub(in crate::commands) fn resolve_effective_openai_base_url(
+    saved_settings: Option<&crate::settings::AppSettings>,
+    base_url: Option<String>,
+) -> String {
+    config::resolve_openai_request(
+        saved_settings,
+        config::OpenAiOverrides {
+            base_url,
+            ..config::OpenAiOverrides::default()
+        },
+    )
+    .effective_base_url
+}
+
 #[tauri::command]
 pub async fn analyze_resume_for_job(
     app: tauri::AppHandle,

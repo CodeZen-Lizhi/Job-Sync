@@ -87,6 +87,7 @@ pub fn run() {
             commands::ai::get_ai_report,
             commands::ai::list_models,
             commands::settings::get_settings,
+            commands::settings::diagnose_external_dependencies,
             commands::settings::set_browser_executable_path,
             commands::settings::set_ai_settings,
             commands::settings::save_settings,

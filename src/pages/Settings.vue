@@ -34,6 +34,42 @@ interface JobSourceEntry {
   updated_at: string;
 }
 
+interface BossSessionDiagnostic {
+  status: string;
+  checked_at: string;
+  message: string;
+  ready: boolean;
+  cookies_present: boolean;
+  cookies_valid_json: boolean;
+  local_storage_present: boolean;
+  local_storage_valid_json: boolean;
+}
+
+interface ModelServiceDiagnostic {
+  status: string;
+  checked_at: string;
+  message: string;
+  provider?: string | null;
+  base_url?: string | null;
+  model_count?: number | null;
+  model_sample: string[];
+}
+
+interface WecomDiagnostic {
+  status: string;
+  checked_at: string;
+  message: string;
+  has_webhook_url: boolean;
+  webhook_url_valid: boolean;
+}
+
+interface ExternalDependencyDiagnostics {
+  checked_at: string;
+  boss_session: BossSessionDiagnostic;
+  model_service: ModelServiceDiagnostic;
+  wecom: WecomDiagnostic;
+}
+
 const tauri = isTauri();
 
 const browserExecutablePath = ref("");
@@ -51,8 +87,10 @@ const hasSavedWecomWebhookUrl = ref(false);
 
 const models = ref<ModelInfo[]>([]);
 const jobSources = ref<JobSourceEntry[]>([]);
+const diagnostics = ref<ExternalDependencyDiagnostics | null>(null);
 const modelsLoading = ref(false);
 const sourcesLoading = ref(false);
+const diagnosticsLoading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const success = ref(false);
@@ -175,6 +213,22 @@ async function loadJobSources(): Promise<void> {
   }
 }
 
+async function runExternalDiagnostics(): Promise<void> {
+  if (!tauri) return;
+  diagnosticsLoading.value = true;
+  error.value = null;
+  try {
+    diagnostics.value = await invoke<ExternalDependencyDiagnostics>("diagnose_external_dependencies", {
+      apiKey: apiKey.value.trim() || null,
+      baseUrl: baseUrl.value.trim() || null,
+    });
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    diagnosticsLoading.value = false;
+  }
+}
+
 async function save(): Promise<void> {
   if (!tauri) return;
   saving.value = true;
@@ -215,6 +269,18 @@ function clampTemperature(value: number): number {
   if (value < 0) return 0;
   if (value > 2) return 2;
   return Number(value.toFixed(2));
+}
+
+function diagnosticBadgeClass(status?: string): string {
+  if (status === "ok") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
+  if (status === "error") return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
+  return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
+}
+
+function diagnosticStatusLabel(status?: string): string {
+  if (status === "ok") return "正常";
+  if (status === "error") return "失败";
+  return "待处理";
 }
 
 onMounted(() => {
@@ -441,6 +507,88 @@ onMounted(() => {
             <button v-if="hasSavedWecomWebhookUrl" class="ui-btn-secondary px-2 py-1 text-xs" type="button" @click="clearSavedWecomWebhookUrl">清除已保存 Webhook</button>
           </div>
         </label>
+      </div>
+    </div>
+
+    <!-- External Diagnostics -->
+    <div class="space-y-3">
+      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">外部依赖诊断</div>
+      <div class="ui-panel-muted p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-medium text-content-primary">本机依赖状态</div>
+            <div class="text-xs text-content-muted">诊断只返回状态摘要，不回显 Key、Webhook、Cookie 或 LocalStorage。</div>
+          </div>
+          <button
+            class="ui-btn-secondary px-3 py-1.5 text-xs"
+            type="button"
+            :disabled="!tauri || diagnosticsLoading"
+            @click="runExternalDiagnostics"
+          >
+            {{ diagnosticsLoading ? "诊断中…" : "运行诊断" }}
+          </button>
+        </div>
+
+        <div v-if="diagnostics" class="mt-4 grid gap-3 lg:grid-cols-3">
+          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-medium text-content-primary">Boss 登录复用</div>
+              <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.boss_session.status)">
+                {{ diagnosticStatusLabel(diagnostics.boss_session.status) }}
+              </span>
+            </div>
+            <div class="mt-2 text-xs leading-5 text-content-muted">{{ diagnostics.boss_session.message }}</div>
+            <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+              <span class="ui-badge" :class="diagnostics.boss_session.cookies_valid_json ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                Cookie {{ diagnostics.boss_session.cookies_present ? "存在" : "缺失" }}
+              </span>
+              <span class="ui-badge" :class="diagnostics.boss_session.local_storage_valid_json ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                LocalStorage {{ diagnostics.boss_session.local_storage_present ? "存在" : "缺失" }}
+              </span>
+            </div>
+          </div>
+
+          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-medium text-content-primary">模型服务</div>
+              <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.model_service.status)">
+                {{ diagnosticStatusLabel(diagnostics.model_service.status) }}
+              </span>
+            </div>
+            <div class="mt-2 text-xs leading-5 text-content-muted">{{ diagnostics.model_service.message }}</div>
+            <div class="mt-3 space-y-1 text-[11px] text-content-muted">
+              <div>供应商：{{ diagnostics.model_service.provider || provider }}</div>
+              <div>Base URL：{{ diagnostics.model_service.base_url || baseUrl || "-" }}</div>
+              <div v-if="typeof diagnostics.model_service.model_count === 'number'">模型数：{{ diagnostics.model_service.model_count }}</div>
+              <div v-if="diagnostics.model_service.model_sample.length > 0" class="truncate">
+                样例：{{ diagnostics.model_service.model_sample.join("、") }}
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-medium text-content-primary">企业微信通知</div>
+              <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.wecom.status)">
+                {{ diagnosticStatusLabel(diagnostics.wecom.status) }}
+              </span>
+            </div>
+            <div class="mt-2 text-xs leading-5 text-content-muted">{{ diagnostics.wecom.message }}</div>
+            <div class="mt-1 text-xs leading-5 text-content-muted">手动通知入口，不自动投递。</div>
+            <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+              <span class="ui-badge" :class="diagnostics.wecom.has_webhook_url ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                Webhook {{ diagnostics.wecom.has_webhook_url ? "已保存" : "未保存" }}
+              </span>
+              <span class="ui-badge" :class="diagnostics.wecom.webhook_url_valid ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                地址 {{ diagnostics.wecom.webhook_url_valid ? "有效" : "待检查" }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="mt-4 rounded-md border border-border/10 bg-surface-secondary/50 px-3 py-4 text-sm text-content-muted">
+          尚未运行诊断。
+        </div>
       </div>
     </div>
 
