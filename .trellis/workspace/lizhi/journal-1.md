@@ -207,3 +207,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 多来源统一模型验证
+
+**Date**: 2026-06-15
+**Task**: 多来源统一模型验证
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+补充 manual_import adapter 全量导入回归测试，逐个验证猎聘、智联、脉脉、V2EX、LinuxDo 能写入统一职位模型、来源链接和默认筛选结果；同步更新覆盖审计。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f0e33bd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
