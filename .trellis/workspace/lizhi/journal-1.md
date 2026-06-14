@@ -37,3 +37,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Tauri fixture 桌面核心流程烟测
+
+**Date**: 2026-06-14
+**Task**: Tauri fixture 桌面核心流程烟测
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+用 app-only release 和隔离 fixture 验证 Tauri 桌面端 Jobs、Top 20、每日情报、投递准备和简历工作区核心流程，并更新覆盖审计。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e8905dd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
