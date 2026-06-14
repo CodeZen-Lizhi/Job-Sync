@@ -262,7 +262,8 @@ flowchart TD
 - `npm run test:worker` 覆盖 worker stdio 生命周期：本机 Node 启动 `dist/main.js` 后能收到 `boss-crawler-worker started`，写入 `STOP` 命令后能收到 `STOP received`，关闭 stdin 后能收到 `FINISHED` 并以 0 退出。
 - `npm run stage:worker:runtime` 通过；已生成当前平台 `src-tauri/bin/node` 和 `src-tauri/bin/boss-crawler-worker/` staged runtime。
 - `npm run verify:worker:runtime` 通过；已验证 staged runtime 的启动、`STOP received`、`FINISHED` 和 0 退出码。
-- `npm run tauri:build:app` 通过；已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并完成 `.app` 签名和包内 worker runtime 生命周期校验。2026-06-14 复跑通过，确认 release `.app` 和包内 worker runtime 仍可用；当前 `npm run tauri:build` 已复现失败在 `bundle_dmg.sh`，需后续单独修复 DMG 生成与 `hdiutil verify`。
+- `npm run tauri:build:app` 通过；已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并完成 `.app` 签名和包内 worker runtime 生命周期校验。2026-06-14 复跑通过，确认 release `.app` 和包内 worker runtime 仍可用。
+- `npm run tauri:build` 通过；2026-06-14 复跑正式发布构建未复现旧 `bundle_dmg.sh` 失败，生成 `src-tauri/target/release/bundle/macos/job-sync.app` 和 `src-tauri/target/release/bundle/dmg/job-sync_0.1.0_aarch64.dmg`，并自动完成 `.app` `codesign --verify --deep --strict --verbose=2`、包内 worker runtime 生命周期校验和 `hdiutil verify`。
 - `npm run seed:desktop:smoke -- /tmp/job-sync-desktop-smoke` 通过；生成 4 条 Boss fixture 职位、3 条 AI 报告、4 条 Company Score、1 个联动简历工作区和 PDF 文件。
 - `src-tauri/target/release/bundle/macos/job-sync.app/Contents/MacOS/job-sync --data-dir /tmp/job-sync-desktop-smoke` 已通过 Computer Use 桌面烟测：采集页可读取登录状态和 worker 面板，职位库可显示 `Top 20 人工审核队列`、`每日岗位情报`、`投递准备台`、沟通回溯和报告选择器，简历工作区可显示 `AI Infra 投递烟测简历`、联动岗位、4/4 模块确认、最终稿和 PDF 状态。
 - `npm run seed:desktop:smoke -- /tmp/job-sync-crawl-worker-smoke` 通过；`src-tauri/target/release/bundle/macos/job-sync.app/Contents/MacOS/job-sync --data-dir /tmp/job-sync-crawl-worker-smoke` 通过 Computer Use 采集页 worker 事件烟测：在自动采集页点击 `同步城市、行业与筛选项` 后，UI 从 `空闲` 变为 `运行中`，运行日志显示 `boss-crawler-worker started`、`同步 Boss 城市、行业与筛选项…`、`已同步城市、行业与筛选项。` 和 `任务已结束。`，并回到 `空闲`；该路径不依赖真实 Boss 登录态，也不触发投递或开聊。

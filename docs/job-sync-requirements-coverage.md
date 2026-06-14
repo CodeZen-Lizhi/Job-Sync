@@ -12,7 +12,7 @@
 
 | Phase | 需求重点 | 当前状态 | 证据 | 待补事项 |
 | --- | --- | --- | --- | --- |
-| Phase 0：源码基线与 Mac Tauri 适配 | Mac Tauri 开发启动、Chrome 路径、sidecar、本机打包边界、命令清单、数据流图 | 部分闭环 | `docs/job-sync-phase0-baseline.md` 已记录架构、命令、Chrome 路径、sidecar、schema、数据流；`README.md` 记录 Mac Chrome 路径、`npm run tauri:dev` 和 `npm run tauri:build:app`；`src-tauri/src/commands/auth.rs` 现在要求 Cookie 和 LocalStorage 都存在才返回已登录，并有 Rust 单测覆盖；`test/review-workflow-contract.test.js` 锁定 release 包装平台感知、app-only 构建入口和旧 target runtime 清理；`packages/boss-crawler-worker/test/sidecar-lifecycle.test.ts` 验证本机 Node worker 生命周期；`src-tauri/tauri.conf.release.json` 配置 macOS ad-hoc 签名；2026-06-14 本机 `npm run tauri:build:app` 已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并通过 `.app` 签名和包内 worker runtime 生命周期校验；2026-06-14 使用 `/tmp/job-sync-desktop-smoke` fixture 启动 release `.app`，Computer Use 验证采集页、职位库、设置页和简历工作区能通过 Tauri IPC 读取本地数据；2026-06-14 使用 `/tmp/job-sync-crawl-worker-smoke` fixture 启动 release `.app`，Computer Use 在采集页点击 `同步城市、行业与筛选项` 后观察到 UI `运行中` 状态和运行日志 `boss-crawler-worker started`、`同步 Boss 城市、行业与筛选项…`、`已同步城市、行业与筛选项。`、`任务已结束。`。 | `npm run tauri:build` 当前复现失败在 `bundle_dmg.sh`，需修复 DMG 生成与 `hdiutil verify`；真实 Boss 登录后的 Cookie/LocalStorage 持久化复用。 |
+| Phase 0：源码基线与 Mac Tauri 适配 | Mac Tauri 开发启动、Chrome 路径、sidecar、本机打包边界、命令清单、数据流图 | 部分闭环 | `docs/job-sync-phase0-baseline.md` 已记录架构、命令、Chrome 路径、sidecar、schema、数据流；`README.md` 记录 Mac Chrome 路径、`npm run tauri:dev`、`npm run tauri:build:app` 和 `npm run tauri:build`；`src-tauri/src/commands/auth.rs` 现在要求 Cookie 和 LocalStorage 都存在才返回已登录，并有 Rust 单测覆盖；`test/review-workflow-contract.test.js` 锁定 release 包装平台感知、app-only 构建入口和旧 target runtime 清理；`packages/boss-crawler-worker/test/sidecar-lifecycle.test.ts` 验证本机 Node worker 生命周期；`src-tauri/tauri.conf.release.json` 配置 macOS ad-hoc 签名；2026-06-14 本机 `npm run tauri:build:app` 已生成 `src-tauri/target/release/bundle/macos/job-sync.app`，并通过 `.app` 签名和包内 worker runtime 生命周期校验；2026-06-14 本机 `npm run tauri:build` 已生成 `src-tauri/target/release/bundle/macos/job-sync.app` 和 `src-tauri/target/release/bundle/dmg/job-sync_0.1.0_aarch64.dmg`，并通过 `.app` 签名、包内 worker runtime 生命周期和 `hdiutil verify`；2026-06-14 使用 `/tmp/job-sync-desktop-smoke` fixture 启动 release `.app`，Computer Use 验证采集页、职位库、设置页和简历工作区能通过 Tauri IPC 读取本地数据；2026-06-14 使用 `/tmp/job-sync-crawl-worker-smoke` fixture 启动 release `.app`，Computer Use 在采集页点击 `同步城市、行业与筛选项` 后观察到 UI `运行中` 状态和运行日志 `boss-crawler-worker started`、`同步 Boss 城市、行业与筛选项…`、`已同步城市、行业与筛选项。`、`任务已结束。`。 | 真实 Boss 登录后的 Cookie/LocalStorage 持久化复用。 |
 | Phase 1：统一职位来源模型 | Boss 入库归一化，保留来源平台、URL、抓取时间、去重 key、原始 payload；其他平台预留 adapter | 部分闭环 | `src-tauri/src/db/schema.sql` 有 `job`、`job_sources`、`job_source_link`；`src-tauri/src/db/models/source_adapter.rs` 注册 Boss 与手动导入 adapter；`src-tauri/src/db/tests.rs` 覆盖 Boss payload 和外部平台手动导入映射；`test/review-workflow-contract.test.js` 覆盖 unified source registry。 | 其他平台目前是手动导入单条 JSON，不是自动采集；需求允许首期只实现 Boss，但总体验收的“多来源岗位”目前只能证明本地统一模型接入，不能证明多平台自动采集。 |
 | Phase 2：筛选画像与硬限制规则 | 必须满足、必须排除、偏好加权；覆盖工作方式、方向、技术、薪资、时间、城市、经验、学历、公司、关键词、来源平台、沟通状态 | 已闭环 | `src-tauri/src/commands/filter_profile.rs` 负责画像规则、默认画像和重算；`src/lib/filterProfile.ts` 提供多画像状态和来源策略；`src/pages/Jobs.vue` / `src/pages/Crawl.vue` 提供编辑入口；Rust 测试覆盖维度规则、Boss-only 来源、沟通状态、公司条件和默认重算；contract 测试覆盖多画像、公司规模/融资/行业、过滤解释和 sidecar 过滤上下文。 | 后续可继续增强更多 UI 级交互测试，但核心规则链已有代码和测试证据。 |
 | Phase 3：简历匹配与综合排序 | 硬限制后计算 Resume、Preference、Company、Final；按权重展示 Top 20 | 已闭环 | `.trellis/tasks/06-13-scoring-candidate-ranking/prd.md` 子任务验收已覆盖；`src-tauri/src/commands/jobs/models.rs` 计算评分投影；`src-tauri/src/commands/jobs/queries.rs` 查询 Top 20 并按 `final_score` 排序；`src/components/jobs/JobsJobItem.vue` 展示评分和原因；Rust 测试覆盖权重、无 AI 报告、中性偏好、公司风险和排序；contract 测试覆盖 score reason 和 Resume Match 证据。 | 无已知功能缺口；后续主要是端到端真实数据验证。 |
@@ -29,7 +29,7 @@
 | 编号 | 总体验收项 | 当前结论 |
 | --- | --- | --- |
 | 1 | 多来源岗位可以存入统一 SQLite-backed 模型 | 部分闭环：Boss 自动采集 + 非 Boss 手动导入已进入统一模型；非 Boss 自动采集未实现。 |
-| 2 | Mac 用户可以通过 Tauri 桌面端完成核心流程 | 部分闭环：Mac release `.app` 已构建并通过签名与包内 worker runtime 校验；fixture 数据下的职位库、Top 20、每日情报、投递准备和简历工作区已在 Tauri 桌面端渲染；采集页已在 fixture 桌面端触发 worker 并渲染运行日志；DMG 当前失败在 `bundle_dmg.sh`，真实 Boss 登录仍需外部状态验收。 |
+| 2 | Mac 用户可以通过 Tauri 桌面端完成核心流程 | 部分闭环：Mac release `.app` 和 `.dmg` 已构建，并通过 `.app` 签名、包内 worker runtime 和 `hdiutil verify` 校验；fixture 数据下的职位库、Top 20、每日情报、投递准备和简历工作区已在 Tauri 桌面端渲染；采集页已在 fixture 桌面端触发 worker 并渲染运行日志；真实 Boss 登录仍需外部状态验收。 |
 | 3 | `npm run tauri:dev` 可启动 Vue、Rust Tauri Shell 和 Node sidecar | 部分闭环：Phase 0 文档记录已跑通；当前轮尚未重新执行完整 Tauri dev。 |
 | 4 | 当前版本只实现 Boss 来源，但统一模型和 adapter 边界支持扩展 | 已闭环。 |
 | 5 | 支持可配置筛选画像 | 已闭环。 |
@@ -50,5 +50,4 @@
 
 ## 下一步优先级
 
-1. **Mac DMG 打包修复**：修复 `npm run tauri:build` 在 `bundle_dmg.sh` 的失败，并恢复 `hdiutil verify` 证据。
-2. **外部依赖实测**：在用户本地凭据可用时，验证 Boss 登录 Cookie/LocalStorage 复用、企业微信 webhook、Ollama/DeepSeek/OpenAI Compatible 实际连通性。
+1. **外部依赖实测**：在用户本地凭据可用时，验证 Boss 登录 Cookie/LocalStorage 复用、企业微信 webhook、Ollama/DeepSeek/OpenAI Compatible 实际连通性。
