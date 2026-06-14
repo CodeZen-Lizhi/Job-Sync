@@ -2,6 +2,8 @@
 
 本文档审计 `docs/job-sync-remote-tech-jobs-requirements.md` 的当前实现覆盖情况。状态只基于当前仓库证据：代码、契约测试、Rust/worker 测试、已记录的运行结果和页面烟测。没有强证据的项不标为完成。
 
+父级收口审计见 `docs/job-sync-final-acceptance-audit.md`。该文档按 Phase 0-10 和 19 条总体验收标准区分仓库内已闭环范围与仍需用户本机凭据/服务的外部依赖实测项。
+
 状态说明：
 
 - `已闭环`：有实现、测试或运行结果能证明需求成立。
@@ -50,4 +52,4 @@
 
 ## 下一步优先级
 
-1. **外部依赖实测**：在用户本地凭据可用时，通过设置页外部依赖诊断验证 Boss 登录 Cookie/LocalStorage 复用、企业微信 webhook 保存状态、Ollama/DeepSeek/OpenAI Compatible 实际连通性，并复制脱敏诊断摘要留证；真实企业微信发送仍需用户手动触发。
+1. **外部依赖实测**：按 `docs/job-sync-final-acceptance-audit.md` 的用户本机外部依赖验收清单执行；在用户本地凭据可用时，通过设置页外部依赖诊断验证 Boss 登录 Cookie/LocalStorage 复用、企业微信 webhook 保存状态、Ollama/DeepSeek/OpenAI Compatible 实际连通性，并复制脱敏诊断摘要留证；真实企业微信发送仍需用户手动触发。

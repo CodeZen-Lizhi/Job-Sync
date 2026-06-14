@@ -28,7 +28,8 @@
     "06-14-external-dependency-diagnostics",
     "06-15-tauri-dev-current-smoke",
     "06-15-multi-source-unified-model-evidence",
-    "06-15-external-dependency-diagnostic-summary"
+    "06-15-external-dependency-diagnostic-summary",
+    "06-15-final-acceptance-audit"
   ],
   "parent": null,
   "relatedFiles": [],
