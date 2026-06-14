@@ -139,3 +139,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 外部依赖诊断面板
+
+**Date**: 2026-06-14
+**Task**: 外部依赖诊断面板
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+设置页新增外部依赖诊断入口，覆盖 Boss 登录态、模型服务和企业微信配置的本机可验证状态；补充契约测试、Rust 测试、浏览器烟测证据、覆盖审计和 code-spec。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1bae364` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
