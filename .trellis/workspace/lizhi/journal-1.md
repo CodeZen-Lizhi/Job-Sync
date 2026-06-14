@@ -275,3 +275,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 最终验收审计
+
+**Date**: 2026-06-15
+**Task**: 最终验收审计
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+新增二开最终验收审计文档，按 Phase 0-10 与 19 条总体验收标准区分仓库内已闭环范围和仍需用户本机凭据/服务的外部依赖实测；同步覆盖审计和父任务 PRD入口。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `506ea6c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
