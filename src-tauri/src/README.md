@@ -8,7 +8,7 @@ This directory contains the Rust application entrypoints, command handlers, stor
 - `commands/` — Tauri command handlers for crawling, jobs, exports, AI features, settings, and resume workspace actions.
 - `db/` — SQLite models, migrations, and database helpers.
 - `ipc/` — shared IPC protocol definitions.
-- `paths.rs`, `settings.rs`, `storage/`, `sidecar/`, `worker.rs` — filesystem paths, settings persistence, local storage, sidecar control, and worker orchestration, including bundled `node.exe + boss-crawler-worker/` runtime discovery for release/portable builds plus development-mode Node fallback.
+- `paths.rs`, `settings.rs`, `storage/`, `sidecar/`, `worker.rs` — filesystem paths, settings persistence, local storage, sidecar control, and worker orchestration, including bundled `node` / `node.exe` + `boss-crawler-worker/` runtime discovery for release/portable builds plus development-mode Node fallback.
 - `resume_text.rs` — resolves resume text from raw input or files.
 - `resume_workspace.rs` — resume workspace draft models and the canonical `assemble_resume_text()` implementation that assembles confirmed sections in summary, projects, experience, and skills order.
 - `resume_pdf_support.rs`, `resume_pdf_template.rs` — final resume PDF rendering support.

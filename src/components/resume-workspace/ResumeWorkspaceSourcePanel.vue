@@ -9,6 +9,10 @@ defineProps<{
   contextText: string;
   basicProfile: ResumeBasicProfile;
   diagnosing: boolean;
+  linkedJobTitle?: string | null;
+  linkedJobCompany?: string | null;
+  linkedJobLoading?: boolean;
+  linkedJobContextApplied?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -88,6 +92,18 @@ const emit = defineEmits<{
         <p class="mt-2 resume-paper-copy">
           例如当前工作状态、目标岗位方向、需要重点突出的经历、希望回避的问题点等。
         </p>
+      </div>
+
+      <div
+        v-if="linkedJobLoading || linkedJobTitle"
+        class="mt-4 rounded-lg border border-border/10 bg-surface-secondary/60 px-3 py-2 text-xs text-content-muted"
+      >
+        <span v-if="linkedJobLoading">正在读取联动岗位…</span>
+        <span v-else>
+          已联动岗位：{{ linkedJobTitle }}
+          <template v-if="linkedJobCompany"> · {{ linkedJobCompany }}</template>
+          <template v-if="linkedJobContextApplied">，已写入上下文。</template>
+        </span>
       </div>
 
       <textarea

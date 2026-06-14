@@ -31,6 +31,10 @@ export function bossJobUrl(id: string): string {
   return `https://www.zhipin.com/job_detail/${id}.html`;
 }
 
+export function jobSourceUrl(job: JobRow): string {
+  return job.source_url?.trim() || bossJobUrl(job.dedup_key?.trim() || job.encrypt_job_id);
+}
+
 export function formatDate(ts: string | null): string {
   if (!ts) return "-";
   try {

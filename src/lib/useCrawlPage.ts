@@ -20,6 +20,7 @@ import {
   type BossIndustryGroup,
   type CrawlMode,
 } from "./crawl";
+import { useFilterProfile } from "./filterProfile";
 import { clearLogs, runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
 
@@ -50,7 +51,10 @@ export function useCrawlPage() {
   const bossMetaLoading = ref(false);
   const bossMetaSyncing = ref(false);
   const bossMetaError = ref<string | null>(null);
+  const filterRecomputing = ref(false);
+  const filterRecomputeMessage = ref<string | null>(null);
   let bossMetaSyncTimeout: number | null = null;
+  const filterProfileState = useFilterProfile();
 
   const bossMetaSyncedAt = computed(() => (runtime.bossMeta as any)?.synced_at as string | undefined);
   const bossCityGroups = computed<BossCityGroup[]>(() => buildBossCityGroups(runtime.bossMeta));
@@ -69,6 +73,7 @@ export function useCrawlPage() {
     degree: selectedDegree.value ? [selectedDegree.value] : parseList(degreeText.value),
     industry: selectedIndustry.value ? [selectedIndustry.value] : parseList(industryText.value),
     scale: selectedScale.value ? [selectedScale.value] : parseList(scaleText.value),
+    profile: filterProfileState.filterProfile.value,
   }));
   const task = computed(() => ({
     keywords: keywords.value,
@@ -148,6 +153,75 @@ export function useCrawlPage() {
     }
   }
 
+  async function loadDefaultFilterProfile(): Promise<void> {
+    if (!tauri) return;
+    try {
+      await filterProfileState.loadDefaultFilterProfile();
+    } catch (cause) {
+      bossMetaError.value = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+
+  async function selectFilterProfile(profileId: string): Promise<void> {
+    if (!tauri) return;
+    try {
+      await filterProfileState.selectFilterProfile(profileId);
+    } catch (cause) {
+      bossMetaError.value = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+
+  async function saveActiveFilterProfile(): Promise<void> {
+    if (!tauri) return;
+    filterRecomputeMessage.value = null;
+    try {
+      await filterProfileState.saveActiveFilterProfile();
+      filterRecomputeMessage.value = "已保存当前筛选画像";
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+
+  async function createFilterProfile(): Promise<void> {
+    if (!tauri) return;
+    filterRecomputeMessage.value = null;
+    try {
+      await filterProfileState.createFilterProfile();
+      filterRecomputeMessage.value = "已新建筛选画像";
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+
+  async function setActiveFilterProfileAsDefault(): Promise<void> {
+    if (!tauri) return;
+    filterRecomputeMessage.value = null;
+    try {
+      await filterProfileState.setActiveFilterProfileAsDefault();
+      filterRecomputeMessage.value = "已设为默认画像，重算后更新候选队列";
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+
+  async function recomputeDefaultFilterProfile(): Promise<void> {
+    error.value = null;
+    filterRecomputeMessage.value = null;
+    if (!tauri) return;
+    filterRecomputing.value = true;
+    try {
+      const result = await filterProfileState.recomputeDefaultFilterProfile();
+      if (result) {
+        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位`;
+        runtime.finishedCounter += 1;
+      }
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      filterRecomputing.value = false;
+    }
+  }
+
   async function start(): Promise<void> {
     error.value = null;
     if (!tauri) return;
@@ -162,6 +236,7 @@ export function useCrawlPage() {
       if (keywords.value.length === 0) {
         throw new Error("请输入至少 1 个 keyword（换行分隔）。");
       }
+      await filterProfileState.saveDefaultFilterProfile();
       runtime.sidecarTask.running = true;
       runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
       await invoke<void>("crawl_auto_start", { task: task.value });
@@ -192,6 +267,7 @@ export function useCrawlPage() {
   onMounted(() => {
     void refreshLogin();
     void loadBossMeta();
+    void loadDefaultFilterProfile();
   });
 
   onUnmounted(() => {
@@ -226,6 +302,7 @@ export function useCrawlPage() {
     degreeText,
     industryText,
     scaleText,
+    ...filterProfileState,
     selectedCity,
     selectedSalary,
     selectedExperience,
@@ -243,6 +320,8 @@ export function useCrawlPage() {
     bossMetaLoading,
     bossMetaSyncing,
     bossMetaError,
+    filterRecomputing,
+    filterRecomputeMessage,
     bossMetaSyncedAt,
     bossCityGroups,
     bossHotCities,
@@ -257,6 +336,12 @@ export function useCrawlPage() {
     startLogin,
     loadBossMeta,
     syncBossMeta,
+    loadDefaultFilterProfile,
+    selectFilterProfile,
+    saveActiveFilterProfile,
+    createFilterProfile,
+    setActiveFilterProfileAsDefault,
+    recomputeDefaultFilterProfile,
     start,
     stop,
   };

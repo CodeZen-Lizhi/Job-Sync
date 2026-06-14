@@ -14,6 +14,9 @@ defineProps<{
   activeWorkspaceUpdatedAt: string;
   activeWorkspaceSummary: string;
   workspaces: ResumeWorkspaceMeta[];
+  linkedJobTitle?: string | null;
+  linkedJobCompany?: string | null;
+  canGoLinkedJobReview?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -21,6 +24,7 @@ const emit = defineEmits<{
   (e: "createWorkspace"): void;
   (e: "renameWorkspace"): void;
   (e: "deleteWorkspace"): void;
+  (e: "goLinkedJobReview"): void;
 }>();
 </script>
 
@@ -42,6 +46,16 @@ const emit = defineEmits<{
             <div class="text-lg font-semibold tracking-[-0.02em] text-content-primary">{{ activeWorkspaceTitle }}</div>
             <div class="text-sm text-content-secondary">{{ activeWorkspaceSummary }}</div>
             <div class="text-xs text-content-muted">最近更新：{{ activeWorkspaceUpdatedAt }}</div>
+            <div
+              v-if="canGoLinkedJobReview"
+              class="flex flex-wrap items-center gap-2 rounded-lg border border-border/10 bg-surface-secondary/70 px-3 py-2 text-xs text-content-muted"
+            >
+              <span>
+                联动岗位：{{ linkedJobTitle || "已保存岗位" }}
+                <template v-if="linkedJobCompany"> · {{ linkedJobCompany }}</template>
+              </span>
+              <button type="button" class="ui-btn-secondary px-2.5 py-1 text-xs" @click="emit('goLinkedJobReview')">回到岗位确认</button>
+            </div>
           </div>
 
           <div class="flex flex-col gap-3 xl:w-[360px]">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-vue-next";
+import { ArrowLeft, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList } from "lucide-vue-next";
 
 import AiGroupReportView from "../components/ai-reports/AiGroupReportViewSplit.vue";
 import AiJsonPanel from "../components/ai-reports/AiJsonPanel.vue";
@@ -25,6 +25,8 @@ const {
   selectedMeta,
   selectedGroup,
   selectedResume,
+  canGoReviewJob,
+  canGoReviewQueue,
   drillBackMeta,
   prevMeta,
   nextMeta,
@@ -34,6 +36,8 @@ const {
   selectReport,
   openResumeReportForJob,
   drillBackToGroup,
+  goReviewJob,
+  goReviewQueue,
   openPrev,
   openNext,
   clearReports,
@@ -45,8 +49,8 @@ const {
     <header class="space-y-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="space-y-1">
-          <h1 class="text-xl font-semibold text-content-primary">AI 报告</h1>
-          <p class="text-sm text-content-secondary">查看已生成的综合报告与报告（来自本地缓存）。</p>
+          <h1 class="text-xl font-semibold text-content-primary">岗位研究报告</h1>
+          <p class="text-sm text-content-secondary">查看本地缓存的匹配分析和综合研究结论，辅助人工筛选候选岗位。</p>
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
@@ -127,6 +131,24 @@ const {
               >
                 <ArrowLeft class="h-3.5 w-3.5" aria-hidden="true" />
                 返回综合
+              </button>
+              <button
+                v-if="canGoReviewJob"
+                type="button"
+                class="ui-btn-primary px-3 py-1.5 text-xs"
+                @click="goReviewJob"
+              >
+                <ClipboardCheck class="h-3.5 w-3.5" aria-hidden="true" />
+                回到岗位确认
+              </button>
+              <button
+                v-if="canGoReviewQueue"
+                type="button"
+                class="ui-btn-primary px-3 py-1.5 text-xs"
+                @click="goReviewQueue"
+              >
+                <ClipboardList class="h-3.5 w-3.5" aria-hidden="true" />
+                查看 Top 20 确认队列
               </button>
               <span class="truncate">{{ selectedMeta.encrypt_job_id }}</span>
             </div>

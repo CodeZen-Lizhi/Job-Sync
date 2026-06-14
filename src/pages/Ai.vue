@@ -70,6 +70,68 @@ const jobId = computed(() => {
   const trimmed = q.trim();
   return trimmed ? trimmed : null;
 });
+const source = computed(() => {
+  const q = route.query.source;
+  if (typeof q !== "string") return null;
+  const trimmed = q.trim().toLowerCase();
+  return trimmed ? trimmed : null;
+});
+const isTop20Source = computed(() => source.value === "top20");
+const top20ContextJobs = computed(() => selectedJobs.value.slice(0, 5));
+
+const errorTitle = computed(() => describeAiFailure(error.value).title);
+const errorHint = computed(() => describeAiFailure(error.value).hint);
+const groupErrorTitle = computed(() => describeAiFailure(groupError.value).title);
+const groupErrorHint = computed(() => describeAiFailure(groupError.value).hint);
+
+function describeAiFailure(message: string | null): { title: string; hint: string } {
+  if (!message) {
+    return { title: "", hint: "" };
+  }
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes("json") || normalized.includes("parse") || normalized.includes("schema")) {
+    return {
+      title: "结构化输出解析失败",
+      hint: "模型返回内容不是可用 JSON。可打开“强制重新生成”后重试，或在设置中降低 Temperature / 切换支持 JSON 输出的模型。",
+    };
+  }
+  if (normalized.includes("openai request failed") || normalized.includes("http ")) {
+    return {
+      title: "模型接口请求失败",
+      hint: "请检查 Base URL、模型名、API Key、接口模式和本地 Ollama 服务状态，然后重试。",
+    };
+  }
+  if (normalized.includes("missing openai_api_key")) {
+    return {
+      title: "缺少 API Key",
+      hint: "请在设置中保存 API Key；Ollama 本地接口可应用 Ollama 预设后重试。",
+    };
+  }
+
+  return {
+    title: "AI 分析失败",
+    hint: "可以修正输入或模型配置后重试；若命中了缓存，请打开“强制重新生成”。",
+  };
+}
+
+function retryAnalyze(): void {
+  force.value = true;
+  void analyze();
+}
+
+function retryAnalyzeGroup(): void {
+  force.value = true;
+  void analyzeGroup();
+}
+
+async function routeAfterResumeAnalysis(): Promise<void> {
+  if (isTop20Source.value) {
+    await router.push({ path: "/jobs", query: { review: "top20", analysis: "resume" } });
+    return;
+  }
+  await router.push({ path: "/ai-reports", query: { open: "latest" } });
+}
 
 async function analyze(): Promise<void> {
   error.value = null;
@@ -117,7 +179,7 @@ async function analyze(): Promise<void> {
       return;
     }
 
-    await router.push({ path: "/ai-reports", query: { open: "latest" } });
+    await routeAfterResumeAnalysis();
   } finally {
     loading.value = false;
   }
@@ -166,8 +228,8 @@ onMounted(() => {
 <template>
   <section class="space-y-4">
     <header class="space-y-1">
-      <h1 class="text-xl font-semibold text-content-primary">AI</h1>
-      <p class="text-sm text-content-secondary">简历导入与岗位匹配（结构化 JSON 输出）。</p>
+      <h1 class="text-xl font-semibold text-content-primary">AI 岗位研究</h1>
+      <p class="text-sm text-content-secondary">基于简历和岗位证据生成匹配分析，服务人工确认后的精准投递准备。</p>
     </header>
 
     <div
@@ -178,6 +240,52 @@ onMounted(() => {
     </div>
 
     <AiJobPicker :tauri="tauri" :job-id="jobId" />
+
+    <div
+      v-if="isTop20Source"
+      class="ui-panel-muted space-y-2 p-4"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="ui-badge bg-sky-400/10 text-sky-300 ring-sky-400/20">Top 20 候选岗位</span>
+        <span v-if="selectedJobs.length" class="text-sm font-medium text-content-primary">
+          已载入 {{ selectedJobs.length }} 个候选岗位
+        </span>
+        <span v-else class="text-sm font-medium text-content-primary">
+          未检测到候选岗位
+        </span>
+      </div>
+      <p class="text-sm text-content-secondary">
+        先使用简历生成单岗位匹配报告，再回到岗位确认；综合报告用于理解候选池共性，不会触发自动发送或投递。
+      </p>
+      <div v-if="selectedJobs.length" class="space-y-2">
+        <div class="text-xs font-semibold text-content-secondary">候选上下文</div>
+        <div class="grid gap-2 lg:grid-cols-2">
+          <div
+            v-for="job in top20ContextJobs"
+            :key="`top20-context-${job.encrypt_job_id}`"
+            class="rounded-lg bg-card/70 p-3 text-xs ring-1 ring-border/10"
+          >
+            <div class="truncate font-medium text-content-primary">
+              {{ job.position_name ?? job.encrypt_job_id }}
+            </div>
+            <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-content-muted">
+              <span v-if="job.brand_name">{{ job.brand_name }}</span>
+              <span v-if="job.city_name">{{ job.city_name }}</span>
+              <span v-if="job.score_trace">{{ job.score_trace }}</span>
+            </div>
+            <div class="mt-2 space-y-1 text-content-muted">
+              <div v-if="job.source_strategy_trace">{{ job.source_strategy_trace }}</div>
+              <div v-if="job.filter_trace">筛选画像：{{ job.filter_trace }}</div>
+              <div v-if="job.communication_trace">沟通追踪：{{ job.communication_trace }}</div>
+              <div v-if="job.source_trace">来源追踪：{{ job.source_trace }}</div>
+            </div>
+          </div>
+        </div>
+        <div v-if="selectedJobs.length > top20ContextJobs.length" class="text-xs text-content-muted">
+          其余 {{ selectedJobs.length - top20ContextJobs.length }} 个候选岗位已载入，将一并参与分析。
+        </div>
+      </div>
+    </div>
 
     <AiProfileInputs
       :tauri="tauri"
@@ -222,18 +330,36 @@ onMounted(() => {
       </label>
     </div>
 
-	    <div
-	      v-if="error"
-	      class="rounded-lg bg-red-500/10 p-4 text-sm text-accent-danger ring-1 ring-white/[0.06]"
-	    >
-	      <pre class="whitespace-pre-wrap">{{ error }}</pre>
-	    </div>
+    <div
+      v-if="error"
+      class="rounded-lg bg-red-500/10 p-4 text-sm text-accent-danger ring-1 ring-white/[0.06]"
+    >
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="font-semibold">{{ errorTitle }}</div>
+          <div class="mt-1 text-xs text-content-secondary">{{ errorHint }}</div>
+        </div>
+        <button class="ui-btn-secondary px-3 py-1 text-xs" type="button" :disabled="loading || groupLoading" @click="retryAnalyze">
+          强制重试
+        </button>
+      </div>
+      <pre class="mt-3 whitespace-pre-wrap">{{ error }}</pre>
+    </div>
 
-		    <div
-		      v-if="groupError"
-		      class="rounded-lg bg-red-500/10 p-4 text-sm text-accent-danger ring-1 ring-white/[0.06]"
-		    >
-		      <pre class="whitespace-pre-wrap">{{ groupError }}</pre>
-		    </div>
+    <div
+      v-if="groupError"
+      class="rounded-lg bg-red-500/10 p-4 text-sm text-accent-danger ring-1 ring-white/[0.06]"
+    >
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="font-semibold">{{ groupErrorTitle }}</div>
+          <div class="mt-1 text-xs text-content-secondary">{{ groupErrorHint }}</div>
+        </div>
+        <button class="ui-btn-secondary px-3 py-1 text-xs" type="button" :disabled="loading || groupLoading" @click="retryAnalyzeGroup">
+          强制重试
+        </button>
+      </div>
+      <pre class="mt-3 whitespace-pre-wrap">{{ groupError }}</pre>
+    </div>
 	  </section>
 </template>

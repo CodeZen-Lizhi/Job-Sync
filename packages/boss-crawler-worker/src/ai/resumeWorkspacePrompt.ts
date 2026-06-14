@@ -1,3 +1,5 @@
+import { withPromptExtra, withSchemaExtra } from "./promptExtra.js";
+
 export type ResumeModuleKind = "summary" | "projects" | "experience" | "skills";
 
 export function buildResumeDiagnosisPrompts(
@@ -5,11 +7,11 @@ export function buildResumeDiagnosisPrompts(
   contextText?: string,
   resumeFiles?: string,
 ): { system: string; user: string } {
-  const system = [
+  const system = withPromptExtra([
     "你是一名严谨的招聘经理、简历教练与求职顾问。",
     "你必须输出严格 JSON，不要 Markdown，不要代码块，不要额外解释。",
     "你不能编造事实；只能基于用户提供的原始简历、补充说明和文件说明给建议。",
-  ].join("\n");
+  ]);
 
   const schema = {
     overall_summary: "",
@@ -20,7 +22,7 @@ export function buildResumeDiagnosisPrompts(
     next_steps: [""],
   };
 
-  const user = [
+  const user = withSchemaExtra([
     "任务：先诊断这份原始简历，不要直接重写整份简历。",
     "请围绕四个模块输出结构化诊断：个人简介、项目经历、工作经历、技能清单。",
     "",
@@ -37,7 +39,7 @@ export function buildResumeDiagnosisPrompts(
     "",
     "【原始简历】",
     resumeText,
-  ].join("\n");
+  ]);
 
   return { system, user };
 }
@@ -62,12 +64,12 @@ export function buildResumeModuleRewritePrompts(args: {
   contextText?: string;
   confirmedModules?: Partial<Record<ResumeModuleKind, string | undefined>>;
 }): { system: string; user: string } {
-  const system = [
+  const system = withPromptExtra([
     "你是一名严谨的招聘经理、简历教练与求职顾问。",
     "你必须输出严格 JSON，不要 Markdown 代码块，不要多余解释。",
     "不能编造事实，只能基于原始简历、用户补充内容、已确认模块来改写。",
     "输出的是某一个模块的候选改写，不是整份简历。",
-  ].join("\n");
+  ]);
 
   const schema = {
     module: args.module,
@@ -81,7 +83,7 @@ export function buildResumeModuleRewritePrompts(args: {
     .map(([key, value]) => `【${moduleLabel(key as ResumeModuleKind)}】\n${value}`)
     .join("\n\n");
 
-  const user = [
+  const user = withSchemaExtra([
     `任务：针对【${moduleLabel(args.module)}】生成一版候选改写稿。`,
     "要求：输出结果应更职业化、更适合招聘场景，但不能捏造原始简历里没有、且用户也没补充过的事实。",
     "如果信息仍然不足，可以给出 notes 和 checklist。",
@@ -100,7 +102,7 @@ export function buildResumeModuleRewritePrompts(args: {
     "",
     "【原始简历】",
     args.resumeText,
-  ].join("\n");
+  ]);
 
   return { system, user };
 }

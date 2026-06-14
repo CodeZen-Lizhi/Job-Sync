@@ -14,6 +14,34 @@ export function isJobDetailApi(url: string): boolean {
   return url.includes(API_PATH.JOB_DETAIL);
 }
 
+function firstString(candidates: unknown[]): string | null {
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const value = candidate.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+/**
+ * Extract the canonical Boss job id from a job-list item.
+ */
+export function pickBossJobIdFromListItem(item: unknown): string | null {
+  if (!item || typeof item !== "object") return null;
+  const obj = item as Record<string, unknown>;
+  const jobInfo = obj.jobInfo as Record<string, unknown> | undefined;
+  return firstString([
+    obj.securityId,
+    obj.security_id,
+    jobInfo?.securityId,
+    jobInfo?.security_id,
+    obj.encryptJobId,
+    obj.encrypt_job_id,
+    jobInfo?.encryptJobId,
+    jobInfo?.encrypt_job_id,
+  ]);
+}
+
 /**
  * Extract encryptJobId from the request URL query params and response body.
  *
@@ -61,10 +89,7 @@ function pickEncryptJobIdFromBody(body: unknown): string | null {
     (obj.jobInfo as Record<string, unknown> | undefined)?.encryptId,
   ];
 
-  for (const c of candidates) {
-    if (typeof c === "string" && c) return c;
-  }
-  return null;
+  return firstString(candidates);
 }
 
 /**

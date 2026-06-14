@@ -35,11 +35,40 @@ export const AiAnalyzePayloadSchema = z.object({
   context_text: z.string().optional(),
   resume_files: z.string().optional(),
   job_detail: z.any(),
+  filter_reason: z.any().optional(),
+  score_reason: z.any().optional(),
+  source_context: z.any().optional(),
+  review_context: z.any().optional(),
 });
 
 export const AiAnalyzeGroupPayloadSchema = z.object({
   context_text: z.string().min(1),
   jobs: z.array(z.any()).min(1),
+});
+
+export const AiGreetingPayloadSchema = z.object({
+  resume_text: z.string().optional(),
+  context_text: z.string().optional(),
+  resume_files: z.string().optional(),
+  job_detail: z.any(),
+  match_report: z.any().optional(),
+  filter_reason: z.any().optional(),
+  score_reason: z.any().optional(),
+  source_context: z.any().optional(),
+  review_context: z.any().optional(),
+});
+
+export const AiCompanyScoreBatchPayloadSchema = z.object({
+  companies: z
+    .array(
+      z.object({
+        company_name: z.string().trim().min(1),
+        jobs_count: z.number().int().nonnegative(),
+        source_text: z.string().optional().default(""),
+        jobs: z.array(z.any()).optional().default([]),
+      }),
+    )
+    .min(1),
 });
 
 export const ResumeDiagnosePayloadSchema = z.object({
@@ -76,6 +105,8 @@ export const CommandInSchema = z.union([
   }),
   z.object({ type: z.literal("AI_ANALYZE"), payload: AiAnalyzePayloadSchema }),
   z.object({ type: z.literal("AI_ANALYZE_GROUP"), payload: AiAnalyzeGroupPayloadSchema }),
+  z.object({ type: z.literal("AI_GREETING"), payload: AiGreetingPayloadSchema }),
+  z.object({ type: z.literal("AI_COMPANY_SCORE_BATCH"), payload: AiCompanyScoreBatchPayloadSchema }),
   z.object({ type: z.literal("RESUME_DIAGNOSE"), payload: ResumeDiagnosePayloadSchema }),
   z.object({ type: z.literal("RESUME_REWRITE_MODULE"), payload: ResumeRewriteModulePayloadSchema }),
   z.object({ type: z.literal("STOP") }),
@@ -96,6 +127,7 @@ export const ProgressPayloadSchema = z.object({
   current_page: z.number().int().nonnegative().optional(),
   captured_job_list: z.number().int().nonnegative().optional(),
   captured_job_detail: z.number().int().nonnegative().optional(),
+  filtered_job: z.number().int().nonnegative().optional(),
 });
 
 export const LoginStatusPayloadSchema = z.object({
@@ -117,6 +149,26 @@ export const JobListCapturedPayloadSchema = z.object({
 export const JobDetailCapturedPayloadSchema = z.object({
   encrypt_job_id: z.string().min(1),
   zp_data: z.any(),
+});
+
+export const JobFilteredPayloadSchema = z.object({
+  encrypt_job_id: z.string().optional(),
+  keyword: z.string().optional(),
+  filters: z.any().optional(),
+  reason: z.object({
+    eligible: z.boolean(),
+    blocked_by: z.array(
+      z.object({
+        rule_type: z.string(),
+        field: z.string(),
+        value: z.string(),
+        reason: z.string(),
+      }),
+    ),
+    matched_preferences: z.array(z.string()),
+    missing_preferences: z.array(z.string()),
+  }),
+  raw: z.any().optional(),
 });
 
 export const AiResultPayloadSchema = z.object({
@@ -142,6 +194,7 @@ export const EventOutSchema = z.union([
   z.object({ type: z.literal("COOKIE_COLLECTED"), payload: CookieCollectedPayloadSchema }),
   z.object({ type: z.literal("JOB_LIST_CAPTURED"), payload: JobListCapturedPayloadSchema }),
   z.object({ type: z.literal("JOB_DETAIL_CAPTURED"), payload: JobDetailCapturedPayloadSchema }),
+  z.object({ type: z.literal("JOB_FILTERED"), payload: JobFilteredPayloadSchema }),
   z.object({ type: z.literal("AI_RESULT"), payload: AiResultPayloadSchema }),
   z.object({ type: z.literal("BOSS_META_SYNCED"), payload: BossMetaSyncedPayloadSchema }),
   z.object({ type: z.literal("FINISHED") }),

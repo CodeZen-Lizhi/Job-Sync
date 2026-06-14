@@ -145,6 +145,8 @@ export function normalizeAiGroupResult(raw: unknown, jobs: unknown[]): unknown {
       (obj as any)["概览"],
     ) ?? "已生成综合分析。";
 
+  const placeholderCount = mergedJobRanking.filter((item: any) => item.placeholder === true).length;
+
   return {
     summary,
     jobRanking: mergedJobRanking,
@@ -160,6 +162,7 @@ export function normalizeAiGroupResult(raw: unknown, jobs: unknown[]): unknown {
     nextSteps: toStringArray(
       (obj as any).nextSteps ?? (obj as any).next_steps ?? (obj as any).actions ?? (obj as any)["下一步"] ?? (obj as any)["行动建议"],
     ),
+    placeholderCount,
   };
 }
 

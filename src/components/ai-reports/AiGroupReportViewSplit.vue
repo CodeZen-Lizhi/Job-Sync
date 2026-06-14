@@ -24,6 +24,7 @@ import AiGroupRisksSection from "./AiGroupRisksSection.vue";
 defineProps<{
   report: AiGroupReport;
   raw?: unknown;
+  expectedJobIds?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -80,7 +81,7 @@ function goToSection(key: ReportSectionKey): void {
       </div>
     </nav>
 
-    <AiGroupOverviewSection :report="report" />
+    <AiGroupOverviewSection :report="report" :expected-job-ids="expectedJobIds" />
     <AiGroupRankingSection :report="report" @open-resume-report="(jobId) => emit('open-resume-report', jobId)" />
     <AiGroupRequirementsSection :report="report" />
     <AiGroupResumeSection :report="report" />

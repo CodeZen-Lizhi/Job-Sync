@@ -1,24 +1,29 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "../../lib/tauri";
 
-const appWindow = getCurrentWindow();
+const appWindow = isTauri() ? getCurrentWindow() : null;
 
 onMounted(() => {
+  if (!appWindow) return;
   void appWindow.center().catch((err: unknown) => {
     console.warn("failed to center window", err);
   });
 });
 
 function minimize(): void {
+  if (!appWindow) return;
   void appWindow.minimize();
 }
 
 function toggleMaximize(): void {
+  if (!appWindow) return;
   void appWindow.toggleMaximize();
 }
 
 function close(): void {
+  if (!appWindow) return;
   void appWindow.close();
 }
 </script>

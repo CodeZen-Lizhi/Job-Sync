@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-test
 *.local
 
 # Editor directories and files
@@ -31,3 +32,8 @@ src-tauri/bin/*
 # Local app data (db / cookies / exports)
 data/*
 !data/.gitkeep
+
+# Local automation/tooling caches and screenshots
+.serena/
+.playwright-mcp/
+jobs-import-smoke-desktop.png

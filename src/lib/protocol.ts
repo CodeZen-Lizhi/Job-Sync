@@ -10,6 +10,7 @@ export type SidecarEvent =
         current_page?: number;
         captured_job_list?: number;
         captured_job_detail?: number;
+        filtered_job?: number;
       };
     }
   | {
@@ -27,6 +28,21 @@ export type SidecarEvent =
   | {
       type: "JOB_DETAIL_CAPTURED";
       payload: { encrypt_job_id: string; zp_data: unknown };
+    }
+  | {
+      type: "JOB_FILTERED";
+      payload: {
+        encrypt_job_id?: string;
+        keyword?: string;
+        filters?: unknown;
+        reason: {
+          eligible: boolean;
+          blocked_by: Array<{ rule_type: string; field: string; value: string; reason: string }>;
+          matched_preferences: string[];
+          missing_preferences: string[];
+        };
+        raw?: unknown;
+      };
     }
   | { type: "AI_RESULT"; payload: { result: unknown } }
   | {

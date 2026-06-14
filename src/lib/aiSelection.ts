@@ -9,6 +9,13 @@ export type AiJobLite = {
   salary_desc: string | null;
   experience_name: string | null;
   degree_name: string | null;
+  source_platform?: string | null;
+  source_trace?: string | null;
+  source_strategy_trace?: string | null;
+  filter_trace?: string | null;
+  score_trace?: string | null;
+  communication_trace?: string | null;
+  review_trace?: string | null;
 };
 
 export const aiSelectedJobs = ref<AiJobLite[]>([]);
@@ -27,6 +34,13 @@ function mergeAiJob(existing: AiJobLite, incoming: AiJobLite): AiJobLite {
     salary_desc: incoming.salary_desc ?? existing.salary_desc,
     experience_name: incoming.experience_name ?? existing.experience_name,
     degree_name: incoming.degree_name ?? existing.degree_name,
+    source_platform: incoming.source_platform ?? existing.source_platform,
+    source_trace: incoming.source_trace ?? existing.source_trace,
+    source_strategy_trace: incoming.source_strategy_trace ?? existing.source_strategy_trace,
+    filter_trace: incoming.filter_trace ?? existing.filter_trace,
+    score_trace: incoming.score_trace ?? existing.score_trace,
+    communication_trace: incoming.communication_trace ?? existing.communication_trace,
+    review_trace: incoming.review_trace ?? existing.review_trace,
   };
 }
 

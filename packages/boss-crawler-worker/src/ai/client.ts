@@ -8,6 +8,7 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 const DEFAULT_OPENAI_API_MODE = "chat_completions";
 const DEFAULT_OPENAI_TEMPERATURE = 0.2;
+const OLLAMA_DUMMY_API_KEY = "ollama";
 
 export type { OpenAiClientOptions, OpenAiDebugOptions } from "./clientTypes.js";
 
@@ -17,14 +18,15 @@ export async function callOpenAiJson(options: {
   client?: OpenAiClientOptions;
   debug?: OpenAiDebugOptions;
 }): Promise<unknown> {
-  const apiKey = options.client?.apiKey ?? process.env.OPENAI_API_KEY;
+  const rawBaseUrl = options.client?.baseUrl ?? process.env.OPENAI_BASE_URL ?? DEFAULT_OPENAI_BASE_URL;
+  const baseUrl = normalizeBaseUrl(rawBaseUrl);
+  const apiKey = options.client?.apiKey ?? process.env.OPENAI_API_KEY ?? (isLocalOllamaBaseUrl(baseUrl) ? OLLAMA_DUMMY_API_KEY : undefined);
   if (!apiKey) {
     throw new Error("Missing OPENAI_API_KEY");
   }
 
-  const baseUrl = normalizeBaseUrl(options.client?.baseUrl ?? process.env.OPENAI_BASE_URL ?? DEFAULT_OPENAI_BASE_URL);
   const model = (options.client?.model ?? process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL).trim() || DEFAULT_OPENAI_MODEL;
-  const temperature = typeof options.client?.temperature === "number" ? options.client.temperature : DEFAULT_OPENAI_TEMPERATURE;
+  const temperature = resolveTemperature(options.client?.temperature, process.env.OPENAI_TEMPERATURE);
   const rawMode = (options.client?.apiMode ?? (process.env.OPENAI_API_MODE as OpenAiClientOptions["apiMode"]) ?? DEFAULT_OPENAI_API_MODE)
     .toString()
     .trim()
@@ -67,4 +69,23 @@ export async function callOpenAiJson(options: {
     return await callResponsesJson(requestOptions);
   }
   return await callChatCompletionsJson(requestOptions);
+}
+
+function isLocalOllamaBaseUrl(baseUrl: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]):11434\/v1$/i.test(baseUrl);
+}
+
+function resolveTemperature(override?: number, envValue?: string): number {
+  if (typeof override === "number" && Number.isFinite(override)) return clampTemperature(override);
+  if (envValue) {
+    const parsed = Number(envValue.trim());
+    if (Number.isFinite(parsed)) return clampTemperature(parsed);
+  }
+  return DEFAULT_OPENAI_TEMPERATURE;
+}
+
+function clampTemperature(value: number): number {
+  if (value < 0) return 0;
+  if (value > 2) return 2;
+  return value;
 }

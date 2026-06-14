@@ -31,6 +31,7 @@ export const runtime = reactive({
     current_page: undefined as number | undefined,
     captured_job_list: 0,
     captured_job_detail: 0,
+    filtered_job: 0,
   },
   lastCookieCollectedAt: undefined as string | undefined,
   /** Incremented each time a FINISHED event arrives — watchers can react to this. */
@@ -79,6 +80,7 @@ export function applySidecarEvent(evt: SidecarEvent): void {
         runtime.progress.captured_job_list = evt.payload.captured_job_list;
       if (typeof evt.payload.captured_job_detail === "number")
         runtime.progress.captured_job_detail = evt.payload.captured_job_detail;
+      if (typeof evt.payload.filtered_job === "number") runtime.progress.filtered_job = evt.payload.filtered_job;
       return;
     case "JOB_LIST_CAPTURED":
       runtime.progress.captured_job_list += 1;
@@ -87,6 +89,13 @@ export function applySidecarEvent(evt: SidecarEvent): void {
       runtime.progress.captured_job_detail += 1;
       runtime.lastDetailCapturedId = evt.payload.encrypt_job_id;
       return;
+    case "JOB_FILTERED": {
+      runtime.progress.filtered_job += 1;
+      const job = evt.payload.encrypt_job_id ? ` ${evt.payload.encrypt_job_id}` : "";
+      const reasons = evt.payload.reason.blocked_by.map((item) => item.reason).join("；");
+      pushLog({ ts: nowIso(), level: "warn", message: `已过滤岗位${job}：${reasons || "不满足筛选画像"}` });
+      return;
+    }
     case "COOKIE_COLLECTED":
       runtime.lastCookieCollectedAt = nowIso();
       pushLog({ ts: runtime.lastCookieCollectedAt, level: "info", message: "已采集 Cookie 与 LocalStorage。" });

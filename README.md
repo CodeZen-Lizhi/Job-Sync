@@ -1,6 +1,6 @@
 # job-sync（Tauri + Vue + Node sidecar）
 
-一个 Windows 桌面端（Tauri）Boss 直聘采集器：浏览器登录采集 Cookie / LocalStorage、手动 / 自动采集落库（SQLite）、导出（CSV / JSON）、简历 AI 分析。
+一个桌面端（Tauri）Boss 直聘采集器：浏览器登录采集 Cookie / LocalStorage、手动 / 自动采集落库（SQLite）、岗位筛选 / 审核、AI 匹配分析和简历工作区。
 
 ## 目录结构
 
@@ -8,15 +8,25 @@
 - Tauri（Rust）：`src-tauri/`
 - Node sidecar（Puppeteer）：`packages/boss-crawler-worker/`
 
-## 开发环境要求（Windows）
+## 开发环境要求
 
 - Node.js 20
 - Rust（stable）+ `cargo`
-- Tauri 依赖（MSVC 工具链、WebView2 等）
+- Tauri 依赖：
+  - macOS：Xcode Command Line Tools
+  - Windows：MSVC 工具链、WebView2
 
 ## 安装依赖（可选：跳过 Chromium 下载）
 
-在 Windows `cmd` 里（只对当前窗口生效）：
+如果使用本机 Chrome / Edge，建议跳过 Puppeteer Chromium 下载。
+
+macOS / Linux：
+
+```bash
+PUPPETEER_SKIP_DOWNLOAD=1 npm install
+```
+
+Windows `cmd`：
 
 ```bat
 set "PUPPETEER_SKIP_DOWNLOAD=1" && npm install
@@ -30,30 +40,67 @@ setx PUPPETEER_SKIP_DOWNLOAD 1
 
 如果你跳过了 Chromium 下载，需要在软件启动后进入“设置”页，手动指定本机 Chrome / Edge 可执行文件路径，例如：
 
+- `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
 - `C:\Program Files\Google\Chrome\Application\chrome.exe`
 - `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
 
 ## 启动（开发）
 
-```bat
-npm run tauri dev
+```bash
+npm run tauri:dev
 ```
 
 - 说明：`src-tauri/tauri.conf.json` 的 `beforeDevCommand` 会先构建 `packages/boss-crawler-worker/dist/`，避免找不到 worker 入口。
 - 如果你看到 “Waiting for your frontend dev server...”，检查 `vite.config.ts` 的端口是否为 `1430`，以及 `src-tauri/tauri.conf.json` 的 `devUrl` 是否为 `http://localhost:1430`。
 
-## 打包（Windows）
+## 打包
 
-### 安装版（MSI）
+### 桌面安装包
 
-```bat
+```bash
 npm run tauri:build
 ```
 
-- 说明：使用 `src-tauri/tauri.conf.release.json` 进行正式发布构建，会先 stage 内置 `node.exe` 与 `boss-crawler-worker/` 运行时资源，再构建前端并生成 MSI 安装包。
+- 说明：使用 `src-tauri/tauri.conf.release.json` 进行正式发布构建，会先 stage 内置 Node 与 `boss-crawler-worker/` 运行时资源，再构建前端并生成当前平台的 Tauri 安装包；macOS 会使用 ad-hoc 签名生成本地可验证 `.app`，构建后自动执行 `codesign`、包内 worker runtime 和 DMG 校验。
+- macOS 产物示例：`src-tauri/target/release/bundle/dmg/job-sync_0.1.0_aarch64.dmg`
 - 产物示例：`src-tauri\target\release\bundle\msi\job-sync_0.1.0_x64_en-US.msi`
 
-### 便携版（ZIP）
+只构建并验证 macOS `.app`，用于本地桌面 UI 烟测：
+
+```bash
+npm run tauri:build:app
+```
+
+- 说明：同样使用 release 配置并校验 `.app` 签名和包内 worker runtime，但跳过 DMG 生成与校验；正式发布仍使用 `npm run tauri:build`。
+
+只验证当前平台 staged worker runtime：
+
+```bash
+npm run stage:worker:runtime
+npm run verify:worker:runtime
+```
+
+- 说明：会验证 `src-tauri/bin/` 下的内置 `node` / `node.exe` 与 `boss-crawler-worker/` 能启动、接收 `STOP`、输出 `FINISHED` 并正常退出。
+
+只验证当前 macOS release bundle：
+
+```bash
+npm run verify:release:bundle
+```
+
+- 说明：macOS 下会验证 `.app` 签名、`.app/Contents/Resources/bin/` 内 worker runtime 生命周期和所有生成的 DMG；非 macOS 平台会跳过该 macOS-only 检查。
+
+准备隔离的桌面 UI 烟测数据：
+
+```bash
+npm run seed:desktop:smoke -- /tmp/job-sync-desktop-smoke
+npm run tauri:build:app
+src-tauri/target/release/bundle/macos/job-sync.app/Contents/MacOS/job-sync --data-dir /tmp/job-sync-desktop-smoke
+```
+
+- 说明：会写入本地 SQLite fixture、Top 20 候选、准备投递岗位、每日岗位情报数据和一个联动简历工作区；通过 `--data-dir` 使用指定数据目录，不会写入真实应用数据。
+
+### Windows 便携版（ZIP）
 
 ```bat
 npm run tauri:build:portable
@@ -63,13 +110,13 @@ npm run tauri:build:portable
 - 如果你已经先跑过 `npm run tauri:build`，可以改用 `npm run tauri:build:portable:only` 直接复用现有构建产物。
 - 产物示例：`release-portable\job-sync-portable-v0.1.0.zip`
 
-### 同时生成安装版和便携版
+### 发布构建
 
-```bat
+```bash
 npm run tauri:build:release
 ```
 
-- 说明：先生成 MSI 安装版，再生成 portable ZIP，适合 GitHub Release 一次上传两个版本。
+- 说明：所有平台都会先生成当前平台的 Tauri 安装包；Windows 会额外生成 portable ZIP，macOS / Linux 会跳过 Windows 便携包步骤。
 
 ## 功能特性
 

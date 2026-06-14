@@ -14,7 +14,8 @@ const workerPackageJsonPath = path.join(workerProjectDir, "package.json");
 const stagedWorkerDir = path.join(tauriBinDir, "boss-crawler-worker");
 const stagedWorkerDistDir = path.join(stagedWorkerDir, "dist");
 const stagedWorkerPackageJsonPath = path.join(stagedWorkerDir, "package.json");
-const stagedNodePath = path.join(tauriBinDir, "node.exe");
+const nodeExecutableName = process.platform === "win32" ? "node.exe" : "node";
+const stagedNodePath = path.join(tauriBinDir, nodeExecutableName);
 const legacyWorkerExePath = path.join(tauriBinDir, "boss-crawler-worker.exe");
 
 function runCommand(command, args, options = {}) {
@@ -66,6 +67,10 @@ async function copyFile(sourcePath, targetPath) {
   await fs.copyFile(sourcePath, targetPath);
 }
 
+async function makeExecutableResourceWritable(filePath) {
+  await fs.chmod(filePath, 0o755);
+}
+
 async function copyDirectory(sourcePath, targetPath) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.cp(sourcePath, targetPath, { force: true, recursive: true });
@@ -84,11 +89,11 @@ async function resolveNodeExecutablePath() {
     if (!entry) {
       continue;
     }
-    candidates.push(path.join(entry, "node.exe"));
+    candidates.push(path.join(entry, nodeExecutableName));
   }
 
   for (const candidate of candidates) {
-    if (path.basename(candidate).toLowerCase() !== "node.exe") {
+    if (path.basename(candidate).toLowerCase() !== nodeExecutableName) {
       continue;
     }
 
@@ -103,7 +108,7 @@ async function resolveNodeExecutablePath() {
   }
 
   throw new Error(
-    `Unable to locate a Windows node.exe for release staging. Set JOB_SYNC_NODE_EXE to a Windows Node runtime path if it is not on PATH. Current execPath: ${process.execPath}`,
+    `Unable to locate ${nodeExecutableName} for release staging. Set JOB_SYNC_NODE_EXE to a Node runtime path if it is not on PATH. Current execPath: ${process.execPath}`,
   );
 }
 
@@ -130,10 +135,12 @@ async function main() {
   await ensureDirectoryExists(workerDistDir, "worker dist directory");
   await ensureFileExists(path.join(workerDistDir, "main.js"), "worker entry file");
   await ensureFileExists(workerPackageJsonPath, "worker package.json");
-  await ensureFileExists(nodeExecutablePath, "current node.exe");
+  await ensureFileExists(nodeExecutablePath, `current ${nodeExecutableName}`);
 
   await fs.rm(stagedWorkerDir, { recursive: true, force: true });
   await fs.rm(stagedNodePath, { force: true });
+  await fs.rm(path.join(tauriBinDir, "node.exe"), { force: true });
+  await fs.rm(path.join(tauriBinDir, "node"), { force: true });
   await fs.rm(legacyWorkerExePath, { force: true });
   await fs.mkdir(tauriBinDir, { recursive: true });
 
@@ -141,8 +148,9 @@ async function main() {
   await copyFile(workerPackageJsonPath, stagedWorkerPackageJsonPath);
   await installWorkerDependencies();
   await copyFile(nodeExecutablePath, stagedNodePath);
+  await makeExecutableResourceWritable(stagedNodePath);
 
-  await ensureFileExists(stagedNodePath, "staged node.exe");
+  await ensureFileExists(stagedNodePath, `staged ${nodeExecutableName}`);
   await ensureFileExists(path.join(stagedWorkerDistDir, "main.js"), "staged worker entry file");
   await ensureFileExists(stagedWorkerPackageJsonPath, "staged worker package.json");
   await ensureDirectoryExists(path.join(stagedWorkerDir, "node_modules"), "staged worker node_modules");

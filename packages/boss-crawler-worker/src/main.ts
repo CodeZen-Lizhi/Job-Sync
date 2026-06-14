@@ -1,6 +1,6 @@
 import type { CommandIn, EventOut } from "./protocol.js";
 import { emitEvent, readCommands } from "./stdio.js";
-import { runAiMode, runAiGroupMode } from "./modes/ai.js";
+import { runAiMode, runAiGroupMode, runAiGreetingMode, runAiCompanyScoreBatchMode } from "./modes/ai.js";
 import { runResumeDiagnoseMode, runResumeRewriteModuleMode } from "./modes/resumeWorkspace.js";
 import { runAutoMode } from "./modes/auto.js";
 import { runLoginMode } from "./modes/login.js";
@@ -66,6 +66,12 @@ readCommands((cmd: CommandIn) => {
         return;
       case "AI_ANALYZE_GROUP":
         await startMode(runAiGroupMode, cmd.payload);
+        return;
+      case "AI_GREETING":
+        await startMode(runAiGreetingMode, cmd.payload);
+        return;
+      case "AI_COMPANY_SCORE_BATCH":
+        await startMode(runAiCompanyScoreBatchMode, cmd.payload);
         return;
       case "RESUME_DIAGNOSE":
         await startMode(runResumeDiagnoseMode, cmd.payload);

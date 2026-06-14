@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import type { JobDetail, JobRow, KeywordGroup } from "../../lib/jobs";
+import type {
+  CommunicationStatus,
+  CompanyReviewStatus,
+  GreetingErrorState,
+  GreetingMessageResult,
+  JobDetail,
+  JobRow,
+  KeywordGroup,
+  ReviewStatus,
+} from "../../lib/jobs";
+import type { ResumeWorkspaceJobStatus } from "../../lib/resumeWorkspace";
 import JobsJobItem from "./JobsJobItem.vue";
 
 defineProps<{
@@ -11,14 +21,35 @@ defineProps<{
   expandedJobId: string | null;
   detailLoadingId: string | null;
   expandedDetail: JobDetail | null;
+  greetingCache: Map<string, GreetingMessageResult>;
+  greetingDrafts: Map<string, string>;
+  greetingErrors: Map<string, GreetingErrorState>;
+  greetingLoadingId: string | null;
+  resumeWorkspaceStatuses: Map<string, ResumeWorkspaceJobStatus | null>;
 }>();
 
 defineEmits<{
   (e: "toggle-group", group: KeywordGroup): void;
   (e: "toggle-detail", jobId: string): void;
   (e: "go-ai", jobId: string): void;
-  (e: "copy-link", jobId: string): void;
+  (e: "go-resume-workspace", jobId: string): void;
+  (e: "copy-link", job: JobRow): void;
+  (e: "open-source-url", job: JobRow): void;
   (e: "delete-job", job: JobRow, groupKeyValue: string): void;
+  (e: "open-filter-profile", job: JobRow): void;
+  (e: "open-blacklist-management", job: JobRow): void;
+  (e: "update-review", job: JobRow, status: ReviewStatus): void;
+  (e: "restore-review-candidate", job: JobRow): void;
+  (e: "update-communication", job: JobRow, status: CommunicationStatus): void;
+  (e: "update-review-notes", job: JobRow): void;
+  (e: "update-company-review", job: JobRow, status: CompanyReviewStatus): void;
+  (e: "blacklist-company", job: JobRow): void;
+  (e: "blacklist-job", job: JobRow): void;
+  (e: "blacklist-keyword", job: JobRow): void;
+  (e: "generate-greeting", job: JobRow): void;
+  (e: "update-greeting-draft", jobId: string, message: string): void;
+  (e: "copy-greeting", job: JobRow): void;
+  (e: "copy-application-packet", job: JobRow): void;
 }>();
 </script>
 
@@ -50,13 +81,34 @@ defineEmits<{
             :expanded="expandedJobId === job.encrypt_job_id"
             :detail-loading="detailLoadingId === job.encrypt_job_id"
             :detail="expandedJobId === job.encrypt_job_id ? expandedDetail : null"
+            :greeting="greetingCache.get(job.encrypt_job_id)"
+            :greeting-draft="greetingDrafts.get(job.encrypt_job_id) ?? ''"
+            :greeting-error="greetingErrors.get(job.encrypt_job_id)"
+            :greeting-loading="greetingLoadingId === job.encrypt_job_id"
+            :resume-workspace-status="resumeWorkspaceStatuses.get(job.encrypt_job_id)"
             :allow-delete="true"
             row-padding-class="px-6"
             detail-padding-class="px-10"
             @toggle-detail="(jobId) => $emit('toggle-detail', jobId)"
             @go-ai="(jobId) => $emit('go-ai', jobId)"
-            @copy-link="(jobId) => $emit('copy-link', jobId)"
+            @go-resume-workspace="(jobId) => $emit('go-resume-workspace', jobId)"
+            @copy-link="(job) => $emit('copy-link', job)"
+            @open-source-url="(job) => $emit('open-source-url', job)"
             @delete="(job) => $emit('delete-job', job, groupKeyValue)"
+            @open-filter-profile="(job) => $emit('open-filter-profile', job)"
+            @open-blacklist-management="(job) => $emit('open-blacklist-management', job)"
+            @update-review="(job, status) => $emit('update-review', job, status)"
+            @restore-review-candidate="(job) => $emit('restore-review-candidate', job)"
+            @update-communication="(job, status) => $emit('update-communication', job, status)"
+            @update-review-notes="(job) => $emit('update-review-notes', job)"
+            @update-company-review="(job, status) => $emit('update-company-review', job, status)"
+            @blacklist-company="(job) => $emit('blacklist-company', job)"
+            @blacklist-job="(job) => $emit('blacklist-job', job)"
+            @blacklist-keyword="(job) => $emit('blacklist-keyword', job)"
+            @generate-greeting="(job) => $emit('generate-greeting', job)"
+            @update-greeting-draft="(jobId, message) => $emit('update-greeting-draft', jobId, message)"
+            @copy-greeting="(job) => $emit('copy-greeting', job)"
+            @copy-application-packet="(job) => $emit('copy-application-packet', job)"
           />
         </div>
       </template>

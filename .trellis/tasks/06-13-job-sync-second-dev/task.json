@@ -1,0 +1,30 @@
+{
+  "id": "job-sync-second-dev",
+  "name": "job-sync-second-dev",
+  "title": "Job-Sync 二开需求实现",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lizhi",
+  "assignee": "lizhi",
+  "createdAt": "2026-06-13",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "remote-job-intelligence",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-13-filter-profile-persistence",
+    "06-13-review-queue-blacklist",
+    "06-13-scoring-candidate-ranking"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

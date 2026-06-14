@@ -67,6 +67,9 @@ function openResumeReport(jobId: string): void {
                   <div class="truncate text-xs text-content-muted">
                     {{ it.brand_name ?? "" }}
                   </div>
+                  <div v-if="it.placeholder" class="mt-1 text-[11px] text-amber-300">
+                    占位项：模型未覆盖该岗位
+                  </div>
                 </div>
               </div>
 

@@ -71,12 +71,12 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
       />
 
       <!-- Content -->
-      <div class="relative z-10 flex h-full gap-0">
+      <div class="relative z-10 flex h-full flex-col gap-0 lg:flex-row">
         <!-- Sidebar -->
         <aside
-          class="flex w-64 shrink-0 flex-col border-r border-border/10 bg-surface/90 backdrop-blur-xl"
+          class="flex shrink-0 flex-col border-b border-border/10 bg-surface/90 backdrop-blur-xl lg:w-64 lg:border-b-0 lg:border-r"
         >
-          <header class="px-4 pb-4 pt-5">
+          <header class="px-4 pb-3 pt-4 lg:pb-4 lg:pt-5">
             <div class="ui-panel-muted flex items-center gap-3 px-3 py-3">
               <div
                 class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-border-glow/10 text-cyan-300 ring-1 ring-border-glow/15"
@@ -86,13 +86,13 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
               </div>
               <div class="min-w-0">
                 <div class="truncate text-sm font-semibold tracking-wide text-content-primary">Job Sync</div>
-                <div class="mt-1 truncate text-xs text-content-muted">职位采集与 AI 报告工作台</div>
+                <div class="mt-1 truncate text-xs text-content-muted">精准求职岗位研究台</div>
               </div>
             </div>
           </header>
 
-          <nav class="flex flex-1 flex-col gap-5 overflow-y-auto px-3 pb-5" aria-label="导航">
-            <section v-for="g in navGroups" :key="g.label" class="space-y-2">
+          <nav class="grid grid-cols-3 gap-2 px-3 pb-4 lg:flex lg:flex-1 lg:flex-col lg:gap-5 lg:overflow-y-auto lg:pb-5" aria-label="导航">
+            <section v-for="g in navGroups" :key="g.label" class="min-w-0 space-y-2">
               <div class="px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">
                 {{ g.label }}
               </div>
@@ -114,9 +114,9 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
 
         <!-- Main content -->
         <main
-          class="min-w-0 flex-1 overflow-y-auto bg-surface/40 px-6 py-6"
+          class="min-w-0 flex-1 overflow-y-auto bg-surface/40 px-3 py-4 sm:px-6 sm:py-6"
         >
-          <div :class="['ui-panel mx-auto w-full p-6', contentMaxWidthClass]">
+          <div :class="['ui-panel mx-auto w-full p-4 sm:p-6', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
               <KeepAlive>
                 <component :is="Component" />

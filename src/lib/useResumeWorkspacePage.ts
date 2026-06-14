@@ -1,6 +1,8 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
+import { formatScoreReasonSummary, parseScoreReasonJson, type JobDetail, type JobRow } from "./jobs";
 import {
   RESUME_MODULES,
   assembleResumeWorkspace,
@@ -15,16 +17,26 @@ import {
   type ResumeWorkspaceStepKey,
 } from "./resumeWorkspace";
 import { isTauri } from "./tauri";
+import { invoke } from "./tauri";
 import { useResumeWorkspaceStore } from "./useResumeWorkspaceStore";
 
 const ACCEPT_TOAST_FADE_DELAY_MS = 2600;
 const ACCEPT_TOAST_HIDE_DELAY_MS = 3000;
+type ResumeWorkspaceRetryAction =
+  | { kind: "diagnosis" }
+  | { kind: "generate"; module: ResumeModuleKey }
+  | { kind: "assemble" }
+  | { kind: "export" }
+  | null;
 const FINAL_RESUME_SECTIONS: Array<{ key: ResumeModuleKey; title: string }> = [
   { key: "summary", title: "个人简介" },
   { key: "projects", title: "项目经历" },
   { key: "experience", title: "工作经历" },
   { key: "skills", title: "技能清单" },
 ];
+const LINKED_JOB_CONTEXT_PREFIX = "【目标岗位上下文】";
+const LINKED_JOB_CONTEXT_SUFFIX = "【目标岗位上下文结束】";
+const LINKED_JOB_DESCRIPTION_MAX_LENGTH = 1800;
 
 function normalizeResumeText(value?: string | null): string {
   return (value ?? "").replace(/\r\n/g, "\n").trim();
@@ -47,8 +59,10 @@ function isPristineDraft(draft: ResumeWorkspaceDraft): boolean {
     draft.original_resume_text.trim() ||
     draft.original_resume_file ||
     draft.context_text.trim() ||
+    draft.linked_job_id ||
     draft.diagnosis ||
     draft.final_resume_text?.trim() ||
+    draft.last_exported_pdf_path?.trim() ||
     draft.summary.input.trim() ||
     draft.summary.followup_input.trim() ||
     draft.summary.confirmed?.trim() ||
@@ -62,6 +76,108 @@ function isPristineDraft(draft: ResumeWorkspaceDraft): boolean {
     draft.skills.followup_input.trim() ||
     draft.skills.confirmed?.trim()
   );
+}
+
+function stripHtml(value?: string | null): string {
+  return (value ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength).trim()}...`;
+}
+
+function describeWorkspaceFailure(message: string | null): { title: string; hint: string } {
+  if (!message) return { title: "", hint: "" };
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes("json") || normalized.includes("parse") || normalized.includes("schema")) {
+    return {
+      title: "结构化输出解析失败",
+      hint: "AI 返回内容不是可用 JSON。可以直接重试当前步骤，或先补充简历/上下文后再试。",
+    };
+  }
+  if (normalized.includes("openai request failed") || normalized.includes("http ")) {
+    return {
+      title: "模型接口请求失败",
+      hint: "请检查 Base URL、模型名、API Key、接口模式和本地服务状态，然后重试。",
+    };
+  }
+  if (normalized.includes("missing openai_api_key")) {
+    return {
+      title: "缺少 API Key",
+      hint: "请在设置中保存 API Key 后重试；如果使用 Ollama 本地接口，确认预设和服务状态正常。",
+    };
+  }
+
+  return {
+    title: "AI 处理失败",
+    hint: "可以修正输入或模型配置后重试当前步骤。",
+  };
+}
+
+function routeJobId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function removeLinkedJobContext(contextText: string): string {
+  const start = contextText.indexOf(LINKED_JOB_CONTEXT_PREFIX);
+  if (start < 0) return contextText.trim();
+  const end = contextText.indexOf(LINKED_JOB_CONTEXT_SUFFIX, start);
+  if (end < 0) return contextText.slice(0, start).trim();
+  return `${contextText.slice(0, start)}${contextText.slice(end + LINKED_JOB_CONTEXT_SUFFIX.length)}`.trim();
+}
+
+function mergeLinkedJobContext(currentContext: string, jobContext: string): string {
+  const preserved = removeLinkedJobContext(currentContext);
+  return [jobContext.trim(), preserved].filter(Boolean).join("\n\n");
+}
+
+function readDetailText(detail: JobDetail | null): string {
+  const postDescription = stripHtml(detail?.jobInfo?.postDescription);
+  const skills = detail?.jobInfo?.skills?.length ? detail.jobInfo.skills : detail?.jobInfo?.showSkills;
+  const labels = detail?.jobInfo?.jobLabels ?? [];
+  const parts = [
+    postDescription,
+    skills?.length ? `技能要求：${skills.join("、")}` : "",
+    labels.length ? `职位标签：${labels.join("、")}` : "",
+    detail?.jobInfo?.address ? `工作地址：${detail.jobInfo.address}` : "",
+  ].filter(Boolean);
+  return truncateText(parts.join("\n"), LINKED_JOB_DESCRIPTION_MAX_LENGTH);
+}
+
+function buildLinkedJobContext(job: JobRow, detail: JobDetail | null): string {
+  const lines = [
+    LINKED_JOB_CONTEXT_PREFIX,
+    `岗位ID：${job.encrypt_job_id}`,
+    `职位：${job.position_name ?? detail?.jobInfo?.jobName ?? detail?.jobInfo?.positionName ?? job.encrypt_job_id}`,
+    `公司：${job.brand_name ?? detail?.brandComInfo?.brandName ?? detail?.brandInfo?.brandName ?? "未知"}`,
+    `城市：${job.city_name ?? detail?.jobInfo?.cityName ?? detail?.jobInfo?.locationName ?? "未知"}`,
+    `薪资：${job.salary_desc ?? detail?.jobInfo?.salaryDesc ?? "未知"}`,
+    `经验/学历：${job.experience_name ?? detail?.jobInfo?.experienceName ?? "未知"} / ${job.degree_name ?? detail?.jobInfo?.degreeName ?? "未知"}`,
+    `评分：Final ${Math.round(job.final_score)}，Resume ${typeof job.resume_match_score === "number" ? Math.round(job.resume_match_score) : "待分析"}，Preference ${Math.round(job.preference_score)}，Company ${Math.round(job.company_score)}`,
+  ];
+  const scoreSummary = formatScoreReasonSummary(parseScoreReasonJson(job.score_reason_json));
+  if (scoreSummary !== "暂无额外评分原因") {
+    lines.push(`评分依据：${scoreSummary}`);
+  }
+  const detailText = readDetailText(detail);
+  if (detailText) {
+    lines.push("JD 摘要：", detailText);
+  }
+  lines.push(LINKED_JOB_CONTEXT_SUFFIX);
+  return lines.join("\n");
 }
 
 function stepHint(step: ResumeWorkspaceStepKey, readyForFinal: boolean): string {
@@ -85,6 +201,8 @@ function stepHint(step: ResumeWorkspaceStepKey, readyForFinal: boolean): string 
 
 export function useResumeWorkspacePage() {
   const tauri = isTauri();
+  const route = useRoute();
+  const router = useRouter();
   const {
     activeWorkspace,
     activeWorkspaceId,
@@ -117,6 +235,11 @@ export function useResumeWorkspacePage() {
   const acceptToastMessage = ref<string | null>(null);
   const acceptToastVisible = ref(false);
   const acceptToastFading = ref(false);
+  const retryAction = ref<ResumeWorkspaceRetryAction>(null);
+  const linkedJobLoading = ref(false);
+  const linkedJob = ref<JobRow | null>(null);
+  const linkedJobContextApplied = ref(false);
+  const linkedJobIdApplied = ref<string | null>(null);
 
   let acceptToastFadeTimer: ReturnType<typeof setTimeout> | null = null;
   let acceptToastHideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -155,6 +278,24 @@ export function useResumeWorkspacePage() {
     return getModuleLabel(currentStep.value);
   });
   const currentStepHint = computed(() => stepHint(currentStep.value, readyForFinal.value));
+  const errorTitle = computed(() => describeWorkspaceFailure(error.value).title);
+  const errorHint = computed(() => describeWorkspaceFailure(error.value).hint);
+  const retryActionLabel = computed(() => {
+    if (!retryAction.value) return "";
+    switch (retryAction.value.kind) {
+      case "diagnosis":
+        return "重试诊断";
+      case "generate":
+        return `重试 ${getModuleLabel(retryAction.value.module)} 候选稿`;
+      case "assemble":
+        return "重试生成最终稿";
+      case "export":
+        return "重试导出 PDF";
+    }
+  });
+  const canRetryAction = computed(() => !!retryAction.value);
+  const linkedReviewJobId = computed(() => linkedJob.value?.encrypt_job_id ?? draft.value.linked_job_id ?? null);
+  const canGoLinkedJobReview = computed(() => !!linkedReviewJobId.value);
   const workflowProgressCount = computed(() => {
     let count = 0;
     if (isOriginalStepComplete(draft.value)) count += 1;
@@ -220,6 +361,45 @@ export function useResumeWorkspacePage() {
     }
   }
 
+  async function loadLinkedJobContext(): Promise<void> {
+    const jobId = routeJobId(route.query.jobId);
+    if (!tauri || !jobId) return;
+    if (linkedJobIdApplied.value === jobId) return;
+    linkedJobLoading.value = true;
+    try {
+      const job = await invoke<JobRow | null>("get_job", { encryptJobId: jobId });
+      if (!job) {
+        error.value = `未找到联动岗位：${jobId}`;
+        return;
+      }
+      const detail = await invoke<JobDetail | null>("get_job_detail", { encryptJobId: jobId });
+      linkedJob.value = job;
+      draft.value.linked_job_id = job.encrypt_job_id;
+      draft.value.context_text = mergeLinkedJobContext(draft.value.context_text, buildLinkedJobContext(job, detail));
+      await persistCurrentDraft();
+      linkedJobContextApplied.value = true;
+      linkedJobIdApplied.value = jobId;
+      currentStep.value = "original";
+      success.value = "已把目标岗位写入简历优化上下文。";
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+    } finally {
+      linkedJobLoading.value = false;
+    }
+  }
+
+  async function reapplyLinkedJobContextForActiveWorkspace(): Promise<void> {
+    linkedJobIdApplied.value = null;
+    linkedJobContextApplied.value = false;
+    await loadLinkedJobContext();
+  }
+
+  function goLinkedJobReview(): void {
+    const jobId = linkedReviewJobId.value;
+    if (!jobId) return;
+    void router.push({ path: "/jobs", query: { jobId } });
+  }
+
   function openCreateWorkspaceDialog(): void {
     createDialogVisible.value = true;
   }
@@ -241,6 +421,7 @@ export function useResumeWorkspacePage() {
       createDialogVisible.value = false;
       currentStep.value = "original";
       success.value = "已创建新的工作区。";
+      await reapplyLinkedJobContextForActiveWorkspace();
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -254,6 +435,7 @@ export function useResumeWorkspacePage() {
     try {
       await switchToWorkspace(workspaceId);
       currentStep.value = "original";
+      await reapplyLinkedJobContextForActiveWorkspace();
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     }
@@ -343,6 +525,7 @@ export function useResumeWorkspacePage() {
   async function runDiagnosis(): Promise<void> {
     error.value = null;
     success.value = null;
+    retryAction.value = { kind: "diagnosis" };
     diagnosing.value = true;
     try {
       draft.value.diagnosis = await diagnoseResumeWorkspace({
@@ -353,6 +536,7 @@ export function useResumeWorkspacePage() {
       await persistCurrentDraft();
       currentStep.value = "diagnosis";
       success.value = "AI 诊断已生成。";
+      retryAction.value = null;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -363,6 +547,7 @@ export function useResumeWorkspacePage() {
   async function generateCandidate(module: ResumeModuleKey): Promise<void> {
     error.value = null;
     success.value = null;
+    retryAction.value = { kind: "generate", module };
     rewritingModule.value = module;
     try {
       const result = await rewriteResumeWorkspaceModule({
@@ -382,6 +567,7 @@ export function useResumeWorkspacePage() {
       draft.value[module].updated_at = new Date().toISOString();
       await persistCurrentDraft();
       success.value = `${getModuleLabel(module)}候选稿已生成。`;
+      retryAction.value = null;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -410,12 +596,14 @@ export function useResumeWorkspacePage() {
   async function assembleFinalResume(): Promise<void> {
     error.value = null;
     success.value = null;
+    retryAction.value = { kind: "assemble" };
     assembling.value = true;
     try {
       draft.value = await assembleResumeWorkspace(draft.value);
       await persistCurrentDraft();
       currentStep.value = "final";
       success.value = "最终简历已生成。";
+      retryAction.value = null;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -426,10 +614,15 @@ export function useResumeWorkspacePage() {
   async function exportPdf(): Promise<void> {
     error.value = null;
     success.value = null;
+    retryAction.value = { kind: "export" };
     exporting.value = true;
     try {
       const path = await exportResumeWorkspacePdf(draft.value, "修改后的简历");
+      draft.value.last_exported_pdf_path = path;
+      draft.value.last_exported_pdf_at = new Date().toISOString();
+      await persistCurrentDraft();
       success.value = `PDF 已导出：${path}`;
+      retryAction.value = null;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
@@ -437,9 +630,41 @@ export function useResumeWorkspacePage() {
     }
   }
 
+  async function retryCurrentAction(): Promise<void> {
+    if (!retryAction.value) return;
+    const action = retryAction.value;
+    switch (action.kind) {
+      case "diagnosis":
+        await runDiagnosis();
+        return;
+      case "generate":
+        await generateCandidate(action.module);
+        return;
+      case "assemble":
+        await assembleFinalResume();
+        return;
+      case "export":
+        await exportPdf();
+    }
+  }
+
   onMounted(() => {
-    void loadWorkspaceState();
+    void (async () => {
+      await loadWorkspaceState();
+      await loadLinkedJobContext();
+    })();
   });
+
+  onActivated(() => {
+    void loadLinkedJobContext();
+  });
+
+  watch(
+    () => route.query.jobId,
+    () => {
+      void loadLinkedJobContext();
+    },
+  );
 
   onBeforeUnmount(() => {
     clearAcceptToastTimers();
@@ -459,6 +684,7 @@ export function useResumeWorkspacePage() {
     assembleFinalResume,
     assembling,
     canGenerateCandidate,
+    canGoLinkedJobReview,
     closeCreateWorkspaceDialog,
     confirmedModulesCount,
     createBlankWorkspace,
@@ -467,6 +693,9 @@ export function useResumeWorkspacePage() {
     currentModule,
     currentStep,
     currentStepHint,
+    canRetryAction,
+    errorHint,
+    errorTitle,
     currentStepLabel,
     deleteWorkspace,
     deleteDialogLoading,
@@ -477,7 +706,11 @@ export function useResumeWorkspacePage() {
     exportPdf,
     exporting,
     generateCandidate,
+    goLinkedJobReview,
     loadingDraft,
+    linkedJob,
+    linkedJobContextApplied,
+    linkedJobLoading,
     navItems,
     openCreateWorkspaceDialog,
     openDeleteWorkspaceDialog,
@@ -490,6 +723,8 @@ export function useResumeWorkspacePage() {
     renameDialogLoading,
     renameDialogVisible,
     rewritingModule,
+    retryActionLabel,
+    retryCurrentAction,
     runDiagnosis,
     showCandidateAside,
     success,

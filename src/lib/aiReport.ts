@@ -4,6 +4,13 @@ export interface AiResumeRewrite {
 }
 
 export interface AiResumeReport {
+  resume_match_score?: number;
+  matched_stack?: string[];
+  matched_direction?: string[];
+  matched_resume_evidence?: string[];
+  experience_fit?: string;
+  missing_points?: string[];
+  confidence?: number;
   matchScore: number;
   strengths: string[];
   gaps: string[];
@@ -26,6 +33,7 @@ export interface AiGroupJobRankingItem {
   conclusion: string;
   reasons: string[];
   risks: string[];
+  placeholder?: boolean;
 }
 
 export interface AiGroupReport {
@@ -57,6 +65,13 @@ export interface AiGroupReport {
   questions: string[];
   riskNotes: string[];
   nextSteps: string[];
+  placeholderCount?: number;
+}
+
+export function isAiGroupReportComplete(report: AiGroupReport, expectedJobIds: string[] = []): boolean {
+  if (!expectedJobIds.length) return true;
+  const rankingIds = new Set(report.jobRanking.map((item) => item.encrypt_job_id.trim()).filter(Boolean));
+  return expectedJobIds.every((id) => rankingIds.has(id.trim())) && (report.placeholderCount ?? 0) === 0;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -74,6 +89,13 @@ function isNumber(v: unknown): v is number {
 export function isAiResumeReport(v: unknown): v is AiResumeReport {
   if (!isRecord(v)) return false;
   if (!isNumber(v.matchScore)) return false;
+  if (v.resume_match_score !== undefined && !isNumber(v.resume_match_score)) return false;
+  if (v.matched_stack !== undefined && !isStringArray(v.matched_stack)) return false;
+  if (v.matched_direction !== undefined && !isStringArray(v.matched_direction)) return false;
+  if (v.matched_resume_evidence !== undefined && !isStringArray(v.matched_resume_evidence)) return false;
+  if (v.experience_fit !== undefined && typeof v.experience_fit !== "string") return false;
+  if (v.missing_points !== undefined && !isStringArray(v.missing_points)) return false;
+  if (v.confidence !== undefined && !isNumber(v.confidence)) return false;
   if (!isStringArray(v.strengths)) return false;
   if (!isStringArray(v.gaps)) return false;
   if (!isStringArray(v.keywordSuggestions)) return false;
@@ -120,4 +142,3 @@ export function scoreTone(score: number): ScoreTone {
   if (s >= 40) return "warning";
   return "danger";
 }
-

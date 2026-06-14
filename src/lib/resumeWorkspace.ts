@@ -43,12 +43,15 @@ export interface ResumeWorkspaceDraft {
   original_resume_file?: string | null;
   basic_profile: ResumeBasicProfile;
   context_text: string;
+  linked_job_id?: string | null;
   diagnosis?: ResumeDiagnosis | null;
   summary: ResumeWorkspaceModuleDraft;
   projects: ResumeWorkspaceModuleDraft;
   experience: ResumeWorkspaceModuleDraft;
   skills: ResumeWorkspaceModuleDraft;
   final_resume_text?: string | null;
+  last_exported_pdf_path?: string | null;
+  last_exported_pdf_at?: string | null;
   updated_at?: string | null;
 }
 
@@ -62,6 +65,19 @@ export interface ResumeWorkspaceMeta {
   has_diagnosis: boolean;
   confirmed_modules: number;
   has_final_resume: boolean;
+  linked_job_id?: string | null;
+  last_exported_pdf_path?: string | null;
+  last_exported_pdf_at?: string | null;
+}
+
+export interface ResumeWorkspaceJobStatus {
+  workspace_id: string;
+  title: string;
+  updated_at: string;
+  confirmed_modules: number;
+  has_final_resume: boolean;
+  last_exported_pdf_path?: string | null;
+  last_exported_pdf_at?: string | null;
 }
 
 export interface ResumeWorkspaceState {
@@ -77,6 +93,7 @@ export interface CreateResumeWorkspaceRequest {
   original_resume_file?: string | null;
   basic_profile?: ResumeBasicProfile | null;
   context_text?: string | null;
+  linked_job_id?: string | null;
 }
 
 export interface ResumeModuleCandidate {
@@ -125,12 +142,15 @@ export function createDefaultResumeWorkspaceDraft(): ResumeWorkspaceDraft {
       email: "",
     },
     context_text: "",
+    linked_job_id: null,
     diagnosis: null,
     summary: createEmptyModule(),
     projects: createEmptyModule(),
     experience: createEmptyModule(),
     skills: createEmptyModule(),
     final_resume_text: null,
+    last_exported_pdf_path: null,
+    last_exported_pdf_at: null,
     updated_at: null,
   };
 }
@@ -141,6 +161,10 @@ export function getModuleLabel(module: ResumeModuleKey): string {
 
 export async function getResumeWorkspaceState(): Promise<ResumeWorkspaceState> {
   return invoke<ResumeWorkspaceState>("get_resume_workspace_state");
+}
+
+export async function getResumeWorkspaceStatusForJob(encryptJobId: string): Promise<ResumeWorkspaceJobStatus | null> {
+  return invoke<ResumeWorkspaceJobStatus | null>("get_resume_workspace_status_for_job", { encryptJobId });
 }
 
 export async function createResumeWorkspace(request: CreateResumeWorkspaceRequest = {}): Promise<ResumeWorkspaceState> {

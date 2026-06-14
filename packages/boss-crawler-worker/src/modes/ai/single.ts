@@ -10,7 +10,12 @@ import type { AiAnalyzePayload, ModeContext } from "./types.js";
 export async function runAiMode(payload: AiAnalyzePayload, ctx: ModeContext): Promise<void> {
   try {
     ctx.emit({ type: "LOG", payload: { level: "info", message: "开始 AI 分析。" } });
-    const { system, user } = buildAiPrompts(payload.resume_text, payload.job_detail, payload.context_text, payload.resume_files);
+    const { system, user } = buildAiPrompts(payload.resume_text, payload.job_detail, payload.context_text, payload.resume_files, {
+      filterReason: payload.filter_reason,
+      scoreReason: payload.score_reason,
+      sourceContext: payload.source_context,
+      reviewContext: payload.review_context,
+    });
     const debugEnabled = envFlag("JOB_SYNC_AI_DEBUG");
     const runId = `ai-${Date.now().toString(36)}`;
     const raw = await callOpenAiJson({
@@ -57,4 +62,3 @@ export async function runAiMode(payload: AiAnalyzePayload, ctx: ModeContext): Pr
     ctx.emit({ type: "FINISHED" });
   }
 }
-

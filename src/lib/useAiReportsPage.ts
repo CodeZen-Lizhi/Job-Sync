@@ -46,6 +46,14 @@ export function useAiReportsPage() {
   const selectedMeta = computed(() => selectedMetaSnapshot.value);
   const selectedGroup = computed<AiGroupReport | null>(() => (selectedRaw.value && isAiGroupReport(selectedRaw.value) ? (selectedRaw.value as AiGroupReport) : null));
   const selectedResume = computed<AiResumeReport | null>(() => (selectedRaw.value && isAiResumeReport(selectedRaw.value) ? (selectedRaw.value as AiResumeReport) : null));
+  const reviewJobId = computed(() => {
+    const meta = selectedMetaSnapshot.value;
+    if (!meta || meta.kind === "group") return null;
+    const trimmed = meta.encrypt_job_id.trim();
+    return trimmed ? trimmed : null;
+  });
+  const canGoReviewJob = computed(() => !!reviewJobId.value);
+  const canGoReviewQueue = computed(() => selectedMetaSnapshot.value?.kind === "group");
 
   const selectedIndex = computed(() => {
     if (selectedId.value === null) return -1;
@@ -201,6 +209,15 @@ export function useAiReportsPage() {
     await openReport(meta);
   }
 
+  function goReviewJob(): void {
+    const jobId = reviewJobId.value;
+    if (!jobId) return;
+    void router.push({ path: "/jobs", query: { jobId } });
+  }
+  function goReviewQueue(): void {
+    void router.push({ path: "/jobs", query: { review: "top20" } });
+  }
+
   async function openPrev(): Promise<void> {
     if (!prevMeta.value) return;
     await selectReport(prevMeta.value);
@@ -283,6 +300,9 @@ export function useAiReportsPage() {
     selectedMeta,
     selectedGroup,
     selectedResume,
+    reviewJobId,
+    canGoReviewJob,
+    canGoReviewQueue,
     drillBackMeta,
     prevMeta,
     nextMeta,
@@ -292,6 +312,8 @@ export function useAiReportsPage() {
     selectReport,
     openResumeReportForJob,
     drillBackToGroup,
+    goReviewJob,
+    goReviewQueue,
     openPrev,
     openNext,
     clearReports,

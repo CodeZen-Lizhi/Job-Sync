@@ -24,6 +24,7 @@ const {
   assembleFinalResume,
   assembling,
   canGenerateCandidate,
+  canGoLinkedJobReview,
   closeCreateWorkspaceDialog,
   closeDeleteWorkspaceDialog,
   closeRenameWorkspaceDialog,
@@ -35,6 +36,8 @@ const {
   currentStep,
   currentStepHint,
   currentStepLabel,
+  errorHint,
+  errorTitle,
   deleteWorkspace,
   deleteDialogLoading,
   deleteDialogVisible,
@@ -44,7 +47,11 @@ const {
   exportPdf,
   exporting,
   generateCandidate,
+  goLinkedJobReview,
   loadingDraft,
+  linkedJob,
+  linkedJobContextApplied,
+  linkedJobLoading,
   navItems,
   openCreateWorkspaceDialog,
   openDeleteWorkspaceDialog,
@@ -58,6 +65,9 @@ const {
   renameDialogLoading,
   renameDialogVisible,
   rewritingModule,
+  retryActionLabel,
+  retryCurrentAction,
+  canRetryAction,
   runDiagnosis,
   showCandidateAside,
   success,
@@ -98,15 +108,30 @@ const {
       :active-workspace-updated-at="activeWorkspaceUpdatedAt"
       :active-workspace-summary="activeWorkspaceSummary"
       :workspaces="workspaces"
+      :linked-job-title="linkedJob?.position_name ?? null"
+      :linked-job-company="linkedJob?.brand_name ?? null"
+      :can-go-linked-job-review="canGoLinkedJobReview"
       @switch-workspace="switchWorkspace"
       @create-workspace="openCreateWorkspaceDialog"
       @rename-workspace="openRenameWorkspaceDialog"
       @delete-workspace="openDeleteWorkspaceDialog"
+      @go-linked-job-review="goLinkedJobReview"
     />
 
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。简历工作区不可用。</div>
     <div v-if="loadingDraft" class="ui-panel p-4 text-sm text-content-secondary">正在读取工作区草稿…</div>
-    <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
+    <div v-if="error" class="ui-status-danger p-4 text-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div class="font-semibold">{{ errorTitle }}</div>
+          <div v-if="errorHint" class="mt-1 text-xs text-content-secondary">{{ errorHint }}</div>
+        </div>
+        <button v-if="canRetryAction" class="ui-btn-secondary px-3 py-1 text-xs" type="button" @click="retryCurrentAction">
+          {{ retryActionLabel }}
+        </button>
+      </div>
+      <pre class="mt-3 whitespace-pre-wrap">{{ error }}</pre>
+    </div>
     <div v-if="success" class="ui-status-success p-4 text-sm">{{ success }}</div>
 
     <div class="resume-review-shell" :class="showCandidateAside ? 'resume-review-shell--with-aside' : ''">
@@ -121,6 +146,10 @@ const {
           :context-text="draft.context_text"
           :basic-profile="draft.basic_profile"
           :diagnosing="diagnosing"
+          :linked-job-title="linkedJob?.position_name ?? null"
+          :linked-job-company="linkedJob?.brand_name ?? null"
+          :linked-job-loading="linkedJobLoading"
+          :linked-job-context-applied="linkedJobContextApplied"
           @update:source-mode="draft.source_mode = $event"
           @update:original-resume-text="draft.original_resume_text = $event"
           @update:context-text="draft.context_text = $event"

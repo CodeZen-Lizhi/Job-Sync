@@ -1,12 +1,32 @@
 import { launchBrowser } from "../../browser/launch.js";
 import { blockNavigation } from "../../browser/navigationLock.js";
 import { collectBossMetaByListening } from "../../boss/meta.js";
+import { pickBossJobIdFromListItem } from "../../boss/parser.js";
+import {
+  evaluateBossProfileFilter,
+  hasBossProfileFilter,
+  normalizeBossProfileFilter,
+} from "../../boss/profileFilter.js";
 import { API_PATH, URLS } from "../../boss/selectors.js";
 import { delayWithJitter } from "../../utils/delay.js";
 import { SageTime } from "../../utils/sage-time.js";
 
 import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, normalizeFilters, readApiCode, readApiMessage, safeError, setLocalStorage, waitUntilApiOk, waitUntilNoRiskUrl } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
+
+function withFilteredJobListRaw(raw: any, jobs: any[]): any {
+  if (!raw || typeof raw !== "object") return raw;
+  const cloned = structuredClone(raw);
+  if (cloned?.zpData && typeof cloned.zpData === "object") {
+    if (Array.isArray(cloned.zpData.jobList)) cloned.zpData.jobList = jobs;
+    if (Array.isArray(cloned.zpData.list)) cloned.zpData.list = jobs;
+    if (Array.isArray(cloned.zpData.data)) cloned.zpData.data = jobs;
+    return cloned;
+  }
+  if (Array.isArray(cloned.jobList)) cloned.jobList = jobs;
+  if (Array.isArray(cloned.data)) cloned.data = jobs;
+  return cloned;
+}
 
 export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeContext): Promise<void> {
   const keywords = payload.task.keywords ?? [];
@@ -29,9 +49,12 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
   };
 
   const apiFilters = normalizeFilters(payload.task.filters, warn);
+  const profileFilter = normalizeBossProfileFilter(payload.task.filters);
+  const profileFilterEnabled = hasBossProfileFilter(profileFilter);
 
   let captured_job_list = 0;
   let captured_job_detail = 0;
+  let filtered_job = 0;
 
   const { browser, page } = await launchBrowser({ headless: false });
   try {
@@ -82,7 +105,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
         ctx.emit({
           type: "PROGRESS",
-          payload: { keyword, current_page: pageIndex, captured_job_list, captured_job_detail },
+          payload: { keyword, current_page: pageIndex, captured_job_list, captured_job_detail, filtered_job },
         });
 
         await sageTime.checkpoint(ctx.signal, log);
@@ -145,20 +168,53 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
           return;
         }
 
+        const extracted = extractJobList(jobListRaw);
+        hasMore = extracted.hasMore;
+        let jobsToCapture = extracted.jobs;
+
+        if (profileFilterEnabled) {
+          const eligibleJobs: any[] = [];
+          for (const job of extracted.jobs) {
+            const securityId = pickBossJobIdFromListItem(job) ?? undefined;
+            const filterResult = evaluateBossProfileFilter(job, profileFilter);
+            if (filterResult.eligible) {
+              eligibleJobs.push(job);
+              continue;
+            }
+            filtered_job += 1;
+            ctx.emit({
+              type: "JOB_FILTERED",
+              payload: {
+                encrypt_job_id: securityId,
+                keyword,
+                filters: payload.task.filters,
+                reason: filterResult,
+                raw: job,
+              },
+            });
+          }
+          jobsToCapture = eligibleJobs;
+        }
+
         captured_job_list += 1;
         ctx.emit({
           type: "JOB_LIST_CAPTURED",
-          payload: { keyword, filters: payload.task.filters, raw: jobListRaw },
+          payload: {
+            keyword,
+            filters: payload.task.filters,
+            raw: profileFilterEnabled ? withFilteredJobListRaw(jobListRaw, jobsToCapture) : jobListRaw,
+          },
+        });
+        ctx.emit({
+          type: "PROGRESS",
+          payload: { keyword, current_page: pageIndex, captured_job_list, captured_job_detail, filtered_job },
         });
 
-        const extracted = extractJobList(jobListRaw);
-        hasMore = extracted.hasMore;
-
-        for (const job of extracted.jobs) {
+        for (const job of jobsToCapture) {
           if (ctx.signal.aborted) break;
           if (captured_job_detail >= maxJobs) break;
 
-          const securityId = typeof job?.securityId === "string" ? job.securityId : null;
+          const securityId = pickBossJobIdFromListItem(job);
           if (!securityId) continue;
           if (seenJobIds.has(securityId)) continue;
 

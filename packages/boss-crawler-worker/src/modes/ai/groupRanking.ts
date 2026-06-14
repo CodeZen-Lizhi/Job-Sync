@@ -156,6 +156,7 @@ function mergeMissingOutlines(
     conclusion: string;
     reasons: string[];
     risks: string[];
+    placeholder?: boolean;
   }>,
   outlines: Array<{ encrypt_job_id: string; position_name?: string; brand_name?: string }>,
 ) {
@@ -167,6 +168,7 @@ function mergeMissingOutlines(
     conclusion: string;
     reasons: string[];
     risks: string[];
+    placeholder?: boolean;
   }> = [];
   const seen = new Set<string>();
 
@@ -189,6 +191,7 @@ function mergeMissingOutlines(
       conclusion: "模型输出缺失：该岗位未被纳入 jobRanking，建议重新生成综合报告。",
       reasons: ["模型输出未覆盖该岗位，已补充占位项（请重新生成以获得完整理由与风险）。"],
       risks: [],
+      placeholder: true,
     });
   }
 
@@ -202,6 +205,7 @@ function mergeMissingOutlines(
         conclusion: "信息不足：需要更多当前情况说明或简历来判断。",
         reasons: ["未能从模型输出中解析到完整排序信息。"],
         risks: [],
+        placeholder: true,
       }));
 }
 
