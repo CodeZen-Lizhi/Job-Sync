@@ -259,7 +259,7 @@ flowchart TD
 
 - `npm run build` 通过；Vite 仅提示主 chunk 超过 500KB。
 - `npm run build:worker` 通过。
-- `npm run tauri:dev` 已完成 `build:worker`、Vite `http://localhost:1430/` 启动、Rust dev profile 编译，并运行到 `target/debug/job-sync`；随后已手动中断，未保留后台进程。
+- `npm run tauri:dev` 已完成 `build:worker`、Vite `http://localhost:1430/` 启动、Rust dev profile 编译，并运行到 `target/debug/job-sync`；随后已手动中断，未保留后台进程。2026-06-15 当前工作树复验通过，输出包含 worker build、Vite `http://localhost:1430/`、Rust dev profile `Finished` 和 `Running target/debug/job-sync`；中断后 `lsof -nP -iTCP:1430 -sTCP:LISTEN` 无监听，进程列表未发现 `tauri dev`、`target/debug/job-sync`、`npm run dev` 或 `vite` 残留。
 - `npm run test:worker` 覆盖 worker stdio 生命周期：本机 Node 启动 `dist/main.js` 后能收到 `boss-crawler-worker started`，写入 `STOP` 命令后能收到 `STOP received`，关闭 stdin 后能收到 `FINISHED` 并以 0 退出。
 - `npm run stage:worker:runtime` 通过；已生成当前平台 `src-tauri/bin/node` 和 `src-tauri/bin/boss-crawler-worker/` staged runtime。
 - `npm run verify:worker:runtime` 通过；已验证 staged runtime 的启动、`STOP received`、`FINISHED` 和 0 退出码。
