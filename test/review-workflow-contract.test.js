@@ -1319,6 +1319,7 @@ describe("review workflow contract", () => {
     const crawlTypes = readProjectFile("src/lib/crawl.ts");
     const jobsTypes = readProjectFile("src/lib/jobs.ts");
     const jobsCommand = readProjectFile("src-tauri/src/commands/jobs.rs");
+    const jobsMutations = readProjectFile("src-tauri/src/commands/jobs/mutations.rs");
     const tauriLib = readProjectFile("src-tauri/src/lib.rs");
     const dbTests = readProjectFile("src-tauri/src/db/tests.rs");
 
@@ -1379,6 +1380,10 @@ describe("review workflow contract", () => {
     assert.match(crawlTypes, /v2ex/);
     assert.match(crawlTypes, /linuxdo/);
     assert.match(jobsCommand, /pub fn import_external_job/);
+    assert.match(jobsMutations, /import_external_job_on_conn_accepts_every_manual_source_adapter/);
+    assert.match(jobsMutations, /models::supported_job_source_adapters\(\)/);
+    assert.match(jobsMutations, /spec\.adapter_kind == "manual_import"/);
+    assert.match(jobsMutations, /source_link, format!\("手动导入:\{platform\}"\)/);
     assert.match(tauriLib, /commands::jobs::import_external_job/);
     assert.match(dbTests, /init_db_seeds_job_source_registry_with_manual_import_adapters/);
     assert.match(dbTests, /Boss 直聘/);

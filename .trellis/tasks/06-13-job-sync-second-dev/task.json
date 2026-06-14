@@ -26,7 +26,8 @@
     "06-14-crawl-worker-event-smoke",
     "06-14-mac-dmg-build-fix",
     "06-14-external-dependency-diagnostics",
-    "06-15-tauri-dev-current-smoke"
+    "06-15-tauri-dev-current-smoke",
+    "06-15-multi-source-unified-model-evidence"
   ],
   "parent": null,
   "relatedFiles": [],
