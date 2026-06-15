@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-06-15
+- **Total Sessions**: 11
+- **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~345 | Active |
+| `journal-1.md` | ~379 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-06-16 | 完成采集配置与职位库统一列表 | `ce3fe67` | `remote-job-intelligence` |
 | 10 | 2026-06-15 | 归档 Job-Sync 二开父任务 | `506ea6c` | `remote-job-intelligence` |
 | 9 | 2026-06-15 | 最终验收审计 | `506ea6c` | `remote-job-intelligence` |
 | 8 | 2026-06-15 | 外部依赖诊断摘要复制 | `9911060` | `remote-job-intelligence` |

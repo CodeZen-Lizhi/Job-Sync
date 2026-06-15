@@ -343,3 +343,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 完成采集配置与职位库统一列表
+
+**Date**: 2026-06-16
+**Task**: 完成采集配置与职位库统一列表
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成采集配置拆分、V2EX Feed 采集、平台能力设置，以及职位库统一分页候选列表与多维筛选；已通过构建、Rust/worker 测试、契约测试和浏览器烟测。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ce3fe67` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
