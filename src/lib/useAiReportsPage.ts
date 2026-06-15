@@ -215,7 +215,7 @@ export function useAiReportsPage() {
     void router.push({ path: "/jobs", query: { jobId } });
   }
   function goReviewQueue(): void {
-    void router.push({ path: "/jobs", query: { review: "top20" } });
+    void router.push({ path: "/jobs" });
   }
 
   async function openPrev(): Promise<void> {

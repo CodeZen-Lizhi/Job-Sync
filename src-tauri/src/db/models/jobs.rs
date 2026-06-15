@@ -6,16 +6,26 @@ use crate::db::Result;
 use super::{
     common::now_rfc3339,
     company_score::upsert_company_score_from_source,
-    job_fields::{
-        extract_job_fields_from_detail, extract_job_fields_from_external_source,
-        extract_job_fields_from_list_item, JobFields,
-    },
-    source_adapter::{
-        normalize_boss_detail, normalize_boss_list_item, normalize_external_source,
-        NormalizedJobSource,
-    },
-    source_links::insert_job_source_link,
+    job_fields::{extract_job_fields_from_detail, extract_job_fields_from_list_item, JobFields},
+    source_adapter::{normalize_boss_detail, normalize_boss_list_item, NormalizedJobSource},
 };
+
+#[derive(Debug)]
+pub(crate) struct NormalizedJobInput {
+    pub encrypt_job_id: String,
+    pub source_platform: String,
+    pub source_url: Option<String>,
+    pub dedup_key: String,
+    pub position_name: Option<String>,
+    pub boss_name: Option<String>,
+    pub brand_name: Option<String>,
+    pub city_name: Option<String>,
+    pub salary_desc: Option<String>,
+    pub experience_name: Option<String>,
+    pub degree_name: Option<String>,
+    pub jd_text: Option<String>,
+    pub raw_payload: Value,
+}
 
 const UPSERT_JOB_DETAIL_RAW_SQL: &str = r#"
   INSERT INTO job_detail_raw (encrypt_job_id, zp_data_json, fetched_at)
@@ -33,6 +43,7 @@ const UPSERT_JOB_FROM_DETAIL_SQL: &str = r#"
     dedup_key,
     position_name,
     boss_name,
+    boss_active_status,
     brand_name,
     city_name,
     salary_desc,
@@ -42,13 +53,14 @@ const UPSERT_JOB_FROM_DETAIL_SQL: &str = r#"
     raw_payload_json,
     last_seen_at
   )
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
   ON CONFLICT(encrypt_job_id) DO UPDATE SET
     source_platform = excluded.source_platform,
     source_url = COALESCE(excluded.source_url, job.source_url),
     dedup_key = COALESCE(excluded.dedup_key, job.dedup_key),
     position_name = COALESCE(job.position_name, excluded.position_name),
     boss_name = COALESCE(excluded.boss_name, job.boss_name),
+    boss_active_status = COALESCE(excluded.boss_active_status, job.boss_active_status),
     brand_name = COALESCE(excluded.brand_name, job.brand_name),
     city_name = COALESCE(excluded.city_name, job.city_name),
     salary_desc = COALESCE(excluded.salary_desc, job.salary_desc),
@@ -67,6 +79,7 @@ const UPSERT_JOB_FROM_LIST_SQL: &str = r#"
     dedup_key,
     position_name,
     boss_name,
+    boss_active_status,
     brand_name,
     city_name,
     salary_desc,
@@ -76,13 +89,14 @@ const UPSERT_JOB_FROM_LIST_SQL: &str = r#"
     raw_payload_json,
     last_seen_at
   )
-  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
   ON CONFLICT(encrypt_job_id) DO UPDATE SET
     source_platform = excluded.source_platform,
     source_url = COALESCE(excluded.source_url, job.source_url),
     dedup_key = COALESCE(excluded.dedup_key, job.dedup_key),
     position_name = COALESCE(excluded.position_name, job.position_name),
     boss_name = COALESCE(excluded.boss_name, job.boss_name),
+    boss_active_status = COALESCE(excluded.boss_active_status, job.boss_active_status),
     brand_name = COALESCE(excluded.brand_name, job.brand_name),
     city_name = COALESCE(excluded.city_name, job.city_name),
     salary_desc = COALESCE(excluded.salary_desc, job.salary_desc),
@@ -97,11 +111,12 @@ const REBUILD_ALL_JOB_FIELDS_SQL: &str = r#"
   UPDATE job SET
     position_name = COALESCE(position_name, ?2),
     boss_name = COALESCE(boss_name, ?3),
-    brand_name = COALESCE(brand_name, ?4),
-    city_name = COALESCE(city_name, ?5),
-    salary_desc = COALESCE(salary_desc, ?6),
-    experience_name = COALESCE(experience_name, ?7),
-    degree_name = COALESCE(degree_name, ?8)
+    boss_active_status = COALESCE(boss_active_status, ?4),
+    brand_name = COALESCE(brand_name, ?5),
+    city_name = COALESCE(city_name, ?6),
+    salary_desc = COALESCE(salary_desc, ?7),
+    experience_name = COALESCE(experience_name, ?8),
+    degree_name = COALESCE(degree_name, ?9)
   WHERE encrypt_job_id = ?1
 "#;
 
@@ -147,30 +162,43 @@ pub(crate) fn upsert_job_from_list_item(
     Ok(())
 }
 
-pub(crate) fn upsert_job_from_external_source(
+pub(crate) fn upsert_job_from_normalized(
     conn: &Connection,
-    platform: &str,
-    payload: &Value,
-) -> Result<String> {
-    let fields = extract_job_fields_from_external_source(payload);
-    let (encrypt_job_id, source) = normalize_external_source(platform, payload, &fields);
+    input: &NormalizedJobInput,
+) -> Result<()> {
+    let fields = JobFields {
+        position_name: input.position_name.clone(),
+        boss_name: input.boss_name.clone(),
+        boss_active_status: None,
+        brand_name: input.brand_name.clone(),
+        city_name: input.city_name.clone(),
+        salary_desc: input.salary_desc.clone(),
+        experience_name: input.experience_name.clone(),
+        degree_name: input.degree_name.clone(),
+    };
+    let source = NormalizedJobSource {
+        source_platform: input.source_platform.trim().to_string(),
+        source_url: input.source_url.clone(),
+        dedup_key: input.dedup_key.trim().to_string(),
+        jd_text: input.jd_text.clone(),
+        raw_payload_json: serde_json::to_string(&input.raw_payload)
+            .unwrap_or_else(|_| "{}".to_string()),
+    };
     let last_seen_at = now_rfc3339();
     upsert_job_record(
         conn,
         UPSERT_JOB_FROM_LIST_SQL,
-        &encrypt_job_id,
+        &input.encrypt_job_id,
         &fields,
         &source,
         &last_seen_at,
     )?;
-    upsert_company_score_for_fields(conn, &fields, &source.raw_payload_json)?;
-    insert_job_source_link(
-        conn,
-        &encrypt_job_id,
-        Some(&format!("手动导入:{}", source.source_platform)),
-        Some(&source.raw_payload_json),
-    )?;
-    Ok(encrypt_job_id)
+    let score_source = source
+        .jd_text
+        .as_deref()
+        .unwrap_or(source.raw_payload_json.as_str());
+    upsert_company_score_for_fields(conn, &fields, score_source)?;
+    Ok(())
 }
 
 pub(crate) fn rebuild_all_job_fields(conn: &Connection) -> Result<u64> {
@@ -186,6 +214,7 @@ pub(crate) fn rebuild_all_job_fields(conn: &Connection) -> Result<u64> {
                 encrypt_job_id,
                 &fields.position_name,
                 &fields.boss_name,
+                &fields.boss_active_status,
                 &fields.brand_name,
                 &fields.city_name,
                 &fields.salary_desc,
@@ -232,9 +261,10 @@ fn upsert_company_score_for_fields(
         return Ok(());
     };
     let combined_source = format!(
-        "{} {} {} {} {} {} {} {}",
+        "{} {} {} {} {} {} {} {} {}",
         fields.position_name.as_deref().unwrap_or(""),
         fields.boss_name.as_deref().unwrap_or(""),
+        fields.boss_active_status.as_deref().unwrap_or(""),
         fields.brand_name.as_deref().unwrap_or(""),
         fields.city_name.as_deref().unwrap_or(""),
         fields.salary_desc.as_deref().unwrap_or(""),
@@ -262,6 +292,7 @@ fn upsert_job_record(
             &source.dedup_key,
             &fields.position_name,
             &fields.boss_name,
+            &fields.boss_active_status,
             &fields.brand_name,
             &fields.city_name,
             &fields.salary_desc,

@@ -61,7 +61,11 @@ pub fn crawl_auto_start(
     sidecar: State<SidecarManager>,
     task: SearchTaskPayload,
 ) -> Result<(), String> {
-    let session = load_session(sidecar.app_data_dir())?;
+    let session = if task.source_platform.as_deref() == Some("v2ex") {
+        load_session_optional(sidecar.app_data_dir())
+    } else {
+        load_session(sidecar.app_data_dir())?
+    };
     sidecar
         .send(&CommandIn::CrawlAutoStart(CrawlAutoStartPayload {
             session,

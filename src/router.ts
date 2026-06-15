@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from "vue-router";
 
 import Ai from "./pages/Ai.vue";
 import AiReports from "./pages/AiReports.vue";
+import CrawlConfig from "./pages/CrawlConfig.vue";
 import Crawl from "./pages/Crawl.vue";
 import Jobs from "./pages/Jobs.vue";
 import Settings from "./pages/Settings.vue";
@@ -12,6 +13,7 @@ export const router = createRouter({
   routes: [
     { path: "/", redirect: "/crawl" },
     { path: "/crawl", component: Crawl },
+    { path: "/crawl-config", component: CrawlConfig },
     { path: "/jobs", component: Jobs },
     { path: "/export", redirect: "/jobs" },
     { path: "/ai", component: Ai },

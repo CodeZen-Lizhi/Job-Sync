@@ -36,7 +36,7 @@ defineEmits<{
   (e: "copy-link", job: JobRow): void;
   (e: "open-source-url", job: JobRow): void;
   (e: "delete-job", job: JobRow, groupKeyValue: string): void;
-  (e: "open-filter-profile", job: JobRow): void;
+  (e: "open-filter-profile-config", job: JobRow): void;
   (e: "open-blacklist-management", job: JobRow): void;
   (e: "update-review", job: JobRow, status: ReviewStatus): void;
   (e: "restore-review-candidate", job: JobRow): void;
@@ -95,7 +95,7 @@ defineEmits<{
             @copy-link="(job) => $emit('copy-link', job)"
             @open-source-url="(job) => $emit('open-source-url', job)"
             @delete="(job) => $emit('delete-job', job, groupKeyValue)"
-            @open-filter-profile="(job) => $emit('open-filter-profile', job)"
+            @open-filter-profile-config="(job) => $emit('open-filter-profile-config', job)"
             @open-blacklist-management="(job) => $emit('open-blacklist-management', job)"
             @update-review="(job, status) => $emit('update-review', job, status)"
             @restore-review-candidate="(job) => $emit('restore-review-candidate', job)"

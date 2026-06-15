@@ -6,10 +6,8 @@ import { useRoute, useRouter } from "vue-router";
 import { clearAiSelectedJobs, upsertAiSelectedJob } from "./aiSelection";
 import { useFilterProfile } from "./filterProfile";
 import {
-  buildExternalJobImportExample,
   companyReviewStatusLabel,
   communicationStatusLabel,
-  EXTERNAL_JOB_IMPORT_PLATFORM_OPTIONS,
   formatFilterReasonSummary,
   formatResumeMatchEvidence,
   formatScoreReasonSummary,
@@ -25,14 +23,15 @@ import {
 } from "./resumeWorkspace";
 import type {
   AiCompanyScoreBatchResult,
+  CollectionMethod,
   CompanyReviewStatus,
   CompanyScoreRebuildResult,
   CommunicationStatus,
   DailyIntelligenceWebhookResult,
-  ExternalJobImportPlatform,
   GreetingErrorState,
   GreetingMessageResult,
   JobBlacklistEntry,
+  JobCandidatePage,
   JobDailyIntelligence,
   JobDailyIntelligenceCandidate,
   JobDetail,
@@ -67,6 +66,110 @@ interface AiCompanyScoreErrorState {
   title: string;
   hint: string;
   message: string;
+}
+
+type JobTimeRange = "today" | "yesterday" | "last7" | "last30" | "last90" | "custom";
+type ProcessedFilter = "all" | "processed" | "unprocessed";
+
+export type JobStatusFilter =
+  | ReviewStatus
+  | CommunicationStatus
+  | "has_notes"
+  | "company_not_fit"
+  | "blacklisted";
+
+export const JOB_TIME_RANGE_OPTIONS: Array<{ value: JobTimeRange; label: string }> = [
+  { value: "today", label: "今天" },
+  { value: "yesterday", label: "昨天" },
+  { value: "last7", label: "最近7天" },
+  { value: "last30", label: "最近30天" },
+  { value: "last90", label: "最近90天" },
+  { value: "custom", label: "自定义" },
+];
+
+export const PROCESSED_FILTER_OPTIONS: Array<{ value: ProcessedFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "unprocessed", label: "未处理" },
+  { value: "processed", label: "已处理" },
+];
+
+export const JOB_STATUS_FILTER_OPTIONS: Array<{ value: JobStatusFilter; label: string }> = [
+  { value: "favorited", label: "收藏" },
+  { value: "ready_to_apply", label: "准备投递" },
+  { value: "greeted_unread", label: "已打招呼" },
+  { value: "read_no_reply", label: "已读未回" },
+  { value: "replied", label: "已回复" },
+  { value: "rejected", label: "已拒绝" },
+  { value: "applied", label: "已投递" },
+  { value: "has_notes", label: "有备注" },
+  { value: "ignored", label: "已忽略" },
+  { value: "manual_not_fit", label: "岗位不合适" },
+  { value: "company_not_fit", label: "公司不合适" },
+  { value: "blacklisted", label: "黑名单" },
+];
+
+export const COLLECTION_METHOD_FILTER_OPTIONS: Array<{ value: CollectionMethod; label: string }> = [
+  { value: "automatic", label: "自动采集" },
+  { value: "manual", label: "手动采集" },
+];
+
+export const SOURCE_PLATFORM_FILTER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "boss", label: "Boss" },
+  { value: "v2ex", label: "V2EX" },
+  { value: "liepin", label: "猎聘" },
+  { value: "zhilian", label: "智联" },
+  { value: "maimai", label: "脉脉" },
+  { value: "linuxdo", label: "LinuxDo" },
+];
+
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function localDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function localDateStartIso(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(`${trimmed}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function localDateExclusiveEndIso(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(`${trimmed}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return addDays(date, 1).toISOString();
+}
+
+function jobTimeRangeBounds(range: JobTimeRange, customStart: string, customEnd: string): { startDate: string | null; endDate: string | null } {
+  const today = startOfLocalDay(new Date());
+  if (range === "custom") {
+    return {
+      startDate: localDateStartIso(customStart),
+      endDate: localDateExclusiveEndIso(customEnd),
+    };
+  }
+  if (range === "today") {
+    return { startDate: today.toISOString(), endDate: addDays(today, 1).toISOString() };
+  }
+  if (range === "yesterday") {
+    return { startDate: addDays(today, -1).toISOString(), endDate: today.toISOString() };
+  }
+  const days = range === "last30" ? 30 : range === "last90" ? 90 : 7;
+  return { startDate: addDays(today, -(days - 1)).toISOString(), endDate: addDays(today, 1).toISOString() };
 }
 
 function readStoredBoolean(key: string, defaultValue: boolean): boolean {
@@ -205,6 +308,18 @@ function formatApplicationFilterTrace(job: JobRow): string {
     return `通过筛选画像；${summary}`;
   }
   return summary;
+}
+
+function isProcessedJob(job: JobRow): boolean {
+  return (
+    !!job.review_status && job.review_status !== "pending"
+  ) || (
+    !!job.communication_status && job.communication_status !== "not_contacted"
+  ) || !!job.review_notes?.trim()
+    || (!!job.company_review_status && job.company_review_status !== "pending")
+    || job.company_blacklisted
+    || job.job_blacklisted
+    || job.keyword_blacklisted;
 }
 
 function buildResumeWorkspaceTrace(status?: ResumeWorkspaceJobStatus | null): string {
@@ -356,7 +471,7 @@ function buildReadyToApplyConfirmationMessage(
   const checklist = buildApplicationChecklist(job, greetingDraft, resumeWorkspaceStatus).map((item) => `- ${item}`).join("\n");
   const readinessPreflight = formatApplicationReadinessPreflight(job, greetingDraft, resumeWorkspaceStatus);
   return [
-    `确认将「${job.position_name ?? job.encrypt_job_id}」加入投递准备台？`,
+    `确认将「${job.position_name ?? job.encrypt_job_id}」标记为准备投递？`,
     `简历匹配报告：${resumeTrace}`,
     `Resume Match 证据：\n${resumeMatchEvidence}`,
     `筛选画像：${formatApplicationFilterTrace(job)}`,
@@ -479,22 +594,6 @@ function buildFilteredJobsSummary(jobs: JobRow[]): string {
   ].join("\n\n");
 }
 
-function buildExternalImportSummary(job: JobRow): string {
-  return [
-    "【Job Sync 手动导入核对摘要】",
-    `岗位：${job.position_name ?? job.encrypt_job_id}`,
-    `公司：${job.brand_name ?? "未知"} / ${job.city_name ?? "未知城市"}`,
-    `薪资/经验/学历：${job.salary_desc ?? "未知"} / ${job.experience_name ?? "未知"} / ${job.degree_name ?? "未知"}`,
-    `来源追踪：${formatSourceTrace(job)}`,
-    `来源链接：${jobSourceUrl(job)}`,
-    `筛选画像：${formatApplicationFilterTrace(job)}`,
-    `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
-    `评分依据：${formatScoreReasonSummary(parseScoreReasonJson(job.score_reason_json))}`,
-    `Resume Match 证据：\n${buildResumeMatchEvidenceTrace(job.score_reason_json)}`,
-    "下一步：人工查看岗位、必要时生成 AI 匹配报告或定制简历；不会自动发送、开聊或投递。",
-  ].join("\n");
-}
-
 function buildCommunicationFollowupJobSummary(job: JobRow): string {
   const lines = [
     `岗位：${job.position_name ?? job.encrypt_job_id}`,
@@ -545,6 +644,19 @@ export function useJobsPage() {
   const error = ref<string | null>(null);
   const groups = ref<KeywordGroup[]>([]);
   const flatResults = ref<JobRow[]>([]);
+  const jobCandidates = ref<JobRow[]>([]);
+  const jobCandidatesTotal = ref(0);
+  const jobCandidatesLoading = ref(false);
+  const jobCandidateSearch = ref("");
+  const jobCandidatePage = ref(1);
+  const jobCandidatePageSize = ref(20);
+  const jobCandidateTimeRange = ref<JobTimeRange>("last7");
+  const jobCandidateCustomStartDate = ref(localDateInputValue(addDays(new Date(), -6)));
+  const jobCandidateCustomEndDate = ref(localDateInputValue(new Date()));
+  const jobCandidateProcessedFilter = ref<ProcessedFilter>("all");
+  const selectedJobStatusFilters = ref<JobStatusFilter[]>([]);
+  const selectedSourcePlatformFilters = ref<string[]>([]);
+  const selectedCollectionMethodFilters = ref<CollectionMethod[]>([]);
   const reviewCandidates = ref<JobRow[]>([]);
   const favoritedJobs = ref<JobRow[]>([]);
   const applicationReadyJobs = ref<JobRow[]>([]);
@@ -555,11 +667,6 @@ export function useJobsPage() {
   const dailyIntelligenceAutoNotifyEnabled = ref(readStoredBoolean(DAILY_INTELLIGENCE_AUTO_NOTIFY_KEY, false));
   const dailyIntelligenceExternalMessage = ref<string | null>(null);
   const dailyIntelligenceWecomSending = ref(false);
-  const externalImportPlatform = ref<ExternalJobImportPlatform>("liepin");
-  const externalImportPayloadText = ref("");
-  const externalImportLoading = ref(false);
-  const externalImportMessage = ref<string | null>(null);
-  const lastExternalImportedJob = ref<JobRow | null>(null);
   const blacklistEntries = ref<JobBlacklistEntry[]>([]);
   const filterProfileUpdatedAt = ref<string | null>(null);
   const filterProfileLoading = ref(false);
@@ -610,6 +717,18 @@ export function useJobsPage() {
     if (!expandedJobId.value) return null;
     return detailCache.get(expandedJobId.value) ?? null;
   });
+  const jobCandidateTotalPages = computed(() => Math.max(1, Math.ceil(jobCandidatesTotal.value / jobCandidatePageSize.value)));
+  const jobCandidateOffset = computed(() => (jobCandidatePage.value - 1) * jobCandidatePageSize.value);
+  const jobIntelligenceRangeLabel = computed(() => {
+    if (jobCandidateTimeRange.value !== "custom") {
+      return JOB_TIME_RANGE_OPTIONS.find((option) => option.value === jobCandidateTimeRange.value)?.label ?? "最近7天";
+    }
+    const start = jobCandidateCustomStartDate.value || "开始";
+    const end = jobCandidateCustomEndDate.value || "结束";
+    return `${start} 至 ${end}`;
+  });
+  const currentPageProcessedCount = computed(() => jobCandidates.value.filter(isProcessedJob).length);
+  const currentPageUnprocessedCount = computed(() => jobCandidates.value.length - currentPageProcessedCount.value);
   function goAi(jobId: string): void {
     void router.push({ path: "/ai", query: { jobId } });
   }
@@ -674,13 +793,7 @@ export function useJobsPage() {
     if (refreshTimer !== null) return;
     refreshTimer = window.setTimeout(() => {
       refreshTimer = null;
-      void loadKeywords({ preserveExpanded: true, refreshExpandedList: true });
-      void loadReviewCandidates();
-      void loadFavoritedJobs();
-      void loadApplicationReadyJobs();
-      void loadCommunicationFollowupJobs();
-      void loadFilteredJobs();
-      void loadDailyIntelligence();
+      void loadJobCandidates({ keepPage: true });
     }, JOBS_REALTIME_REFRESH_DELAY_MS);
   }
   function showConfirm(
@@ -750,6 +863,78 @@ export function useJobsPage() {
         scheduleRealtimeRefresh();
       }
     }
+  }
+  async function loadJobCandidates(options: { keepPage?: boolean } = {}): Promise<void> {
+    error.value = null;
+    if (!tauri) return;
+    if (!options.keepPage) {
+      jobCandidatePage.value = 1;
+    }
+    const { startDate, endDate } = jobTimeRangeBounds(
+      jobCandidateTimeRange.value,
+      jobCandidateCustomStartDate.value,
+      jobCandidateCustomEndDate.value,
+    );
+    jobCandidatesLoading.value = true;
+    try {
+      const page = await invoke<JobCandidatePage>("list_job_candidates", {
+        query: jobCandidateSearch.value.trim() || null,
+        startDate,
+        endDate,
+        processed: jobCandidateProcessedFilter.value === "all" ? null : jobCandidateProcessedFilter.value,
+        statusFilters: selectedJobStatusFilters.value,
+        sourcePlatforms: selectedSourcePlatformFilters.value,
+        collectionMethods: selectedCollectionMethodFilters.value,
+        limit: jobCandidatePageSize.value,
+        offset: jobCandidateOffset.value,
+      });
+      jobCandidates.value = page.jobs;
+      jobCandidatesTotal.value = page.total;
+      await loadResumeWorkspaceStatusesForJobs(page.jobs);
+      if (jobCandidatePage.value > jobCandidateTotalPages.value) {
+        jobCandidatePage.value = jobCandidateTotalPages.value;
+        await loadJobCandidates({ keepPage: true });
+      }
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      jobCandidatesLoading.value = false;
+    }
+  }
+  function toggleJobStatusFilter(value: JobStatusFilter): void {
+    selectedJobStatusFilters.value = selectedJobStatusFilters.value.includes(value)
+      ? selectedJobStatusFilters.value.filter((item) => item !== value)
+      : [...selectedJobStatusFilters.value, value];
+    void loadJobCandidates();
+  }
+  function toggleSourcePlatformFilter(value: string): void {
+    selectedSourcePlatformFilters.value = selectedSourcePlatformFilters.value.includes(value)
+      ? selectedSourcePlatformFilters.value.filter((item) => item !== value)
+      : [...selectedSourcePlatformFilters.value, value];
+    void loadJobCandidates();
+  }
+  function toggleCollectionMethodFilter(value: CollectionMethod): void {
+    selectedCollectionMethodFilters.value = selectedCollectionMethodFilters.value.includes(value)
+      ? selectedCollectionMethodFilters.value.filter((item) => item !== value)
+      : [...selectedCollectionMethodFilters.value, value];
+    void loadJobCandidates();
+  }
+  function clearJobCandidateFilters(): void {
+    jobCandidateSearch.value = "";
+    jobCandidateTimeRange.value = "last7";
+    jobCandidateCustomStartDate.value = localDateInputValue(addDays(new Date(), -6));
+    jobCandidateCustomEndDate.value = localDateInputValue(new Date());
+    jobCandidateProcessedFilter.value = "all";
+    selectedJobStatusFilters.value = [];
+    selectedSourcePlatformFilters.value = [];
+    selectedCollectionMethodFilters.value = [];
+    void loadJobCandidates();
+  }
+  function goJobCandidatePage(page: number): void {
+    const nextPage = Math.min(Math.max(page, 1), jobCandidateTotalPages.value);
+    if (nextPage === jobCandidatePage.value) return;
+    jobCandidatePage.value = nextPage;
+    void loadJobCandidates({ keepPage: true });
   }
   async function loadReviewCandidates(): Promise<void> {
     if (!tauri) return;
@@ -964,65 +1149,12 @@ export function useJobsPage() {
     keywordJobsCache.clear();
     detailCache.clear();
     resumeWorkspaceStatuses.clear();
-    const refreshes: Array<Promise<void>> = [
-      loadDailyIntelligence(),
-      loadReviewCandidates(),
-      loadFavoritedJobs(),
-      loadApplicationReadyJobs(),
-      loadCommunicationFollowupJobs(),
-      loadFilteredJobs(),
-      loadKeywords({ preserveExpanded: true, refreshExpandedList: true }),
-    ];
+    const refreshes: Array<Promise<void>> = [loadJobCandidates({ keepPage: true })];
     if (refreshBlacklist) {
       refreshes.push(loadJobBlacklist());
     }
     await Promise.all(refreshes);
     await loadLinkedJobFromRoute();
-  }
-  function parseExternalImportPayload(): Record<string, unknown> {
-    const raw = externalImportPayloadText.value.trim();
-    if (!raw) {
-      throw new Error("请先填写外部岗位 JSON。");
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("外部岗位 JSON 必须是对象。");
-    }
-    return parsed as Record<string, unknown>;
-  }
-  function fillExternalImportExample(): void {
-    error.value = null;
-    externalImportMessage.value = null;
-    externalImportPayloadText.value = buildExternalJobImportExample(externalImportPlatform.value);
-  }
-  async function importExternalJob(): Promise<void> {
-    error.value = null;
-    externalImportMessage.value = null;
-    if (!tauri) return;
-
-    let payload: Record<string, unknown>;
-    try {
-      payload = parseExternalImportPayload();
-    } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause);
-      return;
-    }
-
-    externalImportLoading.value = true;
-    try {
-      const job = await invoke<JobRow>("import_external_job", {
-        platform: externalImportPlatform.value,
-        payload,
-      });
-      lastExternalImportedJob.value = job;
-      externalImportMessage.value = `已导入 ${job.source_platform} 岗位：${job.position_name ?? job.encrypt_job_id}`;
-      await refreshAfterJobStateChange(false);
-      expandedJobId.value = job.encrypt_job_id;
-    } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      externalImportLoading.value = false;
-    }
   }
   async function toggleKeyword(group: KeywordGroup): Promise<void> {
     const key = groupKey(group);
@@ -1372,16 +1504,6 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
       error.value = "复制过滤摘要失败，请检查剪贴板权限后重试。";
     }
   }
-  async function copyExternalImportSummary(): Promise<void> {
-    if (!lastExternalImportedJob.value) {
-      error.value = "暂无手动导入岗位可复制。";
-      return;
-    }
-    const copied = await copy([buildExternalImportSummary(lastExternalImportedJob.value), sourcePlatformModeTrace()].join("\n"));
-    if (!copied) {
-      error.value = "复制导入核对摘要失败，请检查剪贴板权限后重试。";
-    }
-  }
   async function ensureDailyIntelligenceNotificationPermission(requestIfNeeded: boolean): Promise<boolean> {
     try {
       let granted = await isPermissionGranted();
@@ -1468,6 +1590,8 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
         groupKeyStr,
       );
       resumeWorkspaceStatuses.delete(job.encrypt_job_id);
+      jobCandidates.value = jobCandidates.value.filter((item) => item.encrypt_job_id !== job.encrypt_job_id);
+      jobCandidatesTotal.value = Math.max(0, jobCandidatesTotal.value - 1);
       reviewCandidates.value = reviewCandidates.value.filter((item) => item.encrypt_job_id !== job.encrypt_job_id);
       favoritedJobs.value = favoritedJobs.value.filter((item) => item.encrypt_job_id !== job.encrypt_job_id);
       applicationReadyJobs.value = applicationReadyJobs.value.filter((item) => item.encrypt_job_id !== job.encrypt_job_id);
@@ -1488,6 +1612,8 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
         }
 
         groups.value = [];
+        jobCandidates.value = [];
+        jobCandidatesTotal.value = 0;
         reviewCandidates.value = [];
         favoritedJobs.value = [];
         applicationReadyJobs.value = [];
@@ -1569,7 +1695,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     if (status === "manual_not_fit") {
       showConfirm(
         "岗位不合适",
-        `确认将「${job.position_name ?? job.encrypt_job_id}」标记为岗位不合适？该岗位默认不再进入 Top 20 候选队列。`,
+        `确认将「${job.position_name ?? job.encrypt_job_id}」标记为岗位不合适？后续可通过岗位状态筛选查看这类岗位。`,
         async () => {
           try {
             await invoke<void>("set_job_review_state", {
@@ -1697,14 +1823,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     }, "移除");
   }
   onMounted(() => {
-    void loadKeywords();
-    void loadReviewCandidates();
-    void loadFavoritedJobs();
-    void loadApplicationReadyJobs();
-    void loadCommunicationFollowupJobs();
-    void loadFilteredJobs();
-    void loadDailyIntelligence();
-    void loadJobBlacklist();
+    void loadJobCandidates();
     void loadDefaultFilterProfile();
     void loadLinkedJobFromRoute();
   });
@@ -1713,14 +1832,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     isPageActive = true;
     if (!hasBeenDeactivated) return;
     pendingRealtimeRefresh = false;
-    void loadKeywords({ preserveExpanded: true, refreshExpandedList: true });
-    void loadReviewCandidates();
-    void loadFavoritedJobs();
-    void loadApplicationReadyJobs();
-    void loadCommunicationFollowupJobs();
-    void loadFilteredJobs();
-    void loadDailyIntelligence();
-    void loadJobBlacklist();
+    void loadJobCandidates({ keepPage: true });
     void loadDefaultFilterProfile();
     void loadLinkedJobFromRoute();
   });
@@ -1740,14 +1852,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
       detailCache.clear();
       expandedJobId.value = null;
       flatResults.value = [];
-      void loadKeywords();
-      void loadReviewCandidates();
-      void loadFavoritedJobs();
-      void loadApplicationReadyJobs();
-      void loadCommunicationFollowupJobs();
-      void loadFilteredJobs();
-      void loadDailyIntelligence();
-      void loadJobBlacklist();
+      void loadJobCandidates();
       void loadDefaultFilterProfile();
       void loadLinkedJobFromRoute();
     },
@@ -1791,6 +1896,23 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     error,
     groups,
     flatResults,
+    jobCandidates,
+    jobCandidatesTotal,
+    jobCandidatesLoading,
+    jobCandidateSearch,
+    jobCandidatePage,
+    jobCandidatePageSize,
+    jobCandidateTimeRange,
+    jobCandidateCustomStartDate,
+    jobCandidateCustomEndDate,
+    jobCandidateProcessedFilter,
+    selectedJobStatusFilters,
+    selectedSourcePlatformFilters,
+    selectedCollectionMethodFilters,
+    jobCandidateTotalPages,
+    jobIntelligenceRangeLabel,
+    currentPageProcessedCount,
+    currentPageUnprocessedCount,
     reviewCandidates,
     favoritedJobs,
     applicationReadyJobs,
@@ -1801,12 +1923,6 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     dailyIntelligenceAutoNotifyEnabled,
     dailyIntelligenceExternalMessage,
     dailyIntelligenceWecomSending,
-    externalImportPlatform,
-    externalImportPayloadText,
-    externalImportLoading,
-    externalImportMessage,
-    lastExternalImportedJob,
-    externalImportPlatformOptions: EXTERNAL_JOB_IMPORT_PLATFORM_OPTIONS,
     blacklistEntries,
     ...filterProfileState,
     filterProfileUpdatedAt,
@@ -1846,6 +1962,17 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     analyzeReviewCandidates,
     goResumeWorkspace,
     loadKeywords,
+    loadJobCandidates,
+    toggleJobStatusFilter,
+    toggleSourcePlatformFilter,
+    toggleCollectionMethodFilter,
+    clearJobCandidateFilters,
+    goJobCandidatePage,
+    JOB_TIME_RANGE_OPTIONS,
+    PROCESSED_FILTER_OPTIONS,
+    JOB_STATUS_FILTER_OPTIONS,
+    SOURCE_PLATFORM_FILTER_OPTIONS,
+    COLLECTION_METHOD_FILTER_OPTIONS,
     loadReviewCandidates,
     loadFavoritedJobs,
     loadApplicationReadyJobs,
@@ -1859,8 +1986,6 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     createFilterProfile,
     setActiveFilterProfileAsDefault,
     recomputeDefaultFilterProfile,
-    fillExternalImportExample,
-    importExternalJob,
     rebuildCompanyScores,
     generateAiCompanyScores,
     toggleKeyword,
@@ -1879,7 +2004,6 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     sendDailyIntelligenceWecomNotification,
     openJobSourceUrl,
     copyFilteredJobsSummary,
-    copyExternalImportSummary,
     showDailyIntelligenceNotification,
     deleteJob,
     deleteAllJobs,

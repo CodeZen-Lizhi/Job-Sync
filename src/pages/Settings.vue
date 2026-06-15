@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import UiSelect from "../components/ui/UiSelect.vue";
+import { CRAWL_TASK_TYPE_LOGIN, JOB_SOURCE_PLATFORM_OPTIONS } from "../lib/crawl";
+import { runtime } from "../lib/runtime";
 import { invoke, isTauri } from "../lib/tauri";
 import { useCopy } from "../lib/useCopy";
 
@@ -91,11 +93,26 @@ const jobSources = ref<JobSourceEntry[]>([]);
 const diagnostics = ref<ExternalDependencyDiagnostics | null>(null);
 const modelsLoading = ref(false);
 const sourcesLoading = ref(false);
+const sourceUpdatingPlatform = ref<string | null>(null);
+const loginExists = ref<boolean | null>(null);
+const loginLoading = ref(false);
+const loginError = ref<string | null>(null);
+const sidecarRunning = computed(() => runtime.sidecarTask.running);
 const diagnosticsLoading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const success = ref(false);
 const { copy, copyLabel } = useCopy();
+const previewJobSources = JOB_SOURCE_PLATFORM_OPTIONS.map((source) => ({
+  platform: source.value,
+  display_name: source.label,
+  adapter_kind: source.adapterKind,
+  enabled: source.value === "boss",
+  config_json: null,
+  created_at: "",
+  updated_at: "预览",
+}));
+const visibleJobSources = computed(() => (jobSources.value.length > 0 ? jobSources.value : previewJobSources));
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -186,6 +203,49 @@ function clearSavedWecomWebhookUrl(): void {
   hasSavedWecomWebhookUrl.value = false;
 }
 
+function hasSourceConfig(source: JobSourceEntry): boolean {
+  const rawConfig = source.config_json?.trim();
+  if (!rawConfig) return false;
+  try {
+    const parsed = JSON.parse(rawConfig) as unknown;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length > 0;
+  } catch {
+    return true;
+  }
+}
+
+function automaticCollectionLabel(source: JobSourceEntry): string {
+  if (source.adapter_kind === "boss") return "支持自动采集";
+  if (source.adapter_kind === "feed") return "支持自动采集";
+  return "自动采集预留";
+}
+
+function platformCapabilityHint(source: JobSourceEntry): string {
+  if (source.adapter_kind === "boss") {
+    return "启用后可在采集配置中作为本次自动采集来源；登录态在本页按平台管理。";
+  }
+  if (source.adapter_kind === "feed") {
+    return "启用后可在采集配置中作为公开 Feed 自动采集来源；无需平台登录。";
+  }
+  return "当前保留为统一职位来源维度；自动采集、平台登录和职位库写入入口后续再接入。";
+}
+
+function platformLoginLabel(source: JobSourceEntry): string {
+  if (source.adapter_kind === "feed") return "无需登录";
+  if (source.adapter_kind !== "boss") return "登录预留";
+  if (loginExists.value === true) return "Boss 已登录";
+  if (loginExists.value === false) return "Boss 未登录";
+  return "Boss 登录状态未知";
+}
+
+function platformLoginBadgeClass(source: JobSourceEntry): string {
+  if (source.adapter_kind === "feed") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
+  if (source.adapter_kind !== "boss") return "bg-slate-400/10 text-slate-300 ring-slate-400/20";
+  if (loginExists.value === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
+  if (loginExists.value === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
+  return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
+}
+
 async function loadModels(): Promise<void> {
   if (!tauri) return;
   modelsLoading.value = true;
@@ -203,15 +263,66 @@ async function loadModels(): Promise<void> {
 }
 
 async function loadJobSources(): Promise<void> {
-  if (!tauri) return;
   sourcesLoading.value = true;
   error.value = null;
+  if (!tauri) {
+    sourcesLoading.value = false;
+    return;
+  }
   try {
     jobSources.value = await invoke<JobSourceEntry[]>("list_job_sources");
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
     sourcesLoading.value = false;
+  }
+}
+
+async function setJobSourceEnabled(source: JobSourceEntry, enabled: boolean): Promise<void> {
+  if (!tauri || sourceUpdatingPlatform.value) return;
+  sourceUpdatingPlatform.value = source.platform;
+  error.value = null;
+  try {
+    jobSources.value = await invoke<JobSourceEntry[]>("set_job_source_enabled", {
+      platform: source.platform,
+      enabled,
+    });
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    sourceUpdatingPlatform.value = null;
+  }
+}
+
+async function refreshBossLogin(): Promise<void> {
+  loginError.value = null;
+  if (!tauri) {
+    loginExists.value = null;
+    return;
+  }
+  try {
+    loginExists.value = await invoke<boolean>("get_login_status");
+  } catch (e) {
+    loginError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function startBossLogin(): Promise<void> {
+  loginError.value = null;
+  if (!tauri) return;
+  loginLoading.value = true;
+  try {
+    runtime.sidecarTask.running = true;
+    runtime.sidecarTask.type = CRAWL_TASK_TYPE_LOGIN;
+    await invoke<void>("start_login");
+  } catch (e) {
+    loginError.value = e instanceof Error ? e.message : String(e);
+    if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_LOGIN) {
+      runtime.sidecarTask.running = false;
+      runtime.sidecarTask.type = undefined;
+    }
+  } finally {
+    loginLoading.value = false;
   }
 }
 
@@ -332,7 +443,22 @@ function diagnosticStatusLabel(status?: string): string {
 onMounted(() => {
   void loadSettings();
   void loadJobSources();
+  void refreshBossLogin();
 });
+
+watch(
+  () => diagnostics.value?.boss_session.ready,
+  (ready) => {
+    if (typeof ready === "boolean") loginExists.value = ready;
+  },
+);
+
+watch(
+  () => runtime.lastCookieCollectedAt,
+  () => {
+    void refreshBossLogin();
+  },
+);
 </script>
 
 <template>
@@ -349,37 +475,85 @@ onMounted(() => {
       当前是浏览器模式（非 Tauri）。设置不可用。
     </div>
 
-    <!-- Source Model -->
+    <!-- Platform Capability Model -->
     <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">来源模型</div>
+      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">平台能力</div>
       <div class="ui-panel-muted p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div class="text-xs font-medium text-content-primary">统一职位来源</div>
-            <div class="text-xs text-content-muted">Boss 使用采集适配器；猎聘、智联、脉脉、V2EX 和 LinuxDo 支持手动导入。</div>
+            <div class="text-xs font-medium text-content-primary">统一职位来源与平台能力</div>
+            <div class="text-xs text-content-muted">启用表示平台可作为职位来源；是否参与某次采集由采集配置的本次采集来源决定。</div>
           </div>
           <button class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!tauri || sourcesLoading" @click="loadJobSources">
-            {{ sourcesLoading ? "读取中…" : "刷新来源" }}
+            {{ sourcesLoading ? "读取中…" : "刷新平台" }}
           </button>
         </div>
         <div class="mt-4 divide-y divide-border/10 overflow-hidden rounded-md border border-border/10">
-          <div v-if="jobSources.length === 0" class="px-3 py-4 text-sm text-content-muted">暂无来源配置。</div>
-          <div v-for="source in jobSources" :key="source.platform" class="flex flex-wrap items-center gap-3 px-3 py-3 text-sm">
-            <span
-              class="ui-badge"
-              :class="source.enabled ? 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/20' : 'bg-slate-400/10 text-slate-300 ring-slate-400/20'"
-            >
-              {{ source.enabled ? "启用" : "停用" }}
-            </span>
+          <div v-for="source in visibleJobSources" :key="source.platform" class="grid gap-3 px-3 py-3 text-sm md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+            <div class="flex flex-wrap gap-2">
+              <span
+                class="ui-badge"
+                :class="source.enabled ? 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/20' : 'bg-slate-400/10 text-slate-300 ring-slate-400/20'"
+              >
+                {{ source.enabled ? "已启用" : "未启用" }}
+              </span>
+              <span
+                class="ui-badge"
+                :class="source.adapter_kind === 'boss' || source.adapter_kind === 'feed' ? 'bg-cyan-400/10 text-cyan-300 ring-cyan-400/20' : 'bg-amber-400/10 text-amber-300 ring-amber-400/20'"
+              >
+                {{ automaticCollectionLabel(source) }}
+              </span>
+              <span class="ui-badge" :class="platformLoginBadgeClass(source)">
+                {{ platformLoginLabel(source) }}
+              </span>
+            </div>
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium text-content-primary">{{ source.display_name }}</div>
               <div class="mt-0.5 text-xs text-content-muted">
                 平台：{{ source.platform }} · 适配器：{{ source.adapter_kind }} · 更新：{{ source.updated_at }}
               </div>
+              <div class="mt-1 text-xs text-content-muted">{{ platformCapabilityHint(source) }}</div>
             </div>
-            <div class="text-xs text-content-muted">配置：{{ source.config_json ? "已配置" : "默认" }}</div>
+            <div class="flex flex-wrap items-center justify-start gap-2 md:justify-end">
+              <button
+                class="inline-flex min-w-[6.25rem] items-center gap-2 rounded-full px-2 py-1 text-xs font-medium ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                :class="source.enabled ? 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/20 hover:bg-emerald-400/15' : 'bg-slate-400/10 text-slate-300 ring-slate-400/20 hover:bg-slate-400/15'"
+                :disabled="!tauri || sourcesLoading || sourceUpdatingPlatform !== null"
+                @click="setJobSourceEnabled(source, !source.enabled)"
+                :aria-pressed="source.enabled"
+              >
+                <span
+                  class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+                  :class="source.enabled ? 'bg-emerald-400/80' : 'bg-slate-500/60'"
+                >
+                  <span
+                    class="h-4 w-4 rounded-full bg-white shadow transition-transform"
+                    :class="source.enabled ? 'translate-x-4' : 'translate-x-0.5'"
+                  />
+                </span>
+                <span>{{ sourceUpdatingPlatform === source.platform ? "保存中…" : source.enabled ? "禁用" : "启用" }}</span>
+              </button>
+              <template v-if="source.adapter_kind === 'boss'">
+                <button
+                  class="ui-btn-primary px-3 py-1.5 text-xs"
+                  type="button"
+                  :disabled="!tauri || !source.enabled || loginLoading || sidecarRunning"
+                  @click="startBossLogin"
+                >
+                  {{ loginLoading ? "打开中…" : "登录" }}
+                </button>
+                <button class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!tauri || !source.enabled" @click="refreshBossLogin">
+                  刷新登录
+                </button>
+              </template>
+              <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>无需登录</button>
+              <button v-else class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>登录预留</button>
+              <span class="text-xs text-content-muted">配置：{{ hasSourceConfig(source) ? "已配置" : "默认" }}</span>
+            </div>
           </div>
         </div>
+        <div v-if="loginError" class="mt-3 ui-status-danger p-3 text-xs">{{ loginError }}</div>
       </div>
     </div>
 

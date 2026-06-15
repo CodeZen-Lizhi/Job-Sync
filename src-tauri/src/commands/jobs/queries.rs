@@ -1,13 +1,13 @@
 use std::cmp::Ordering;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection};
 use serde_json::Value;
 
 use crate::{commands::filter_profile, db, paths};
 
 use super::{
     models::{
-        map_job_row_with_score_weights, JobBlacklistEntry, JobDailyIntelligence,
+        map_job_row_with_score_weights, JobBlacklistEntry, JobCandidatePage, JobDailyIntelligence,
         JobDailyIntelligenceCandidate, JobRow, JobSourceEntry, KeywordGroup, ScoreWeights,
     },
     shared::{build_fts_phrase_query, open_conn, should_use_fts},
@@ -53,6 +53,7 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -74,6 +75,7 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -106,7 +108,8 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
         ),
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
-        COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
         COALESCE(j.city_name, '') || ' ' ||
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
@@ -151,8 +154,9 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
             AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
-        )
-      FROM job j
+	        ),
+	        j.boss_active_status
+	      FROM job j
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
@@ -165,9 +169,10 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
         OR j.source_platform LIKE ?1
         OR j.source_url LIKE ?1
         OR j.dedup_key LIKE ?1
-        OR j.position_name LIKE ?1
-        OR j.boss_name LIKE ?1
-        OR j.brand_name LIKE ?1
+	        OR j.position_name LIKE ?1
+	        OR j.boss_name LIKE ?1
+	        OR j.boss_active_status LIKE ?1
+	        OR j.brand_name LIKE ?1
         OR j.city_name LIKE ?1
         OR j.salary_desc LIKE ?1
         OR j.experience_name LIKE ?1
@@ -226,8 +231,9 @@ const LIST_JOBS_FTS_SQL: &str = r#"
               COALESCE(j.source_url, '') || ' ' ||
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
-              COALESCE(j.boss_name, '') || ' ' ||
-              COALESCE(j.brand_name, '') || ' ' ||
+	        COALESCE(j.boss_name, '') || ' ' ||
+	        COALESCE(j.boss_active_status, '') || ' ' ||
+	        COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
               COALESCE(j.experience_name, '') || ' ' ||
@@ -248,6 +254,7 @@ const LIST_JOBS_FTS_SQL: &str = r#"
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -280,6 +287,167 @@ const LIST_JOBS_FTS_SQL: &str = r#"
         ),
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
+        COALESCE(j.city_name, '') || ' ' ||
+        COALESCE(j.salary_desc, '') || ' ' ||
+        COALESCE(j.experience_name, '') || ' ' ||
+        COALESCE(j.degree_name, '') || ' ' ||
+        COALESCE(j.jd_text, '') || ' ' ||
+        COALESCE(j.raw_payload_json, '') || ' ' ||
+        COALESCE(d.zp_data_json, ''),
+        cs.company_score,
+        cs.risk_flags_json,
+        cs.evidence_json,
+        cs.confidence,
+        (
+          SELECT COUNT(*)
+          FROM job company_job
+          INNER JOIN job_review_state company_rs ON company_rs.encrypt_job_id = company_job.encrypt_job_id
+          WHERE j.brand_name IS NOT NULL
+            AND trim(j.brand_name) != ''
+            AND company_job.brand_name = j.brand_name
+            AND company_job.encrypt_job_id != j.encrypt_job_id
+            AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
+        ),
+        (
+          SELECT company_rs.communication_status
+          FROM job company_job
+          INNER JOIN job_review_state company_rs ON company_rs.encrypt_job_id = company_job.encrypt_job_id
+          WHERE j.brand_name IS NOT NULL
+            AND trim(j.brand_name) != ''
+            AND company_job.brand_name = j.brand_name
+            AND company_job.encrypt_job_id != j.encrypt_job_id
+            AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
+          ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
+          LIMIT 1
+        ),
+        (
+          SELECT company_rs.updated_at
+          FROM job company_job
+          INNER JOIN job_review_state company_rs ON company_rs.encrypt_job_id = company_job.encrypt_job_id
+          WHERE j.brand_name IS NOT NULL
+            AND trim(j.brand_name) != ''
+            AND company_job.brand_name = j.brand_name
+            AND company_job.encrypt_job_id != j.encrypt_job_id
+            AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
+          ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
+          LIMIT 1
+	        ),
+	        j.boss_active_status
+	      FROM job_fts f
+      INNER JOIN job j ON j.encrypt_job_id = f.encrypt_job_id
+      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+      LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
+      LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
+      LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
+      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+      WHERE f MATCH ?1
+        AND (?2 IS NULL OR j.city_name = ?2)
+      ORDER BY bm25(f) ASC, j.last_seen_at DESC
+      LIMIT ?3 OFFSET ?4
+"#;
+
+const JOB_COLLECTION_METHOD_SQL: &str = r#"
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_source_link method_link
+          WHERE method_link.encrypt_job_id = j.encrypt_job_id
+            AND (
+              method_link.keyword IS NOT NULL
+              OR method_link.filters_json IS NOT NULL
+            )
+        ) THEN 'automatic' ELSE 'manual' END
+"#;
+
+const JOB_CANDIDATE_BASE_SQL: &str = r#"
+      SELECT
+        j.encrypt_job_id,
+        COALESCE(NULLIF(j.source_platform, ''), 'boss'),
+        j.source_url,
+        j.dedup_key,
+        j.position_name, j.boss_name, j.brand_name, j.city_name,
+        j.salary_desc, j.experience_name, j.degree_name, j.last_seen_at,
+        r.eligible, r.reason_json, r.updated_at,
+        COALESCE(rs.review_status, 'pending'),
+        COALESCE(rs.communication_status, 'not_contacted'),
+        rs.last_greeted_at,
+        rs.notes,
+        rs.updated_at,
+        COALESCE(crs.review_status, 'pending'),
+        crs.notes,
+        CASE WHEN cb.id IS NOT NULL THEN 1 ELSE 0 END,
+        CASE WHEN jb.id IS NOT NULL THEN 1 ELSE 0 END,
+        COALESCE(jb.reason, cb.reason),
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_blacklist kb
+          WHERE kb.kind = 'keyword'
+            AND trim(kb.value) != ''
+            AND lower(
+              COALESCE(j.source_platform, '') || ' ' ||
+              COALESCE(j.source_url, '') || ' ' ||
+              COALESCE(j.dedup_key, '') || ' ' ||
+              COALESCE(j.position_name, '') || ' ' ||
+              COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.city_name, '') || ' ' ||
+              COALESCE(j.salary_desc, '') || ' ' ||
+              COALESCE(j.experience_name, '') || ' ' ||
+              COALESCE(j.degree_name, '') || ' ' ||
+              COALESCE(j.jd_text, '') || ' ' ||
+              COALESCE(j.raw_payload_json, '') || ' ' ||
+              COALESCE(d.zp_data_json, '')
+            ) LIKE '%' || lower(kb.value) || '%'
+        ) THEN 1 ELSE 0 END,
+        (
+          SELECT COALESCE(kb.reason, '命中关键词黑名单：' || kb.value)
+          FROM job_blacklist kb
+          WHERE kb.kind = 'keyword'
+            AND trim(kb.value) != ''
+            AND lower(
+              COALESCE(j.source_platform, '') || ' ' ||
+              COALESCE(j.source_url, '') || ' ' ||
+              COALESCE(j.dedup_key, '') || ' ' ||
+              COALESCE(j.position_name, '') || ' ' ||
+              COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.city_name, '') || ' ' ||
+              COALESCE(j.salary_desc, '') || ' ' ||
+              COALESCE(j.experience_name, '') || ' ' ||
+              COALESCE(j.degree_name, '') || ' ' ||
+              COALESCE(j.jd_text, '') || ' ' ||
+              COALESCE(j.raw_payload_json, '') || ' ' ||
+              COALESCE(d.zp_data_json, '')
+            ) LIKE '%' || lower(kb.value) || '%'
+          ORDER BY kb.id DESC
+          LIMIT 1
+        ),
+        (
+          SELECT ar.match_score
+          FROM ai_report ar
+          WHERE ar.encrypt_job_id = j.encrypt_job_id
+            AND ar.match_score IS NOT NULL
+            AND (ar.kind = 'resume' OR ar.kind IS NULL)
+          ORDER BY ar.created_at DESC, ar.id DESC
+          LIMIT 1
+        ),
+        (
+          SELECT ar.result_json
+          FROM ai_report ar
+          WHERE ar.encrypt_job_id = j.encrypt_job_id
+            AND ar.match_score IS NOT NULL
+            AND (ar.kind = 'resume' OR ar.kind IS NULL)
+          ORDER BY ar.created_at DESC, ar.id DESC
+          LIMIT 1
+        ),
+        COALESCE(j.position_name, '') || ' ' ||
+        COALESCE(j.boss_name, '') || ' ' ||
+        COALESCE(j.boss_active_status, '') || ' ' ||
         COALESCE(j.brand_name, '') || ' ' ||
         COALESCE(j.city_name, '') || ' ' ||
         COALESCE(j.salary_desc, '') || ' ' ||
@@ -325,9 +493,12 @@ const LIST_JOBS_FTS_SQL: &str = r#"
             AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
-        )
-      FROM job_fts f
-      INNER JOIN job j ON j.encrypt_job_id = f.encrypt_job_id
+        ),
+        j.boss_active_status,
+"#;
+
+const JOB_CANDIDATE_FROM_SQL: &str = r#"
+      FROM job j
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
@@ -335,11 +506,288 @@ const LIST_JOBS_FTS_SQL: &str = r#"
       LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
       LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
       LEFT JOIN company_score cs ON cs.company_name = j.brand_name
-      WHERE f MATCH ?1
-        AND (?2 IS NULL OR j.city_name = ?2)
-      ORDER BY bm25(f) ASC, j.last_seen_at DESC
-      LIMIT ?3 OFFSET ?4
 "#;
+
+const JOB_PROCESSED_SQL: &str = r#"
+      (
+        COALESCE(rs.review_status, 'pending') != 'pending'
+        OR COALESCE(rs.communication_status, 'not_contacted') != 'not_contacted'
+        OR NULLIF(TRIM(COALESCE(rs.notes, '')), '') IS NOT NULL
+        OR COALESCE(crs.review_status, 'pending') != 'pending'
+        OR jb.id IS NOT NULL
+        OR cb.id IS NOT NULL
+        OR EXISTS (
+          SELECT 1
+          FROM job_blacklist kb
+          WHERE kb.kind = 'keyword'
+            AND trim(kb.value) != ''
+            AND lower(
+              COALESCE(j.source_platform, '') || ' ' ||
+              COALESCE(j.source_url, '') || ' ' ||
+              COALESCE(j.dedup_key, '') || ' ' ||
+              COALESCE(j.position_name, '') || ' ' ||
+              COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.city_name, '') || ' ' ||
+              COALESCE(j.salary_desc, '') || ' ' ||
+              COALESCE(j.experience_name, '') || ' ' ||
+              COALESCE(j.degree_name, '') || ' ' ||
+              COALESCE(j.jd_text, '') || ' ' ||
+              COALESCE(j.raw_payload_json, '') || ' ' ||
+              COALESCE(d.zp_data_json, '')
+            ) LIKE '%' || lower(kb.value) || '%'
+        )
+      )
+"#;
+
+fn clean_filter_values(values: Option<Vec<String>>) -> Vec<String> {
+    values
+        .unwrap_or_default()
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn push_text_values(params: &mut Vec<SqlValue>, values: &[String]) {
+    params.extend(values.iter().cloned().map(SqlValue::Text));
+}
+
+fn placeholders(count: usize) -> String {
+    std::iter::repeat("?")
+        .take(count)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn build_job_candidate_filters(
+    query: Option<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    processed: Option<String>,
+    status_filters: Option<Vec<String>>,
+    source_platforms: Option<Vec<String>>,
+    collection_methods: Option<Vec<String>>,
+) -> (String, Vec<SqlValue>) {
+    let mut where_parts = vec!["1 = 1".to_string()];
+    let mut params = Vec::new();
+
+    if let Some(query) = query.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+        let like = format!("%{query}%");
+        where_parts.push(
+            r#"(
+              j.encrypt_job_id LIKE ?
+              OR j.source_platform LIKE ?
+              OR j.source_url LIKE ?
+              OR j.dedup_key LIKE ?
+              OR j.position_name LIKE ?
+              OR j.boss_name LIKE ?
+              OR j.boss_active_status LIKE ?
+              OR j.brand_name LIKE ?
+              OR j.city_name LIKE ?
+              OR j.salary_desc LIKE ?
+              OR j.experience_name LIKE ?
+              OR j.degree_name LIKE ?
+              OR j.jd_text LIKE ?
+              OR j.raw_payload_json LIKE ?
+              OR d.zp_data_json LIKE ?
+            )"#
+            .to_string(),
+        );
+        for _ in 0..15 {
+            params.push(SqlValue::Text(like.clone()));
+        }
+    }
+
+    if let Some(start_date) = start_date
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        where_parts.push("j.last_seen_at >= ?".to_string());
+        params.push(SqlValue::Text(start_date));
+    }
+
+    if let Some(end_date) = end_date
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        where_parts.push("j.last_seen_at < ?".to_string());
+        params.push(SqlValue::Text(end_date));
+    }
+
+    match processed.as_deref().map(str::trim) {
+        Some("processed") => where_parts.push(JOB_PROCESSED_SQL.to_string()),
+        Some("unprocessed") => where_parts.push(format!("NOT {JOB_PROCESSED_SQL}")),
+        _ => {}
+    }
+
+    let statuses = clean_filter_values(status_filters);
+    if !statuses.is_empty() {
+        let mut status_parts = Vec::new();
+        for status in statuses {
+            match status.as_str() {
+                "favorited" | "ready_to_apply" | "applied" | "ignored" => {
+                    status_parts.push("COALESCE(rs.review_status, 'pending') = ?".to_string());
+                    params.push(SqlValue::Text(status));
+                }
+                "greeted_unread" | "read_no_reply" | "replied" | "rejected" | "manual_not_fit" => {
+                    status_parts
+                        .push("COALESCE(rs.communication_status, 'not_contacted') = ?".to_string());
+                    params.push(SqlValue::Text(status));
+                }
+                "has_notes" => status_parts
+                    .push("NULLIF(TRIM(COALESCE(rs.notes, '')), '') IS NOT NULL".to_string()),
+                "company_not_fit" => status_parts
+                    .push("COALESCE(crs.review_status, 'pending') = 'manual_not_fit'".to_string()),
+                "blacklisted" => status_parts.push(
+                    "(jb.id IS NOT NULL OR cb.id IS NOT NULL OR EXISTS (
+                      SELECT 1
+                      FROM job_blacklist kb
+                      WHERE kb.kind = 'keyword'
+                        AND trim(kb.value) != ''
+                        AND lower(
+                          COALESCE(j.source_platform, '') || ' ' ||
+                          COALESCE(j.source_url, '') || ' ' ||
+                          COALESCE(j.dedup_key, '') || ' ' ||
+                          COALESCE(j.position_name, '') || ' ' ||
+                          COALESCE(j.boss_name, '') || ' ' ||
+                          COALESCE(j.boss_active_status, '') || ' ' ||
+                          COALESCE(j.brand_name, '') || ' ' ||
+                          COALESCE(j.city_name, '') || ' ' ||
+                          COALESCE(j.salary_desc, '') || ' ' ||
+                          COALESCE(j.experience_name, '') || ' ' ||
+                          COALESCE(j.degree_name, '') || ' ' ||
+                          COALESCE(j.jd_text, '') || ' ' ||
+                          COALESCE(j.raw_payload_json, '') || ' ' ||
+                          COALESCE(d.zp_data_json, '')
+                        ) LIKE '%' || lower(kb.value) || '%'
+                    ))"
+                    .to_string(),
+                ),
+                _ => {}
+            }
+        }
+        if !status_parts.is_empty() {
+            where_parts.push(format!("({})", status_parts.join(" OR ")));
+        }
+    }
+
+    let platforms = clean_filter_values(source_platforms);
+    if !platforms.is_empty() {
+        where_parts.push(format!(
+            "COALESCE(NULLIF(j.source_platform, ''), 'boss') IN ({})",
+            placeholders(platforms.len())
+        ));
+        push_text_values(&mut params, &platforms);
+    }
+
+    let methods = clean_filter_values(collection_methods);
+    if !methods.is_empty() {
+        where_parts.push(format!(
+            "{JOB_COLLECTION_METHOD_SQL} IN ({})",
+            placeholders(methods.len())
+        ));
+        push_text_values(&mut params, &methods);
+    }
+
+    (where_parts.join(" AND "), params)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn list_job_candidates(
+    app: tauri::AppHandle,
+    query: Option<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    processed: Option<String>,
+    status_filters: Option<Vec<String>>,
+    source_platforms: Option<Vec<String>>,
+    collection_methods: Option<Vec<String>>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<JobCandidatePage, String> {
+    let app_data_dir = paths::resolve_data_dir(&app)?;
+    let conn = open_conn(&app_data_dir)?;
+    list_job_candidates_on_conn(
+        &conn,
+        query,
+        start_date,
+        end_date,
+        processed,
+        status_filters,
+        source_platforms,
+        collection_methods,
+        limit,
+        offset,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn list_job_candidates_on_conn(
+    conn: &Connection,
+    query: Option<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    processed: Option<String>,
+    status_filters: Option<Vec<String>>,
+    source_platforms: Option<Vec<String>>,
+    collection_methods: Option<Vec<String>>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<JobCandidatePage, String> {
+    let _ = filter_profile::recompute_missing_default_filter_profile_on_conn(conn)?;
+    let score_weights = load_score_weights(conn);
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+    let offset = offset.unwrap_or(0);
+    let (where_sql, params) = build_job_candidate_filters(
+        query,
+        start_date,
+        end_date,
+        processed,
+        status_filters,
+        source_platforms,
+        collection_methods,
+    );
+
+    let count_sql = format!(
+        "SELECT COUNT(*) {JOB_CANDIDATE_FROM_SQL} WHERE {where_sql}"
+    );
+    let total = conn
+        .query_row(&count_sql, params_from_iter(params.iter()), |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut row_params = params.clone();
+    row_params.push(SqlValue::Integer(limit as i64));
+    row_params.push(SqlValue::Integer(offset as i64));
+    let rows_sql = format!(
+        "{JOB_CANDIDATE_BASE_SQL}
+        {JOB_COLLECTION_METHOD_SQL}
+        {JOB_CANDIDATE_FROM_SQL}
+        WHERE {where_sql}
+        ORDER BY j.last_seen_at DESC, j.encrypt_job_id ASC
+        LIMIT ? OFFSET ?"
+    );
+    let mut stmt = conn.prepare(&rows_sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params_from_iter(row_params.iter()), |row| {
+            map_job_row_with_score_weights(row, score_weights)
+        })
+        .map_err(|e| e.to_string())?;
+    let mut jobs = Vec::new();
+    for row in rows {
+        jobs.push(row.map_err(|e| e.to_string())?);
+    }
+
+    Ok(JobCandidatePage {
+        jobs,
+        total,
+        limit,
+        offset,
+    })
+}
 
 fn list_jobs_like(
     conn: &Connection,
@@ -639,7 +1087,15 @@ pub(super) fn list_job_sources_on_conn(conn: &Connection) -> Result<Vec<JobSourc
             r#"
       SELECT platform, display_name, adapter_kind, enabled, config_json, created_at, updated_at
       FROM job_sources
-      ORDER BY enabled DESC, platform ASC
+      ORDER BY CASE platform
+        WHEN 'boss' THEN 0
+        WHEN 'liepin' THEN 1
+        WHEN 'zhilian' THEN 2
+        WHEN 'maimai' THEN 3
+        WHEN 'v2ex' THEN 4
+        WHEN 'linuxdo' THEN 5
+        ELSE 999
+      END, platform ASC
       "#,
         )
         .map_err(|e| e.to_string())?;
@@ -703,6 +1159,7 @@ pub fn list_jobs_by_source(
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -724,6 +1181,7 @@ pub fn list_jobs_by_source(
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -756,7 +1214,8 @@ pub fn list_jobs_by_source(
         ),
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
-        COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
         COALESCE(j.city_name, '') || ' ' ||
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
@@ -801,8 +1260,9 @@ pub fn list_jobs_by_source(
             AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
-        )
-      FROM job j
+	        ),
+	        j.boss_active_status
+	      FROM job j
       INNER JOIN job_source_link s ON s.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result f ON f.encrypt_job_id = j.encrypt_job_id
@@ -846,6 +1306,7 @@ pub fn list_jobs_by_source(
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -867,6 +1328,7 @@ pub fn list_jobs_by_source(
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -899,7 +1361,8 @@ pub fn list_jobs_by_source(
         ),
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
-        COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
         COALESCE(j.city_name, '') || ' ' ||
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
@@ -944,8 +1407,9 @@ pub fn list_jobs_by_source(
             AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
-        )
-      FROM job j
+	        ),
+	        j.boss_active_status
+	      FROM job j
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result f ON f.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
@@ -1031,6 +1495,7 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -1052,6 +1517,7 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -1084,7 +1550,8 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
         ),
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
-        COALESCE(j.brand_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
+              COALESCE(j.brand_name, '') || ' ' ||
         COALESCE(j.city_name, '') || ' ' ||
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
@@ -1129,8 +1596,9 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
             AND COALESCE(company_rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
-        )
-      FROM job j
+	        ),
+	        j.boss_active_status
+	      FROM job j
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
@@ -1153,6 +1621,7 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -1404,6 +1873,7 @@ fn count_eligible_jobs(conn: &Connection) -> Result<i64, String> {
               COALESCE(j.dedup_key, '') || ' ' ||
               COALESCE(j.position_name, '') || ' ' ||
               COALESCE(j.boss_name, '') || ' ' ||
+              COALESCE(j.boss_active_status, '') || ' ' ||
               COALESCE(j.brand_name, '') || ' ' ||
               COALESCE(j.city_name, '') || ' ' ||
               COALESCE(j.salary_desc, '') || ' ' ||
@@ -1827,6 +2297,212 @@ mod tests {
             ],
         )
         .expect("seed ai report");
+    }
+
+    fn seed_eligible_candidate(conn: &Connection, encrypt_job_id: &str) {
+        models::upsert_job_filter_result(
+            conn,
+            encrypt_job_id,
+            models::DEFAULT_FILTER_PROFILE_ID,
+            true,
+            &json!({
+              "eligible": true,
+              "matched_preferences": ["Go"],
+              "missing_preferences": []
+            }),
+        )
+        .expect("seed candidate filter");
+        models::upsert_job_review_state(
+            conn,
+            encrypt_job_id,
+            Some("pending"),
+            Some("not_contacted"),
+            None,
+            None,
+        )
+        .expect("seed candidate state");
+    }
+
+    #[test]
+    fn list_job_candidates_pages_all_jobs_by_time_range() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        for (job_id, last_seen_at) in [
+            ("job_recent_a", "2026-06-14T10:00:00Z"),
+            ("job_recent_b", "2026-06-14T09:00:00Z"),
+            ("job_recent_c", "2026-06-13T08:00:00Z"),
+            ("job_old", "2026-05-01T08:00:00Z"),
+        ] {
+            seed_job_fixture_with_last_seen(&conn, job_id, "Candidate Co", "Go 平台工程师", last_seen_at);
+            seed_eligible_candidate(&conn, job_id);
+            seed_resume_score(&conn, job_id, 80.0);
+        }
+
+        let page = list_job_candidates_on_conn(
+            &conn,
+            None,
+            Some("2026-06-13T00:00:00Z".to_string()),
+            Some("2026-06-15T00:00:00Z".to_string()),
+            None,
+            None,
+            None,
+            None,
+            Some(1),
+            Some(1),
+        )
+        .expect("list candidate page");
+
+        assert_eq!(page.total, 3);
+        assert_eq!(page.limit, 1);
+        assert_eq!(page.offset, 1);
+        assert_eq!(page.jobs.len(), 1);
+        assert_eq!(page.jobs[0].encrypt_job_id, "job_recent_b");
+    }
+
+    #[test]
+    fn list_job_candidates_filters_status_source_and_collection_method() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        seed_job_fixture_with_last_seen(
+            &conn,
+            "job_manual_unprocessed",
+            "Manual Co",
+            "Go 手动岗位",
+            "2026-06-14T10:00:00Z",
+        );
+        seed_job_fixture_with_last_seen(
+            &conn,
+            "job_auto_favorite",
+            "Auto Co",
+            "Go 自动岗位",
+            "2026-06-14T09:00:00Z",
+        );
+        seed_job_fixture_with_last_seen(
+            &conn,
+            "job_v2ex_replied",
+            "V2EX Co",
+            "Rust 远程岗位",
+            "2026-06-14T08:00:00Z",
+        );
+        conn.execute(
+            "UPDATE job SET source_platform = 'v2ex' WHERE encrypt_job_id = 'job_v2ex_replied'",
+            [],
+        )
+        .expect("mark v2ex source");
+
+        for job_id in ["job_manual_unprocessed", "job_auto_favorite", "job_v2ex_replied"] {
+            seed_eligible_candidate(&conn, job_id);
+            seed_resume_score(&conn, job_id, 85.0);
+        }
+        models::insert_job_source_link(&conn, "job_auto_favorite", Some("Go"), Some("{}"))
+            .expect("seed automatic source link");
+        models::insert_job_source_link(&conn, "job_v2ex_replied", None, Some(r#"{"feed_url":"https://www.v2ex.com/feed/tab/jobs.xml"}"#))
+            .expect("seed v2ex automatic source link");
+        models::upsert_job_review_state(
+            &conn,
+            "job_auto_favorite",
+            Some("favorited"),
+            Some("not_contacted"),
+            None,
+            None,
+        )
+        .expect("mark favorite");
+        models::upsert_job_review_state(
+            &conn,
+            "job_v2ex_replied",
+            Some("pending"),
+            Some("replied"),
+            None,
+            Some("约了沟通"),
+        )
+        .expect("mark replied");
+
+        let automatic = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            Some("processed".to_string()),
+            Some(vec!["favorited".to_string(), "replied".to_string()]),
+            None,
+            Some(vec!["automatic".to_string()]),
+            Some(20),
+            Some(0),
+        )
+        .expect("list automatic processed candidates");
+
+        assert_eq!(automatic.total, 2);
+        assert_eq!(
+            automatic
+                .jobs
+                .iter()
+                .map(|job| (job.encrypt_job_id.as_str(), job.collection_method.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("job_auto_favorite", "automatic"), ("job_v2ex_replied", "automatic")]
+        );
+
+        let manual_unprocessed = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            Some("unprocessed".to_string()),
+            None,
+            None,
+            Some(vec!["manual".to_string()]),
+            Some(20),
+            Some(0),
+        )
+        .expect("list manual unprocessed candidates");
+        assert_eq!(manual_unprocessed.total, 1);
+        assert_eq!(manual_unprocessed.jobs[0].encrypt_job_id, "job_manual_unprocessed");
+        assert_eq!(manual_unprocessed.jobs[0].collection_method, "manual");
+
+        let v2ex = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(vec!["v2ex".to_string()]),
+            None,
+            Some(20),
+            Some(0),
+        )
+        .expect("list v2ex candidates");
+        assert_eq!(v2ex.total, 1);
+        assert_eq!(v2ex.jobs[0].encrypt_job_id, "job_v2ex_replied");
+    }
+
+    #[test]
+    fn list_job_sources_keeps_product_order_after_enablement_changes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        conn.execute(
+            "UPDATE job_sources SET enabled = 0 WHERE platform = 'boss'",
+            [],
+        )
+        .expect("disable boss");
+
+        let sources = list_job_sources_on_conn(&conn).expect("list sources");
+        let platforms = sources
+            .iter()
+            .map(|source| source.platform.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            platforms,
+            vec!["boss", "liepin", "zhilian", "maimai", "v2ex", "linuxdo"]
+        );
+        assert_eq!(sources[0].platform, "boss");
+        assert!(!sources[0].enabled);
     }
 
     #[test]

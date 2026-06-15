@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS job (
   dedup_key TEXT,
   position_name TEXT,
   boss_name TEXT,
+  boss_active_status TEXT,
   brand_name TEXT,
   city_name TEXT,
   salary_desc TEXT,

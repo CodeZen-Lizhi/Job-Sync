@@ -1,9 +1,3 @@
-import {
-  JOB_SOURCE_PLATFORM_OPTIONS,
-  MANUAL_IMPORT_SOURCE_PLATFORMS,
-  type JobSourcePlatform,
-} from "./crawl";
-
 export interface KeywordGroup {
   keyword: string | null;
   label: string;
@@ -52,102 +46,6 @@ export interface CompanyScoreRebuildResult {
   jobs: number;
 }
 
-export type ExternalJobImportPlatform = Exclude<JobSourcePlatform, "boss">;
-
-export const EXTERNAL_JOB_IMPORT_PLATFORM_OPTIONS: Array<{
-  value: ExternalJobImportPlatform;
-  label: string;
-}> = JOB_SOURCE_PLATFORM_OPTIONS.filter((option) =>
-  MANUAL_IMPORT_SOURCE_PLATFORMS.includes(option.value as ExternalJobImportPlatform),
-).map((option) => ({
-  value: option.value as ExternalJobImportPlatform,
-  label: option.label,
-}));
-
-interface ExternalJobImportExamplePayload {
-  job_id: string;
-  job_url: string;
-  title: string;
-  company: string;
-  city: string;
-  salary: string;
-  experience: string;
-  education: string;
-  recruiter: string;
-  description: string;
-}
-
-const EXTERNAL_JOB_IMPORT_EXAMPLES: Record<
-  ExternalJobImportPlatform,
-  ExternalJobImportExamplePayload
-> = {
-  liepin: {
-    job_id: "liepin-remote-123",
-    job_url: "https://www.liepin.com/job/123.shtml",
-    title: "Rust 平台工程师",
-    company: "非 Boss 科技",
-    city: "上海",
-    salary: "30-50K",
-    experience: "5-10年",
-    education: "本科",
-    recruiter: "李女士",
-    description: "负责 Rust 平台工程和 Kubernetes 基础设施",
-  },
-  zhilian: {
-    job_id: "zhilian-remote-123",
-    job_url: "https://jobs.zhaopin.com/123.htm",
-    title: "Go 后端工程师",
-    company: "远程协作科技",
-    city: "北京",
-    salary: "25-45K",
-    experience: "3-5年",
-    education: "本科",
-    recruiter: "王先生",
-    description: "负责 Go 微服务、云原生平台和可观测性建设",
-  },
-  maimai: {
-    job_id: "maimai-remote-123",
-    job_url: "https://maimai.cn/jobs/detail/123",
-    title: "AI Infra 工程师",
-    company: "智能基础设施实验室",
-    city: "深圳",
-    salary: "35-60K",
-    experience: "5-10年",
-    education: "本科",
-    recruiter: "陈女士",
-    description: "负责模型服务、推理平台和 GPU 集群稳定性",
-  },
-  v2ex: {
-    job_id: "v2ex-remote-123",
-    job_url: "https://www.v2ex.com/t/123",
-    title: "远程全栈工程师",
-    company: "Remote Dev Studio",
-    city: "远程",
-    salary: "25-40K",
-    experience: "3-5年",
-    education: "不限",
-    recruiter: "招聘负责人",
-    description: "负责 TypeScript、Node.js 和基础设施自动化",
-  },
-  linuxdo: {
-    job_id: "linuxdo-remote-123",
-    job_url: "https://linux.do/t/topic/123",
-    title: "DevOps / SRE 工程师",
-    company: "开源基础设施团队",
-    city: "杭州",
-    salary: "30-50K",
-    experience: "5-10年",
-    education: "本科",
-    recruiter: "技术负责人",
-    description: "负责 Kubernetes、CI/CD、监控告警和生产稳定性",
-  },
-};
-
-export function buildExternalJobImportExample(platform: ExternalJobImportPlatform): string {
-  const example = EXTERNAL_JOB_IMPORT_EXAMPLES[platform] ?? EXTERNAL_JOB_IMPORT_EXAMPLES.liepin;
-  return JSON.stringify(example, null, 2);
-}
-
 export interface AiCompanyScoreBatchResult {
   companies: number;
   jobs: number;
@@ -174,10 +72,12 @@ export interface JobBlacklistEntry {
 export interface JobRow {
   encrypt_job_id: string;
   source_platform: string;
+  collection_method: CollectionMethod;
   source_url: string | null;
   dedup_key: string | null;
   position_name: string | null;
   boss_name: string | null;
+  boss_active_status: string | null;
   brand_name: string | null;
   city_name: string | null;
   salary_desc: string | null;
@@ -208,6 +108,13 @@ export interface JobRow {
   score_reason_json: string;
 }
 
+export interface JobCandidatePage {
+  jobs: JobRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface FilterBlockedReason {
   rule_type: string;
   field: string;
@@ -219,6 +126,7 @@ export interface FilterReasonDimensions {
   detected_work_modes?: string[];
   city_name?: string | null;
   source_platform?: string | null;
+  boss_active_status?: string | null;
   review_status?: string | null;
   communication_status?: string | null;
   company_review_status?: string | null;
@@ -281,6 +189,7 @@ export interface ScoreReasonJson {
 
 export type ReviewStatus = "pending" | "favorited" | "ready_to_apply" | "applied" | "ignored";
 export type CompanyReviewStatus = "pending" | "manual_not_fit";
+export type CollectionMethod = "manual" | "automatic";
 export type CommunicationStatus =
   | "not_contacted"
   | "greeted_unread"
@@ -309,6 +218,11 @@ export const COMMUNICATION_STATUS_LABELS: Record<CommunicationStatus, string> = 
   replied: "已回复",
   rejected: "已拒绝",
   manual_not_fit: "手动不合适",
+};
+
+export const COLLECTION_METHOD_LABELS: Record<CollectionMethod, string> = {
+  manual: "手动",
+  automatic: "自动",
 };
 
 export const JOB_BLACKLIST_KIND_LABELS: Record<BlacklistKind, string> = {

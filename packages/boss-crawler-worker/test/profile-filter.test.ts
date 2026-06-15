@@ -63,4 +63,38 @@ describe("Boss profile filter", () => {
     assert.ok(blockedResult.blocked_by.some((hit) => hit.rule_type === "source_platform"));
     assert.match(blockedResult.blocked_by[0]?.reason ?? "", /Boss 列表项来源不在允许平台内/);
   });
+
+  it("filters Boss list items by recruiter active status when the payload exposes it", () => {
+    const activeItem = {
+      securityId: "boss-go-sre-001",
+      jobName: "Go SRE 工程师",
+      cityName: "北京",
+      salaryDesc: "35-55K",
+      experienceName: "3-5年",
+      degreeName: "本科",
+      bossInfo: { activeTimeDesc: "今日活跃" },
+    };
+    const staleItem = {
+      ...activeItem,
+      securityId: "boss-go-sre-002",
+      bossInfo: { activeTimeDesc: "半年前活跃" },
+    };
+
+    const requiredRecent = normalizeBossProfileFilter({
+      profile: { requiredBossActiveStatuses: ["今日活跃", "刚刚活跃"] },
+    });
+    const excludedStale = normalizeBossProfileFilter({
+      profile: { excludedBossActiveStatuses: ["半年前活跃"] },
+    });
+
+    assert.equal(evaluateBossProfileFilter(activeItem, requiredRecent).eligible, true);
+
+    const requiredResult = evaluateBossProfileFilter(staleItem, requiredRecent);
+    assert.equal(requiredResult.eligible, false);
+    assert.ok(requiredResult.blocked_by.some((hit) => hit.rule_type === "required_boss_active_status"));
+
+    const excludedResult = evaluateBossProfileFilter(staleItem, excludedStale);
+    assert.equal(excludedResult.eligible, false);
+    assert.ok(excludedResult.blocked_by.some((hit) => hit.rule_type === "excluded_boss_active_status"));
+  });
 });

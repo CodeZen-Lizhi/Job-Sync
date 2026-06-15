@@ -76,8 +76,8 @@ const source = computed(() => {
   const trimmed = q.trim().toLowerCase();
   return trimmed ? trimmed : null;
 });
-const isTop20Source = computed(() => source.value === "top20");
-const top20ContextJobs = computed(() => selectedJobs.value.slice(0, 5));
+const isCandidateSource = computed(() => source.value === "top20" || source.value === "candidates");
+const candidateContextJobs = computed(() => selectedJobs.value.slice(0, 5));
 
 const errorTitle = computed(() => describeAiFailure(error.value).title);
 const errorHint = computed(() => describeAiFailure(error.value).hint);
@@ -126,8 +126,8 @@ function retryAnalyzeGroup(): void {
 }
 
 async function routeAfterResumeAnalysis(): Promise<void> {
-  if (isTop20Source.value) {
-    await router.push({ path: "/jobs", query: { review: "top20", analysis: "resume" } });
+  if (isCandidateSource.value) {
+    await router.push({ path: "/jobs" });
     return;
   }
   await router.push({ path: "/ai-reports", query: { open: "latest" } });
@@ -242,11 +242,11 @@ onMounted(() => {
     <AiJobPicker :tauri="tauri" :job-id="jobId" />
 
     <div
-      v-if="isTop20Source"
+      v-if="isCandidateSource"
       class="ui-panel-muted space-y-2 p-4"
     >
       <div class="flex flex-wrap items-center gap-2">
-        <span class="ui-badge bg-sky-400/10 text-sky-300 ring-sky-400/20">Top 20 候选岗位</span>
+        <span class="ui-badge bg-sky-400/10 text-sky-300 ring-sky-400/20">候选岗位</span>
         <span v-if="selectedJobs.length" class="text-sm font-medium text-content-primary">
           已载入 {{ selectedJobs.length }} 个候选岗位
         </span>
@@ -261,8 +261,8 @@ onMounted(() => {
         <div class="text-xs font-semibold text-content-secondary">候选上下文</div>
         <div class="grid gap-2 lg:grid-cols-2">
           <div
-            v-for="job in top20ContextJobs"
-            :key="`top20-context-${job.encrypt_job_id}`"
+            v-for="job in candidateContextJobs"
+            :key="`candidate-context-${job.encrypt_job_id}`"
             class="rounded-lg bg-card/70 p-3 text-xs ring-1 ring-border/10"
           >
             <div class="truncate font-medium text-content-primary">
@@ -281,8 +281,8 @@ onMounted(() => {
             </div>
           </div>
         </div>
-        <div v-if="selectedJobs.length > top20ContextJobs.length" class="text-xs text-content-muted">
-          其余 {{ selectedJobs.length - top20ContextJobs.length }} 个候选岗位已载入，将一并参与分析。
+        <div v-if="selectedJobs.length > candidateContextJobs.length" class="text-xs text-content-muted">
+          其余 {{ selectedJobs.length - candidateContextJobs.length }} 个候选岗位已载入，将一并参与分析。
         </div>
       </div>
     </div>

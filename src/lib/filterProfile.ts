@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from "vue";
+import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 
 import {
   DEFAULT_ACCEPT_NEGOTIABLE_SALARY,
@@ -28,6 +28,10 @@ function sameSet(left: readonly string[], right: readonly string[]): boolean {
   return left.every((item) => normalizedRight.has(item.trim().toLowerCase()));
 }
 
+function normalizeSourcePlatforms(platforms: readonly string[]): string[] {
+  return Array.from(new Set(platforms.map((item) => item.trim().toLowerCase()).filter(Boolean)));
+}
+
 export type FilterProfileState = {
   filterProfiles: Ref<FilterProfileRecord[]>;
   activeFilterProfileId: Ref<string>;
@@ -49,6 +53,9 @@ export type FilterProfileState = {
   targetCitiesText: Ref<string>;
   excludedCitiesText: Ref<string>;
   sourcePlatformsText: Ref<string>;
+  selectedSourcePlatforms: Ref<string[]>;
+  requiredBossActiveStatusesText: Ref<string>;
+  excludedBossActiveStatusesText: Ref<string>;
   sourcePlatformModeLabel: ComputedRef<string>;
   sourcePlatformModeHint: ComputedRef<string>;
   sourcePlatformOptions: readonly JobSourcePlatformOption[];
@@ -109,6 +116,8 @@ export function useFilterProfile() {
   const targetCitiesText = ref("");
   const excludedCitiesText = ref("");
   const sourcePlatformsText = ref(DEFAULT_SOURCE_PLATFORMS.join("\n"));
+  const requiredBossActiveStatusesText = ref("");
+  const excludedBossActiveStatusesText = ref("");
   const communicationStatusesText = ref(DEFAULT_COMMUNICATION_STATUSES.join("\n"));
   const minimumSalaryK = ref<number | null>(null);
   const maximumSalaryK = ref<number | null>(null);
@@ -140,21 +149,20 @@ export function useFilterProfile() {
   const newFilterProfileName = ref("");
   const activeFilterProfile = computed(() => filterProfiles.value.find((profile) => profile.id === activeFilterProfileId.value) ?? null);
   const activeFilterProfileIsDefault = computed(() => activeFilterProfile.value?.is_default === true);
-  const selectedSourcePlatforms = computed(() =>
-    Array.from(new Set(parseList(sourcePlatformsText.value).map((item) => item.trim().toLowerCase()).filter(Boolean))),
-  );
+  const selectedSourcePlatforms = ref<string[]>([...DEFAULT_SOURCE_PLATFORMS]);
+  const normalizedSourcePlatforms = computed(() => normalizeSourcePlatforms(selectedSourcePlatforms.value));
   const sourcePlatformModeLabel = computed(() => {
-    const selected = selectedSourcePlatforms.value;
+    const selected = normalizedSourcePlatforms.value;
     if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "Boss-only";
-    if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "手动导入来源";
+    if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "外部保留来源";
     if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "全来源";
     return selected.length > 0 ? "自定义来源" : "未限制来源";
   });
   const sourcePlatformModeHint = computed(() => {
-    const selected = selectedSourcePlatforms.value;
+    const selected = normalizedSourcePlatforms.value;
     if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "只允许 Boss 岗位进入筛选和 Top 20；保存画像并重算后对已有岗位生效。";
-    if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "只允许手动导入平台进入筛选和 Top 20；保存画像并重算后对已有岗位生效。";
-    if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许 Boss 和所有手动导入平台进入筛选和 Top 20；保存画像并重算后生效。";
+    if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "只允许非 Boss 保留来源岗位进入筛选和 Top 20；保存画像并重算后对已有岗位生效。";
+    if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许 Boss 和所有外部保留来源岗位进入筛选和 Top 20；保存画像并重算后生效。";
     if (selected.length > 0) return `当前允许来源：${selected.join("、")}；保存画像并重算后生效。`;
     return "来源为空时不会按来源限制岗位；保存画像并重算后生效。";
   });
@@ -174,7 +182,9 @@ export function useFilterProfile() {
     preferenceWorkModes: parseList(preferenceWorkModesText.value),
     targetCities: parseList(targetCitiesText.value),
     excludedCities: parseList(excludedCitiesText.value),
-    sourcePlatforms: parseList(sourcePlatformsText.value),
+    sourcePlatforms: normalizedSourcePlatforms.value,
+    requiredBossActiveStatuses: parseList(requiredBossActiveStatusesText.value),
+    excludedBossActiveStatuses: parseList(excludedBossActiveStatusesText.value),
     communicationStatuses: parseList(communicationStatusesText.value),
     minimumSalaryK: normalizeOptionalNumber(minimumSalaryK.value),
     maximumSalaryK: normalizeOptionalNumber(maximumSalaryK.value),
@@ -228,7 +238,9 @@ export function useFilterProfile() {
     preferenceWorkModesText.value = formatList(json.preferenceWorkModes);
     targetCitiesText.value = formatList(json.targetCities);
     excludedCitiesText.value = formatList(json.excludedCities);
-    sourcePlatformsText.value = Array.isArray(json.sourcePlatforms) ? json.sourcePlatforms.join("\n") : DEFAULT_SOURCE_PLATFORMS.join("\n");
+    setSourcePlatforms(Array.isArray(json.sourcePlatforms) ? json.sourcePlatforms : DEFAULT_SOURCE_PLATFORMS);
+    requiredBossActiveStatusesText.value = formatList(json.requiredBossActiveStatuses);
+    excludedBossActiveStatusesText.value = formatList(json.excludedBossActiveStatuses);
     communicationStatusesText.value = Array.isArray(json.communicationStatuses)
       ? json.communicationStatuses.join("\n")
       : DEFAULT_COMMUNICATION_STATUSES.join("\n");
@@ -262,7 +274,8 @@ export function useFilterProfile() {
   }
 
   function setSourcePlatforms(platforms: readonly string[]): void {
-    sourcePlatformsText.value = platforms.join("\n");
+    selectedSourcePlatforms.value = normalizeSourcePlatforms(platforms);
+    sourcePlatformsText.value = selectedSourcePlatforms.value.join("\n");
   }
 
   function setBossOnlySourcePlatforms(): void {
@@ -276,6 +289,18 @@ export function useFilterProfile() {
   function setAllSourcePlatforms(): void {
     setSourcePlatforms(JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value));
   }
+
+  watch(sourcePlatformsText, (value) => {
+    const parsed = normalizeSourcePlatforms(parseList(value));
+    if (sameSet(parsed, selectedSourcePlatforms.value)) return;
+    selectedSourcePlatforms.value = parsed;
+  });
+
+  watch(selectedSourcePlatforms, (value) => {
+    const text = normalizeSourcePlatforms(value).join("\n");
+    if (sourcePlatformsText.value === text) return;
+    sourcePlatformsText.value = text;
+  });
 
   async function loadFilterProfiles(): Promise<FilterProfileRecord[]> {
     if (!tauri) return [];
@@ -387,6 +412,9 @@ export function useFilterProfile() {
     targetCitiesText,
     excludedCitiesText,
     sourcePlatformsText,
+    selectedSourcePlatforms,
+    requiredBossActiveStatusesText,
+    excludedBossActiveStatusesText,
     sourcePlatformModeLabel,
     sourcePlatformModeHint,
     sourcePlatformOptions: JOB_SOURCE_PLATFORM_OPTIONS,

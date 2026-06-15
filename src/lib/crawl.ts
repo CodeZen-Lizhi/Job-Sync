@@ -11,7 +11,7 @@ export type JobSourcePlatform = "boss" | "liepin" | "zhilian" | "maimai" | "v2ex
 export type JobSourcePlatformOption = {
   value: JobSourcePlatform;
   label: string;
-  adapterKind: "boss" | "manual_import";
+  adapterKind: "boss" | "feed" | "manual_import";
 };
 export type FilterProfilePayload = {
   mustKeywords: string[];
@@ -29,6 +29,8 @@ export type FilterProfilePayload = {
   targetCities: string[];
   excludedCities: string[];
   sourcePlatforms: string[];
+  requiredBossActiveStatuses: string[];
+  excludedBossActiveStatuses: string[];
   communicationStatuses: string[];
   minimumSalaryK: number | null;
   maximumSalaryK: number | null;
@@ -79,13 +81,16 @@ export const DEFAULT_MUST_NOT_KEYWORDS = ["外包", "驻场", "培训", "销售"
 export const DEFAULT_PREFERENCE_DIRECTIONS = ["Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"];
 export const DEFAULT_PREFERENCE_TECH_TAGS = ["Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI/CD", "Terraform"];
 export const BOSS_SOURCE_PLATFORM: JobSourcePlatform = "boss";
-export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "zhilian", "maimai", "v2ex", "linuxdo"] as const;
+export const V2EX_SOURCE_PLATFORM: JobSourcePlatform = "v2ex";
+export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "zhilian", "maimai", "linuxdo"] as const;
+export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM] as const;
+export const DEFAULT_V2EX_FEED_URL = "https://www.v2ex.com/feed/tab/jobs.xml";
 export const JOB_SOURCE_PLATFORM_OPTIONS: JobSourcePlatformOption[] = [
   { value: BOSS_SOURCE_PLATFORM, label: "Boss 直聘", adapterKind: "boss" },
   { value: "liepin", label: "猎聘", adapterKind: "manual_import" },
   { value: "zhilian", label: "智联招聘", adapterKind: "manual_import" },
   { value: "maimai", label: "脉脉", adapterKind: "manual_import" },
-  { value: "v2ex", label: "V2EX", adapterKind: "manual_import" },
+  { value: V2EX_SOURCE_PLATFORM, label: "V2EX", adapterKind: "feed" },
   { value: "linuxdo", label: "LinuxDo", adapterKind: "manual_import" },
 ];
 export const DEFAULT_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM];

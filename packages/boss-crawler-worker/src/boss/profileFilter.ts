@@ -28,6 +28,8 @@ export type BossProfileFilter = {
   targetCities: string[];
   excludedCities: string[];
   sourcePlatforms: string[];
+  requiredBossActiveStatuses: string[];
+  excludedBossActiveStatuses: string[];
   communicationStatuses: string[];
   minimumSalaryK: number | null;
   maximumSalaryK: number | null;
@@ -92,6 +94,18 @@ const PREFERENCE_WORK_MODE_KEYS = [
 const TARGET_CITY_KEYS = ["targetCities", "target_cities", "allowedCities", "allowed_cities"];
 const EXCLUDED_CITY_KEYS = ["excludedCities", "excluded_cities", "blockedCities", "blocked_cities"];
 const SOURCE_PLATFORM_KEYS = ["sourcePlatforms", "source_platforms", "allowedSourcePlatforms", "allowed_source_platforms"];
+const REQUIRED_BOSS_ACTIVE_STATUS_KEYS = [
+  "requiredBossActiveStatuses",
+  "required_boss_active_statuses",
+  "allowedBossActiveStatuses",
+  "allowed_boss_active_statuses",
+];
+const EXCLUDED_BOSS_ACTIVE_STATUS_KEYS = [
+  "excludedBossActiveStatuses",
+  "excluded_boss_active_statuses",
+  "blockedBossActiveStatuses",
+  "blocked_boss_active_statuses",
+];
 const COMMUNICATION_STATUS_KEYS = [
   "communicationStatuses",
   "communication_statuses",
@@ -233,6 +247,8 @@ export function normalizeBossProfileFilter(raw: unknown): BossProfileFilter {
     targetCities: pickLists(profile, TARGET_CITY_KEYS),
     excludedCities: pickLists(profile, EXCLUDED_CITY_KEYS),
     sourcePlatforms: normalizeSources(pickLists(profile, SOURCE_PLATFORM_KEYS)),
+    requiredBossActiveStatuses: pickLists(profile, REQUIRED_BOSS_ACTIVE_STATUS_KEYS),
+    excludedBossActiveStatuses: pickLists(profile, EXCLUDED_BOSS_ACTIVE_STATUS_KEYS),
     communicationStatuses: normalizeStatuses(pickLists(profile, COMMUNICATION_STATUS_KEYS)),
     minimumSalaryK: pickNumber(profile, ["minimumSalaryK", "minimum_salary_k", "minSalaryK", "min_salary_k"]),
     maximumSalaryK: pickNumber(profile, ["maximumSalaryK", "maximum_salary_k", "maxSalaryK", "max_salary_k"]),
@@ -353,6 +369,52 @@ function getStringField(item: unknown, keys: string[]): string {
   return "";
 }
 
+function getTextPath(item: unknown, path: string[]): string {
+  let cursor = item;
+  for (const key of path) {
+    if (!cursor || typeof cursor !== "object") return "";
+    cursor = (cursor as Record<string, unknown>)[key];
+  }
+  if (typeof cursor === "string") return cursor.trim();
+  if (typeof cursor === "boolean") return cursor ? "在线" : "离线";
+  if (typeof cursor === "number" && Number.isFinite(cursor)) return String(cursor);
+  return "";
+}
+
+function getBossActiveStatus(item: unknown): string {
+  const paths = [
+    ["bossActiveTimeDesc"],
+    ["bossActiveStatus"],
+    ["bossActiveDesc"],
+    ["activeTimeDesc"],
+    ["lastLoginTimeDesc"],
+    ["bossOnlineDesc"],
+    ["onlineDesc"],
+    ["bossOnline"],
+    ["online"],
+    ["bossInfo", "bossActiveTimeDesc"],
+    ["bossInfo", "bossActiveStatus"],
+    ["bossInfo", "bossActiveDesc"],
+    ["bossInfo", "activeTimeDesc"],
+    ["bossInfo", "lastLoginTimeDesc"],
+    ["bossInfo", "bossOnlineDesc"],
+    ["bossInfo", "onlineDesc"],
+    ["bossInfo", "bossOnline"],
+    ["bossInfo", "online"],
+    ["jobInfo", "bossActiveTimeDesc"],
+    ["jobInfo", "bossActiveStatus"],
+    ["jobInfo", "bossActiveDesc"],
+    ["jobInfo", "activeTimeDesc"],
+    ["jobInfo", "lastLoginTimeDesc"],
+    ["jobInfo", "bossOnline"],
+  ];
+  for (const path of paths) {
+    const value = getTextPath(item, path);
+    if (value) return value;
+  }
+  return "";
+}
+
 function parseSalaryRange(salaryDesc: string): { minK: number | null; maxK: number | null; negotiable: boolean } {
   const lower = salaryDesc.toLowerCase();
   const negotiable = lower.includes("面议") || lower.includes("negotiable");
@@ -391,6 +453,7 @@ export function evaluateBossProfileFilter(
   const salaryDesc = getStringField(item, ["salaryDesc", "salary_desc", "salary"]);
   const experienceName = getStringField(item, ["experienceName", "experience_name", "experience"]);
   const degreeName = getStringField(item, ["degreeName", "degree_name", "degree"]);
+  const bossActiveStatus = getBossActiveStatus(item);
   const salaryRange = parseSalaryRange(salaryDesc);
   const experienceRange = parseExperienceRange(experienceName);
   const sourcePlatform = "boss";
@@ -502,6 +565,25 @@ export function evaluateBossProfileFilter(
       field: "source_platform",
       value: filter.sourcePlatforms.join(","),
       reason: `Boss 列表项来源不在允许平台内：${filter.sourcePlatforms.join("、")}`,
+    });
+  }
+  if (
+    filter.requiredBossActiveStatuses.length > 0 &&
+    !filter.requiredBossActiveStatuses.some((status) => textMatchesRule(bossActiveStatus, status))
+  ) {
+    blocked_by.push({
+      rule_type: "required_boss_active_status",
+      field: "boss_active_status",
+      value: bossActiveStatus,
+      reason: `Boss 活跃状态不在要求范围内：${filter.requiredBossActiveStatuses.join("、")}`,
+    });
+  }
+  for (const status of filter.excludedBossActiveStatuses.filter((status) => textMatchesRule(bossActiveStatus, status))) {
+    blocked_by.push({
+      rule_type: "excluded_boss_active_status",
+      field: "boss_active_status",
+      value: bossActiveStatus,
+      reason: `Boss 活跃状态命中排除项：${status}`,
     });
   }
   if (filter.minimumSalaryK !== null || filter.maximumSalaryK !== null) {
@@ -629,6 +711,8 @@ export function hasBossProfileFilter(filter: BossProfileFilter): boolean {
     filter.targetCities.length > 0 ||
     filter.excludedCities.length > 0 ||
     filter.sourcePlatforms.length > 0 ||
+    filter.requiredBossActiveStatuses.length > 0 ||
+    filter.excludedBossActiveStatuses.length > 0 ||
     filter.communicationStatuses.length > 0 ||
     filter.minimumSalaryK !== null ||
     filter.maximumSalaryK !== null ||

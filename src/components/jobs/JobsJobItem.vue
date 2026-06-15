@@ -3,6 +3,7 @@ import { computed, toRefs } from "vue";
 import {
   companyRiskFlagLabel,
   companyReviewStatusLabel,
+  COLLECTION_METHOD_LABELS,
   communicationStatusLabel,
   formatFilterReasonSummary,
   formatScoreReasonSummary,
@@ -70,7 +71,7 @@ const emit = defineEmits<{
   (e: "copy-link", job: JobRow): void;
   (e: "open-source-url", job: JobRow): void;
   (e: "delete", job: JobRow): void;
-  (e: "open-filter-profile", job: JobRow): void;
+  (e: "open-filter-profile-config", job: JobRow): void;
   (e: "open-blacklist-management", job: JobRow): void;
   (e: "update-review", job: JobRow, status: ReviewStatus): void;
   (e: "restore-review-candidate", job: JobRow): void;
@@ -219,8 +220,8 @@ const filterNextActions = computed<FilterNextAction[]>(() => {
   if (hasProfileFilter.value) {
     actions.push({
       key: "filter-profile",
-      label: "调整画像",
-      title: "跳到筛选画像，调整必须满足、必须排除或偏好条件后重新计算",
+      label: "去采集配置",
+      title: "跳到采集配置，统一调整筛选画像后重新计算",
     });
   }
   if (hasBlacklistFilter.value) {
@@ -364,7 +365,7 @@ const communicationActions: Array<{ status: CommunicationStatus; label: string }
 function triggerFilterNextAction(action: FilterNextAction): void {
   switch (action.key) {
     case "filter-profile":
-      emit("open-filter-profile", props.job);
+      emit("open-filter-profile-config", props.job);
       return;
     case "blacklist":
       emit("open-blacklist-management", props.job);
@@ -432,6 +433,9 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
         <span class="truncate text-sm font-medium text-content-primary" style="max-width: 220px;">{{ job.position_name ?? '-' }}</span>
         <span class="truncate text-sm text-content-secondary" style="max-width: 160px;">{{ job.brand_name ?? '-' }}</span>
         <span v-if="job.boss_name" class="truncate text-xs text-content-muted" style="max-width: 120px;">{{ job.boss_name }}</span>
+        <span v-if="job.boss_active_status" class="ui-badge bg-sky-400/10 text-sky-300 ring-sky-400/20">
+          {{ job.boss_active_status }}
+        </span>
         <span class="ui-badge">{{ job.city_name ?? '-' }}</span>
         <span class="ui-badge bg-emerald-400/10 text-emerald-300 ring-emerald-400/20">{{ job.salary_desc ?? '-' }}</span>
         <span
@@ -516,7 +520,8 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
         <div class="flex flex-wrap items-center gap-2 text-xs text-content-muted">
           <span class="font-medium text-content-secondary">审核：{{ reviewStatusLabel(job.review_status) }}</span>
           <span>沟通：{{ communicationStatusLabel(job.communication_status) }}</span>
-          <span>来源：{{ job.source_platform || 'boss' }}</span>
+          <span>平台：{{ job.source_platform || 'boss' }}</span>
+          <span>方式：{{ COLLECTION_METHOD_LABELS[job.collection_method] ?? job.collection_method }}</span>
           <span
             v-if="job.dedup_key"
             class="inline-block truncate align-bottom"
@@ -579,6 +584,7 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
               <div v-if="filterDimensions.detected_work_modes?.length">工作方式：{{ filterDimensions.detected_work_modes.join("、") }}</div>
               <div v-if="filterDimensions.city_name">城市：{{ filterDimensions.city_name }}</div>
               <div v-if="filterDimensions.source_platform">来源：{{ filterDimensions.source_platform }}</div>
+              <div v-if="filterDimensions.boss_active_status">Boss 活跃：{{ filterDimensions.boss_active_status }}</div>
               <div v-if="filterDimensions.review_status && filterDimensions.review_status !== 'pending'">审核：{{ reviewStatusLabel(filterDimensions.review_status as ReviewStatus) }}</div>
               <div v-if="filterDimensions.communication_status">沟通：{{ filterDimensions.communication_status }}</div>
               <div v-if="filterDimensions.company_review_status && filterDimensions.company_review_status !== 'pending'">公司状态：{{ companyReviewStatusLabel(filterDimensions.company_review_status as CompanyReviewStatus) }}</div>
@@ -866,6 +872,8 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
         </div>
         <div class="flex flex-wrap gap-x-4 gap-y-1 border-t border-border/10 pt-2 text-xs text-content-muted">
           <span>最后采集: {{ formatDate(job.last_seen_at) }}</span>
+          <span>方式: {{ COLLECTION_METHOD_LABELS[job.collection_method] ?? job.collection_method }}</span>
+          <span v-if="job.boss_active_status">Boss 活跃: {{ job.boss_active_status }}</span>
           <span>审核: {{ reviewStatusLabel(job.review_status) }}</span>
           <span>沟通: {{ communicationStatusLabel(job.communication_status) }}</span>
           <span>Final Score: {{ formatScore(job.final_score) }}</span>

@@ -89,6 +89,10 @@ export function applySidecarEvent(evt: SidecarEvent): void {
       runtime.progress.captured_job_detail += 1;
       runtime.lastDetailCapturedId = evt.payload.encrypt_job_id;
       return;
+    case "JOB_NORMALIZED_CAPTURED":
+      runtime.progress.captured_job_detail += 1;
+      runtime.lastDetailCapturedId = evt.payload.encrypt_job_id;
+      return;
     case "JOB_FILTERED": {
       runtime.progress.filtered_job += 1;
       const job = evt.payload.encrypt_job_id ? ` ${evt.payload.encrypt_job_id}` : "";

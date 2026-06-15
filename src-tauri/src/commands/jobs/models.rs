@@ -60,10 +60,12 @@ impl ScoreWeights {
 pub struct JobRow {
     pub encrypt_job_id: String,
     pub source_platform: String,
+    pub collection_method: String,
     pub source_url: Option<String>,
     pub dedup_key: Option<String>,
     pub position_name: Option<String>,
     pub boss_name: Option<String>,
+    pub boss_active_status: Option<String>,
     pub brand_name: Option<String>,
     pub city_name: Option<String>,
     pub salary_desc: Option<String>,
@@ -108,6 +110,14 @@ pub struct JobBlacklistEntry {
     pub value: String,
     pub reason: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JobCandidatePage {
+    pub jobs: Vec<JobRow>,
+    pub total: i64,
+    pub limit: u32,
+    pub offset: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -173,6 +183,13 @@ pub(super) fn map_job_row_with_score_weights(
     let cached_risk_flags_json: Option<String> = row.get(31)?;
     let cached_evidence_json: Option<String> = row.get(32)?;
     let cached_company_confidence = row.get::<_, Option<f64>>(33)?.map(clamp_confidence);
+    let collection_method = if row.as_ref().column_count() > 38 {
+        row.get::<_, Option<String>>(38)?
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "manual".to_string())
+    } else {
+        "manual".to_string()
+    };
     let score = compute_score_projection(
         resume_match_score,
         resume_result_json.as_deref(),
@@ -188,6 +205,7 @@ pub(super) fn map_job_row_with_score_weights(
     Ok(JobRow {
         encrypt_job_id: row.get(0)?,
         source_platform: row.get(1)?,
+        collection_method,
         source_url: row.get(2)?,
         dedup_key: row.get(3)?,
         position_name: row.get(4)?,
@@ -217,6 +235,7 @@ pub(super) fn map_job_row_with_score_weights(
         company_negative_communication_count: row.get(34)?,
         latest_company_negative_communication_status: row.get(35)?,
         latest_company_negative_communication_at: row.get(36)?,
+        boss_active_status: row.get(37)?,
         resume_match_score,
         preference_score: score.preference_score,
         company_score: score.company_score,

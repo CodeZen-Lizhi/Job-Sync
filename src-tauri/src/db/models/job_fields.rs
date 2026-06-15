@@ -1,11 +1,12 @@
 use serde_json::Value;
 
-use super::common::{json_get_str, json_get_text};
+use super::common::json_get_str;
 
 #[derive(Debug, Default)]
 pub(super) struct JobFields {
     pub position_name: Option<String>,
     pub boss_name: Option<String>,
+    pub boss_active_status: Option<String>,
     pub brand_name: Option<String>,
     pub city_name: Option<String>,
     pub salary_desc: Option<String>,
@@ -26,6 +27,7 @@ pub(super) fn extract_job_fields_from_list_item(item: &Value) -> JobFields {
             .or_else(|| json_get_str(item, &["bossInfo", "bossName"]))
             .or_else(|| json_get_str(item, &["bossName"]))
             .map(|value| value.to_string()),
+        boss_active_status: extract_boss_active_status(item),
         brand_name: json_get_str(item, &["brandName"])
             .or_else(|| json_get_str(item, &["brandInfo", "brandName"]))
             .or_else(|| json_get_str(item, &["brandComInfo", "brandName"]))
@@ -67,6 +69,7 @@ pub(super) fn extract_job_fields_from_detail(zp_data: &Value) -> JobFields {
             .or_else(|| json_get_str(zp_data, &["bossInfo", "bossName"]))
             .or_else(|| json_get_str(zp_data, &["bossName"]))
             .map(|value| value.to_string()),
+        boss_active_status: extract_boss_active_status(zp_data),
         brand_name: json_get_str(zp_data, &["brandComInfo", "brandName"])
             .or_else(|| json_get_str(zp_data, &["brandInfo", "brandName"]))
             .or_else(|| json_get_str(zp_data, &["bossInfo", "brandName"]))
@@ -91,109 +94,58 @@ pub(super) fn extract_job_fields_from_detail(zp_data: &Value) -> JobFields {
     }
 }
 
-pub(super) fn extract_job_fields_from_external_source(payload: &Value) -> JobFields {
-    JobFields {
-        position_name: pick_text(
-            payload,
-            &[
-                &["position_name"],
-                &["positionName"],
-                &["job_name"],
-                &["jobName"],
-                &["title"],
-                &["name"],
-                &["jobInfo", "positionName"],
-                &["jobInfo", "jobName"],
-                &["job", "title"],
-            ],
-        ),
-        boss_name: pick_text(
-            payload,
-            &[
-                &["boss_name"],
-                &["bossName"],
-                &["recruiter"],
-                &["contact"],
-                &["contact_name"],
-                &["contactName"],
-                &["publisher"],
-                &["author"],
-                &["bossInfo", "name"],
-                &["bossInfo", "bossName"],
-            ],
-        ),
-        brand_name: pick_text(
-            payload,
-            &[
-                &["brand_name"],
-                &["brandName"],
-                &["company_name"],
-                &["companyName"],
-                &["company"],
-                &["employer"],
-                &["organization"],
-                &["org"],
-                &["brandInfo", "brandName"],
-                &["companyInfo", "companyName"],
-                &["company", "name"],
-            ],
-        ),
-        city_name: pick_text(
-            payload,
-            &[
-                &["city_name"],
-                &["cityName"],
-                &["city"],
-                &["location_name"],
-                &["locationName"],
-                &["location"],
-                &["address"],
-                &["jobInfo", "cityName"],
-                &["jobInfo", "locationName"],
-                &["job", "location"],
-            ],
-        ),
-        salary_desc: pick_text(
-            payload,
-            &[
-                &["salary_desc"],
-                &["salaryDesc"],
-                &["salary"],
-                &["compensation"],
-                &["pay"],
-                &["jobInfo", "salaryDesc"],
-                &["job", "salary"],
-            ],
-        ),
-        experience_name: pick_text(
-            payload,
-            &[
-                &["experience_name"],
-                &["experienceName"],
-                &["experience"],
-                &["jobExperience"],
-                &["years"],
-                &["jobInfo", "experienceName"],
-                &["job", "experience"],
-            ],
-        ),
-        degree_name: pick_text(
-            payload,
-            &[
-                &["degree_name"],
-                &["degreeName"],
-                &["degree"],
-                &["education"],
-                &["education_name"],
-                &["educationName"],
-                &["jobDegree"],
-                &["jobInfo", "degreeName"],
-                &["job", "education"],
-            ],
-        ),
+fn extract_boss_active_status(payload: &Value) -> Option<String> {
+    let candidates: &[&[&str]] = &[
+        &["bossActiveTimeDesc"],
+        &["bossActiveStatus"],
+        &["bossActiveDesc"],
+        &["activeTimeDesc"],
+        &["lastLoginTimeDesc"],
+        &["bossOnlineDesc"],
+        &["onlineDesc"],
+        &["bossOnline"],
+        &["online"],
+        &["bossInfo", "bossActiveTimeDesc"],
+        &["bossInfo", "bossActiveStatus"],
+        &["bossInfo", "bossActiveDesc"],
+        &["bossInfo", "activeTimeDesc"],
+        &["bossInfo", "lastLoginTimeDesc"],
+        &["bossInfo", "bossOnlineDesc"],
+        &["bossInfo", "onlineDesc"],
+        &["bossInfo", "bossOnline"],
+        &["bossInfo", "online"],
+        &["jobInfo", "bossActiveTimeDesc"],
+        &["jobInfo", "bossActiveStatus"],
+        &["jobInfo", "bossActiveDesc"],
+        &["jobInfo", "activeTimeDesc"],
+        &["jobInfo", "lastLoginTimeDesc"],
+        &["jobInfo", "bossOnline"],
+    ];
+
+    candidates
+        .iter()
+        .find_map(|path| json_get_text(payload, path))
+}
+
+fn json_get_text(value: &Value, path: &[&str]) -> Option<String> {
+    let mut cursor = value;
+    for key in path {
+        cursor = cursor.get(*key)?;
+    }
+    match cursor {
+        Value::String(text) => clean_text(text),
+        Value::Bool(true) => Some("在线".to_string()),
+        Value::Bool(false) => Some("离线".to_string()),
+        Value::Number(number) => clean_text(&number.to_string()),
+        _ => None,
     }
 }
 
-fn pick_text(payload: &Value, paths: &[&[&str]]) -> Option<String> {
-    paths.iter().find_map(|path| json_get_text(payload, path))
+fn clean_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }

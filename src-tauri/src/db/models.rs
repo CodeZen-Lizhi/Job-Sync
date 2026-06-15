@@ -21,10 +21,8 @@ pub(crate) use job_review::{
     upsert_job_review_state, BLACKLIST_KIND_COMPANY, BLACKLIST_KIND_JOB, BLACKLIST_KIND_KEYWORD,
 };
 pub(crate) use jobs::{
-    rebuild_all_job_fields, upsert_job_from_detail, upsert_job_from_external_source,
-    upsert_job_from_list_item,
+    rebuild_all_job_fields, upsert_job_from_detail, upsert_job_from_list_item,
+    upsert_job_from_normalized, NormalizedJobInput,
 };
-pub(crate) use source_adapter::{
-    is_supported_manual_import_platform, supported_job_source_adapters,
-};
+pub(crate) use source_adapter::supported_job_source_adapters;
 pub(crate) use source_links::insert_job_source_link;

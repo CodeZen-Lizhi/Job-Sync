@@ -13,6 +13,7 @@ import { SageTime } from "../../utils/sage-time.js";
 
 import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, normalizeFilters, readApiCode, readApiMessage, safeError, setLocalStorage, waitUntilApiOk, waitUntilNoRiskUrl } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
+import { runV2exFeedMode } from "../../v2ex/feed.js";
 
 function withFilteredJobListRaw(raw: any, jobs: any[]): any {
   if (!raw || typeof raw !== "object") return raw;
@@ -29,6 +30,11 @@ function withFilteredJobListRaw(raw: any, jobs: any[]): any {
 }
 
 export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeContext): Promise<void> {
+  if (payload.task.source_platform === "v2ex") {
+    await runV2exFeedMode(payload, ctx);
+    return;
+  }
+
   const keywords = payload.task.keywords ?? [];
   const limits = (payload.task.limits ?? {}) as any;
   const maxPages: number = typeof limits.maxPages === "number" ? limits.maxPages : 3;

@@ -40,10 +40,11 @@ BEGIN
     COALESCE(NEW.boss_name, ''),
     COALESCE(NEW.brand_name, ''),
     COALESCE(NEW.city_name, ''),
-    COALESCE(NEW.salary_desc, ''),
-    COALESCE(NEW.experience_name, ''),
-    COALESCE(NEW.degree_name, ''),
-    COALESCE(NEW.source_platform, '') || ' ' ||
+	    COALESCE(NEW.salary_desc, ''),
+	    COALESCE(NEW.experience_name, ''),
+	    COALESCE(NEW.degree_name, ''),
+	    COALESCE(NEW.boss_active_status, '') || ' ' ||
+	    COALESCE(NEW.source_platform, '') || ' ' ||
     COALESCE(NEW.source_url, '') || ' ' ||
     COALESCE(NEW.dedup_key, '') || ' ' ||
     COALESCE(NEW.jd_text, '') || ' ' ||
@@ -73,10 +74,11 @@ BEGIN
     COALESCE(NEW.boss_name, ''),
     COALESCE(NEW.brand_name, ''),
     COALESCE(NEW.city_name, ''),
-    COALESCE(NEW.salary_desc, ''),
-    COALESCE(NEW.experience_name, ''),
-    COALESCE(NEW.degree_name, ''),
-    COALESCE(NEW.source_platform, '') || ' ' ||
+	    COALESCE(NEW.salary_desc, ''),
+	    COALESCE(NEW.experience_name, ''),
+	    COALESCE(NEW.degree_name, ''),
+	    COALESCE(NEW.boss_active_status, '') || ' ' ||
+	    COALESCE(NEW.source_platform, '') || ' ' ||
     COALESCE(NEW.source_url, '') || ' ' ||
     COALESCE(NEW.dedup_key, '') || ' ' ||
     COALESCE(NEW.jd_text, '') || ' ' ||
@@ -112,10 +114,11 @@ BEGIN
     COALESCE(j.boss_name, ''),
     COALESCE(j.brand_name, ''),
     COALESCE(j.city_name, ''),
-    COALESCE(j.salary_desc, ''),
-    COALESCE(j.experience_name, ''),
-    COALESCE(j.degree_name, ''),
-    COALESCE(j.source_platform, '') || ' ' ||
+	    COALESCE(j.salary_desc, ''),
+	    COALESCE(j.experience_name, ''),
+	    COALESCE(j.degree_name, ''),
+	    COALESCE(j.boss_active_status, '') || ' ' ||
+	    COALESCE(j.source_platform, '') || ' ' ||
     COALESCE(j.source_url, '') || ' ' ||
     COALESCE(j.dedup_key, '') || ' ' ||
     COALESCE(j.jd_text, '') || ' ' ||
@@ -146,10 +149,11 @@ BEGIN
     COALESCE(j.boss_name, ''),
     COALESCE(j.brand_name, ''),
     COALESCE(j.city_name, ''),
-    COALESCE(j.salary_desc, ''),
-    COALESCE(j.experience_name, ''),
-    COALESCE(j.degree_name, ''),
-    COALESCE(j.source_platform, '') || ' ' ||
+	    COALESCE(j.salary_desc, ''),
+	    COALESCE(j.experience_name, ''),
+	    COALESCE(j.degree_name, ''),
+	    COALESCE(j.boss_active_status, '') || ' ' ||
+	    COALESCE(j.source_platform, '') || ' ' ||
     COALESCE(j.source_url, '') || ' ' ||
     COALESCE(j.dedup_key, '') || ' ' ||
     COALESCE(j.jd_text, '') || ' ' ||
@@ -178,10 +182,11 @@ SELECT
   COALESCE(j.boss_name, ''),
   COALESCE(j.brand_name, ''),
   COALESCE(j.city_name, ''),
-  COALESCE(j.salary_desc, ''),
-  COALESCE(j.experience_name, ''),
-  COALESCE(j.degree_name, ''),
-  COALESCE(j.source_platform, '') || ' ' ||
+	  COALESCE(j.salary_desc, ''),
+	  COALESCE(j.experience_name, ''),
+	  COALESCE(j.degree_name, ''),
+	  COALESCE(j.boss_active_status, '') || ' ' ||
+	  COALESCE(j.source_platform, '') || ' ' ||
   COALESCE(j.source_url, '') || ' ' ||
   COALESCE(j.dedup_key, '') || ' ' ||
   COALESCE(j.jd_text, '') || ' ' ||
@@ -248,6 +253,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
 
     // Forward-compatible, additive migrations for existing databases.
     add_column_if_missing(conn, "job", "boss_name", "TEXT")?;
+    add_column_if_missing(conn, "job", "boss_active_status", "TEXT")?;
     add_column_if_missing(
         conn,
         "job",
@@ -303,7 +309,6 @@ fn upsert_job_sources(conn: &Connection) -> Result<()> {
     ON CONFLICT(platform) DO UPDATE SET
       display_name = excluded.display_name,
       adapter_kind = excluded.adapter_kind,
-      enabled = excluded.enabled,
       updated_at = excluded.updated_at
     "#,
             rusqlite::params![
@@ -326,10 +331,11 @@ fn backfill_company_scores(conn: &Connection) -> Result<()> {
       COALESCE(j.boss_name, '') || ' ' ||
       COALESCE(j.brand_name, '') || ' ' ||
       COALESCE(j.city_name, '') || ' ' ||
-      COALESCE(j.salary_desc, '') || ' ' ||
-      COALESCE(j.experience_name, '') || ' ' ||
-      COALESCE(j.degree_name, '') || ' ' ||
-      COALESCE(d.zp_data_json, '')
+	      COALESCE(j.salary_desc, '') || ' ' ||
+	      COALESCE(j.experience_name, '') || ' ' ||
+	      COALESCE(j.degree_name, '') || ' ' ||
+	      COALESCE(j.boss_active_status, '') || ' ' ||
+	      COALESCE(d.zp_data_json, '')
     FROM job j
     LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
     WHERE j.brand_name IS NOT NULL AND trim(j.brand_name) != ''

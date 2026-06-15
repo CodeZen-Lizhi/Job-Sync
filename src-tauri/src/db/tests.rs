@@ -286,11 +286,12 @@ fn init_and_upsert_job_works() {
     let encrypt_job_id = "encrypt_123";
     let zp_data_json = r#"
     {
-      "jobInfo": {
-        "encryptJobId": "encrypt_123",
-        "securityId": "sec-upsert-123",
-        "positionName": "Rust 开发",
-        "salaryDesc": "20-40K",
+	        "jobInfo": {
+	          "encryptJobId": "encrypt_123",
+	          "securityId": "sec-upsert-123",
+	          "positionName": "Rust 开发",
+	          "bossActiveTimeDesc": "今日活跃",
+	          "salaryDesc": "20-40K",
         "experienceName": "3-5 年",
         "degreeName": "本科",
         "cityName": "北京",
@@ -307,11 +308,12 @@ fn init_and_upsert_job_works() {
     let mut stmt = conn
         .prepare(
             r#"
-      SELECT
-        position_name,
-        brand_name,
-        source_platform,
-        source_url,
+	      SELECT
+	        position_name,
+	        brand_name,
+	        boss_active_status,
+	        source_platform,
+	        source_url,
         dedup_key,
         jd_text,
         raw_payload_json
@@ -323,12 +325,14 @@ fn init_and_upsert_job_works() {
     let (
         position_name,
         brand_name,
+        boss_active_status,
         source_platform,
         source_url,
         dedup_key,
         jd_text,
         raw_payload_json,
     ): (
+        Option<String>,
         Option<String>,
         Option<String>,
         String,
@@ -346,12 +350,14 @@ fn init_and_upsert_job_works() {
                 row.get(4)?,
                 row.get(5)?,
                 row.get(6)?,
+                row.get(7)?,
             ))
         })
         .expect("query row");
 
     assert_eq!(position_name.as_deref(), Some("Rust 开发"));
     assert_eq!(brand_name.as_deref(), Some("某某科技"));
+    assert_eq!(boss_active_status.as_deref(), Some("今日活跃"));
     assert_eq!(source_platform, "boss");
     assert_eq!(
         source_url.as_deref(),
@@ -384,10 +390,11 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
 
     let encrypt_job_id = "encrypt_list_123";
     let item = json!({
-      "securityId": "list-sec-123",
-      "jobName": "Go SRE 工程师",
-      "bossName": "王女士",
-      "brandName": "Mock 云科技",
+          "securityId": "list-sec-123",
+          "jobName": "Go SRE 工程师",
+          "bossName": "王女士",
+          "bossActiveTimeDesc": "刚刚活跃",
+          "brandName": "Mock 云科技",
       "cityName": "深圳",
       "salaryDesc": "30-55K",
       "jobExperience": "3-5年",
@@ -401,6 +408,7 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
     let row: (
         Option<String>,
         Option<String>,
+        Option<String>,
         String,
         Option<String>,
         Option<String>,
@@ -409,10 +417,11 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
     ) = conn
         .query_row(
             r#"
-      SELECT
-        position_name,
-        brand_name,
-        source_platform,
+	      SELECT
+	        position_name,
+	        brand_name,
+	        boss_active_status,
+	        source_platform,
         source_url,
         dedup_key,
         jd_text,
@@ -430,6 +439,7 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
                     row.get(4)?,
                     row.get(5)?,
                     row.get(6)?,
+                    row.get(7)?,
                 ))
             },
         )
@@ -437,50 +447,52 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
 
     assert_eq!(row.0.as_deref(), Some("Go SRE 工程师"));
     assert_eq!(row.1.as_deref(), Some("Mock 云科技"));
-    assert_eq!(row.2, "boss");
+    assert_eq!(row.2.as_deref(), Some("刚刚活跃"));
+    assert_eq!(row.3, "boss");
     assert_eq!(
-        row.3.as_deref(),
+        row.4.as_deref(),
         Some("https://www.zhipin.com/job_detail/list-sec-123.html")
     );
-    assert_eq!(row.4.as_deref(), Some("list-sec-123"));
+    assert_eq!(row.5.as_deref(), Some("list-sec-123"));
     assert_eq!(
-        row.5.as_deref(),
+        row.6.as_deref(),
         Some("Go SRE 工程师 Mock 云科技 深圳 30-55K 3-5年 本科")
     );
-    let raw_payload = row.6.as_deref().unwrap_or_default();
+    let raw_payload = row.7.as_deref().unwrap_or_default();
     assert!(raw_payload.contains("\"securityId\":\"list-sec-123\""));
     assert!(raw_payload.contains("Kubernetes"));
 }
 
 #[test]
-fn upsert_job_from_external_source_maps_manual_import_payload_to_unified_fields() {
+fn upsert_job_from_normalized_writes_v2ex_unified_source_fields() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");
     let conn = init_db(&app_data_dir).expect("init db");
 
-    let payload = json!({
-      "job_id": "liepin-remote-123",
-      "job_url": "https://www.liepin.com/job/123.shtml",
-      "title": "Rust 平台工程师",
-      "company": "非 Boss 科技",
-      "city": "上海",
-      "salary": "30-50K",
-      "experience": "5-10年",
-      "education": "本科",
-      "recruiter": "李女士",
-      "description": "负责 Rust 平台工程和 Kubernetes 基础设施"
-    });
+    let input = models::NormalizedJobInput {
+        encrypt_job_id: "v2ex:123456".to_string(),
+        source_platform: "v2ex".to_string(),
+        source_url: Some("https://www.v2ex.com/t/123456".to_string()),
+        dedup_key: "123456".to_string(),
+        position_name: Some("远程 Go 平台工程师".to_string()),
+        boss_name: Some("alice".to_string()),
+        brand_name: None,
+        city_name: Some("远程".to_string()),
+        salary_desc: None,
+        experience_name: None,
+        degree_name: None,
+        jd_text: Some("远程 Go 平台工程师\n负责 Kubernetes 平台建设".to_string()),
+        raw_payload: json!({
+          "topicId": "123456",
+          "title": "远程 Go 平台工程师",
+          "classification": { "isJobPosting": true }
+        }),
+    };
 
-    let encrypt_job_id =
-        models::upsert_job_from_external_source(&conn, "liepin", &payload).expect("import job");
+    models::upsert_job_from_normalized(&conn, &input).expect("upsert normalized job");
 
     let row: (
         String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
         Option<String>,
         Option<String>,
         Option<String>,
@@ -495,16 +507,11 @@ fn upsert_job_from_external_source_maps_manual_import_payload_to_unified_fields(
         dedup_key,
         position_name,
         boss_name,
-        brand_name,
-        city_name,
-        salary_desc,
-        experience_name,
-        degree_name,
         jd_text
       FROM job
       WHERE encrypt_job_id = ?1
       "#,
-            [&encrypt_job_id],
+            ["v2ex:123456"],
             |row| {
                 Ok((
                     row.get(0)?,
@@ -513,87 +520,20 @@ fn upsert_job_from_external_source_maps_manual_import_payload_to_unified_fields(
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
-                    row.get(6)?,
-                    row.get(7)?,
-                    row.get(8)?,
-                    row.get(9)?,
-                    row.get(10)?,
                 ))
             },
         )
-        .expect("query imported job");
+        .expect("query normalized job");
 
-    assert!(encrypt_job_id.starts_with("external:liepin:"));
-    assert_eq!(row.0, "liepin");
+    assert_eq!(row.0, "v2ex");
+    assert_eq!(row.1.as_deref(), Some("https://www.v2ex.com/t/123456"));
+    assert_eq!(row.2.as_deref(), Some("123456"));
+    assert_eq!(row.3.as_deref(), Some("远程 Go 平台工程师"));
+    assert_eq!(row.4.as_deref(), Some("alice"));
     assert_eq!(
-        row.1.as_deref(),
-        Some("https://www.liepin.com/job/123.shtml")
+        row.5.as_deref(),
+        Some("远程 Go 平台工程师\n负责 Kubernetes 平台建设")
     );
-    assert_eq!(row.2.as_deref(), Some("liepin-remote-123"));
-    assert_eq!(row.3.as_deref(), Some("Rust 平台工程师"));
-    assert_eq!(row.4.as_deref(), Some("李女士"));
-    assert_eq!(row.5.as_deref(), Some("非 Boss 科技"));
-    assert_eq!(row.6.as_deref(), Some("上海"));
-    assert_eq!(row.7.as_deref(), Some("30-50K"));
-    assert_eq!(row.8.as_deref(), Some("5-10年"));
-    assert_eq!(row.9.as_deref(), Some("本科"));
-    assert_eq!(
-        row.10.as_deref(),
-        Some("负责 Rust 平台工程和 Kubernetes 基础设施")
-    );
-
-    let source_keyword: String = conn
-        .query_row(
-            "SELECT keyword FROM job_source_link WHERE encrypt_job_id = ?1",
-            [&encrypt_job_id],
-            |row| row.get(0),
-        )
-        .expect("query source link");
-    assert_eq!(source_keyword, "手动导入:liepin");
-}
-
-#[test]
-fn upsert_job_from_external_source_updates_duplicate_manual_import_job() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let app_data_dir = tmp.path().join("app-data");
-    let conn = init_db(&app_data_dir).expect("init db");
-
-    let first_payload = json!({
-      "job_id": "v2ex-topic-1",
-      "title": "Go 工程师",
-      "company": "社区团队"
-    });
-    let second_payload = json!({
-      "job_id": "v2ex-topic-1",
-      "title": "Go 平台工程师",
-      "company": "社区团队",
-      "city": "远程"
-    });
-
-    let first_id = models::upsert_job_from_external_source(&conn, "v2ex", &first_payload)
-        .expect("first import");
-    let second_id = models::upsert_job_from_external_source(&conn, "v2ex", &second_payload)
-        .expect("second import");
-
-    assert_eq!(first_id, second_id);
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM job WHERE source_platform = 'v2ex' AND dedup_key = 'v2ex-topic-1'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("count duplicate source");
-    let (position_name, city_name): (Option<String>, Option<String>) = conn
-        .query_row(
-            "SELECT position_name, city_name FROM job WHERE encrypt_job_id = ?1",
-            [&second_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .expect("query updated external job");
-
-    assert_eq!(count, 1);
-    assert_eq!(position_name.as_deref(), Some("Go 平台工程师"));
-    assert_eq!(city_name.as_deref(), Some("远程"));
 }
 
 #[test]
@@ -847,13 +787,18 @@ fn init_db_seeds_job_source_registry_with_manual_import_adapters() {
                 && adapter_kind == "boss"
                 && *enabled == 1
         }));
-    for platform in ["liepin", "linuxdo", "maimai", "v2ex", "zhilian"] {
+    for platform in ["liepin", "linuxdo", "maimai", "zhilian"] {
         assert!(sources
             .iter()
             .any(|(source_platform, _, adapter_kind, enabled)| {
                 source_platform == platform && adapter_kind == "manual_import" && *enabled == 1
             }));
     }
+    assert!(sources
+        .iter()
+        .any(|(source_platform, _, adapter_kind, enabled)| {
+            source_platform == "v2ex" && adapter_kind == "feed" && *enabled == 1
+        }));
     assert_eq!(
         sources
             .iter()
@@ -861,6 +806,30 @@ fn init_db_seeds_job_source_registry_with_manual_import_adapters() {
             .count(),
         6
     );
+}
+
+#[test]
+fn init_db_preserves_existing_job_source_enabled_choices() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    conn.execute(
+        "UPDATE job_sources SET enabled = 0 WHERE platform = 'boss'",
+        [],
+    )
+    .expect("disable boss source");
+    drop(conn);
+
+    let conn = init_db(&app_data_dir).expect("re-init db");
+    let enabled: i64 = conn
+        .query_row(
+            "SELECT enabled FROM job_sources WHERE platform = 'boss'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query boss source");
+
+    assert_eq!(enabled, 0);
 }
 
 #[test]
@@ -876,5 +845,8 @@ fn init_db_exposes_supported_job_source_adapter_spec() {
     assert!(spec.enabled_by_default);
     assert!(specs.iter().any(|spec| spec.platform == "liepin"
         && spec.adapter_kind == "manual_import"
+        && spec.enabled_by_default));
+    assert!(specs.iter().any(|spec| spec.platform == "v2ex"
+        && spec.adapter_kind == "feed"
         && spec.enabled_by_default));
 }

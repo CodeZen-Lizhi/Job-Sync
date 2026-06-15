@@ -10,8 +10,8 @@ use serde_json::{json, Value};
 use crate::{paths, settings};
 
 pub use models::{
-    CompanyScoreRebuildResult, JobBlacklistEntry, JobDailyIntelligence, JobRow, JobSourceEntry,
-    KeywordGroup,
+    CompanyScoreRebuildResult, JobBlacklistEntry, JobCandidatePage, JobDailyIntelligence, JobRow,
+    JobSourceEntry, KeywordGroup,
 };
 
 #[derive(Debug, serde::Serialize)]
@@ -29,6 +29,33 @@ pub fn list_jobs(
     offset: Option<u32>,
 ) -> Result<Vec<JobRow>, String> {
     queries::list_jobs(app, keyword, city, limit, offset)
+}
+
+#[tauri::command]
+pub fn list_job_candidates(
+    app: tauri::AppHandle,
+    query: Option<String>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    processed: Option<String>,
+    status_filters: Option<Vec<String>>,
+    source_platforms: Option<Vec<String>>,
+    collection_methods: Option<Vec<String>>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<JobCandidatePage, String> {
+    queries::list_job_candidates(
+        app,
+        query,
+        start_date,
+        end_date,
+        processed,
+        status_filters,
+        source_platforms,
+        collection_methods,
+        limit,
+        offset,
+    )
 }
 
 #[tauri::command]
@@ -106,6 +133,15 @@ pub fn list_job_sources(app: tauri::AppHandle) -> Result<Vec<JobSourceEntry>, St
 }
 
 #[tauri::command]
+pub fn set_job_source_enabled(
+    app: tauri::AppHandle,
+    platform: String,
+    enabled: bool,
+) -> Result<Vec<JobSourceEntry>, String> {
+    mutations::set_job_source_enabled(app, platform, enabled)
+}
+
+#[tauri::command]
 pub fn get_daily_job_intelligence(
     app: tauri::AppHandle,
     report_date: Option<String>,
@@ -158,15 +194,6 @@ pub fn rebuild_job_fields(app: tauri::AppHandle) -> Result<u64, String> {
 #[tauri::command]
 pub fn rebuild_company_scores(app: tauri::AppHandle) -> Result<CompanyScoreRebuildResult, String> {
     mutations::rebuild_company_scores(app)
-}
-
-#[tauri::command]
-pub fn import_external_job(
-    app: tauri::AppHandle,
-    platform: String,
-    payload: Value,
-) -> Result<JobRow, String> {
-    mutations::import_external_job(app, platform, payload)
 }
 
 #[tauri::command]

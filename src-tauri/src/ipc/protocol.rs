@@ -37,6 +37,9 @@ pub struct BossMetaSyncPayload {
 pub struct SearchTaskPayload {
     pub keywords: Vec<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_platform: Option<String>,
+    #[serde(default)]
     pub filters: Value,
     #[serde(default)]
     pub limits: Value,
@@ -237,6 +240,36 @@ pub struct JobDetailCapturedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobNormalizedCapturedPayload {
+    pub encrypt_job_id: String,
+    pub source_platform: String,
+    #[serde(default)]
+    pub source_url: Option<String>,
+    pub dedup_key: String,
+    #[serde(default)]
+    pub position_name: Option<String>,
+    #[serde(default)]
+    pub boss_name: Option<String>,
+    #[serde(default)]
+    pub brand_name: Option<String>,
+    #[serde(default)]
+    pub city_name: Option<String>,
+    #[serde(default)]
+    pub salary_desc: Option<String>,
+    #[serde(default)]
+    pub experience_name: Option<String>,
+    #[serde(default)]
+    pub degree_name: Option<String>,
+    #[serde(default)]
+    pub jd_text: Option<String>,
+    pub raw_payload: Value,
+    #[serde(default)]
+    pub keyword: Option<String>,
+    #[serde(default)]
+    pub filters: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobFilteredPayload {
     #[serde(default)]
     pub encrypt_job_id: Option<String>,
@@ -292,6 +325,8 @@ pub enum EventOut {
     JobListCaptured(JobListCapturedPayload),
     #[serde(rename = "JOB_DETAIL_CAPTURED")]
     JobDetailCaptured(JobDetailCapturedPayload),
+    #[serde(rename = "JOB_NORMALIZED_CAPTURED")]
+    JobNormalizedCaptured(JobNormalizedCapturedPayload),
     #[serde(rename = "JOB_FILTERED")]
     JobFiltered(JobFilteredPayload),
     #[serde(rename = "AI_RESULT")]

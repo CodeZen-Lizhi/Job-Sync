@@ -29,6 +29,8 @@ struct NormalizedFilterProfile {
     target_cities: Vec<String>,
     excluded_cities: Vec<String>,
     source_platforms: Vec<String>,
+    required_boss_active_statuses: Vec<String>,
+    excluded_boss_active_statuses: Vec<String>,
     communication_statuses: Vec<String>,
     minimum_salary_k: Option<f64>,
     maximum_salary_k: Option<f64>,
@@ -387,6 +389,24 @@ fn normalize_filter_profile(raw: &Value) -> NormalizedFilterProfile {
                 "allowed_source_platforms",
             ],
         )),
+        required_boss_active_statuses: pick_profile_lists(
+            profile,
+            &[
+                "requiredBossActiveStatuses",
+                "required_boss_active_statuses",
+                "allowedBossActiveStatuses",
+                "allowed_boss_active_statuses",
+            ],
+        ),
+        excluded_boss_active_statuses: pick_profile_lists(
+            profile,
+            &[
+                "excludedBossActiveStatuses",
+                "excluded_boss_active_statuses",
+                "blockedBossActiveStatuses",
+                "blocked_boss_active_statuses",
+            ],
+        ),
         communication_statuses: normalize_statuses(pick_profile_lists(
             profile,
             &[
@@ -887,6 +907,7 @@ fn evaluate_filter_profile_with_blacklist(
     let experience_name = string_field(job, "experience_name");
     let degree_name = string_field(job, "degree_name");
     let last_seen_at = string_field(job, "last_seen_at");
+    let boss_active_status = string_field(job, "boss_active_status");
     let detected_work_modes = detect_work_modes(&search_text);
     let salary_range = parse_salary_range(&salary_desc);
     let experience_range = parse_experience_range(&experience_name);
@@ -1155,6 +1176,37 @@ fn evaluate_filter_profile_with_blacklist(
         );
     }
 
+    if !profile.required_boss_active_statuses.is_empty()
+        && !profile
+            .required_boss_active_statuses
+            .iter()
+            .any(|status| text_matches_rule(&boss_active_status, status))
+    {
+        push_blocked(
+            &mut blocked_by,
+            "required_boss_active_status",
+            "boss_active_status",
+            &boss_active_status,
+            format!(
+                "Boss 活跃状态不在要求范围内：{}",
+                profile.required_boss_active_statuses.join("、")
+            ),
+        );
+    }
+    for status in profile
+        .excluded_boss_active_statuses
+        .iter()
+        .filter(|status| text_matches_rule(&boss_active_status, status))
+    {
+        push_blocked(
+            &mut blocked_by,
+            "excluded_boss_active_status",
+            "boss_active_status",
+            &boss_active_status,
+            format!("Boss 活跃状态命中排除项：{status}"),
+        );
+    }
+
     if !profile.communication_statuses.is_empty()
         && !profile
             .communication_statuses
@@ -1399,11 +1451,12 @@ fn evaluate_filter_profile_with_blacklist(
           "blocked_by": blocked_by,
           "matched_preferences": matched_preferences,
           "missing_preferences": missing_preferences,
-          "dimensions": {
-            "detected_work_modes": detected_work_modes,
-            "city_name": city_name,
-            "source_platform": source_platform,
-            "review_status": review_status,
+              "dimensions": {
+                "detected_work_modes": detected_work_modes,
+                "city_name": city_name,
+                "source_platform": source_platform,
+                "boss_active_status": boss_active_status,
+                "review_status": review_status,
             "communication_status": communication_status,
             "company_review_status": company_review_status,
             "salary": {
@@ -1500,6 +1553,7 @@ pub(crate) fn recompute_default_filter_profile_for_job_on_conn(
           'source_platform', COALESCE(NULLIF(j.source_platform, ''), 'boss'),
           'position_name', j.position_name,
           'boss_name', j.boss_name,
+          'boss_active_status', j.boss_active_status,
           'brand_name', j.brand_name,
           'city_name', j.city_name,
           'salary_desc', j.salary_desc,
@@ -1571,6 +1625,7 @@ fn recompute_filter_profile_on_conn(conn: &Connection) -> Result<u64, String> {
           'source_platform', COALESCE(NULLIF(j.source_platform, ''), 'boss'),
           'position_name', j.position_name,
           'boss_name', j.boss_name,
+          'boss_active_status', j.boss_active_status,
           'brand_name', j.brand_name,
           'city_name', j.city_name,
           'salary_desc', j.salary_desc,
@@ -1636,6 +1691,7 @@ pub(crate) fn recompute_missing_default_filter_profile_on_conn(
           'source_platform', COALESCE(NULLIF(j.source_platform, ''), 'boss'),
           'position_name', j.position_name,
           'boss_name', j.boss_name,
+          'boss_active_status', j.boss_active_status,
           'brand_name', j.brand_name,
           'city_name', j.city_name,
           'salary_desc', j.salary_desc,

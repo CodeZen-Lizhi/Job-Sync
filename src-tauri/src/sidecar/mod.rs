@@ -294,6 +294,48 @@ impl SidecarManager {
                                 }
                             }
                         }
+                        EventOut::JobNormalizedCaptured(payload) => {
+                            let filters_json = payload
+                                .filters
+                                .as_ref()
+                                .and_then(|v| serde_json::to_string(v).ok());
+                            let input = models::NormalizedJobInput {
+                                encrypt_job_id: payload.encrypt_job_id.clone(),
+                                source_platform: payload.source_platform.clone(),
+                                source_url: payload.source_url.clone(),
+                                dedup_key: payload.dedup_key.clone(),
+                                position_name: payload.position_name.clone(),
+                                boss_name: payload.boss_name.clone(),
+                                brand_name: payload.brand_name.clone(),
+                                city_name: payload.city_name.clone(),
+                                salary_desc: payload.salary_desc.clone(),
+                                experience_name: payload.experience_name.clone(),
+                                degree_name: payload.degree_name.clone(),
+                                jd_text: payload.jd_text.clone(),
+                                raw_payload: payload.raw_payload.clone(),
+                            };
+                            if let Err(err) = models::upsert_job_from_normalized(conn, &input) {
+                                let _ = ipc::emit_event_all(
+                                    &app_handle,
+                                    &EventOut::Error(crate::ipc::protocol::ErrorPayload {
+                                        message: format!("db upsert normalized job failed: {err}"),
+                                        stack: None,
+                                    }),
+                                );
+                                continue;
+                            }
+                            let _ = models::insert_job_source_link(
+                                conn,
+                                &payload.encrypt_job_id,
+                                payload.keyword.as_deref(),
+                                filters_json.as_deref(),
+                            );
+                            let _ =
+                                filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                    conn,
+                                    &payload.encrypt_job_id,
+                                );
+                        }
                         EventOut::JobListCaptured(payload) => {
                             let jobs = extract_jobs_from_joblist(&payload.raw);
                             let filters_json = payload

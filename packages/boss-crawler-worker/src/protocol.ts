@@ -12,6 +12,7 @@ export const SessionStatePayloadSchema = z.object({
 
 export const SearchTaskPayloadSchema = z.object({
   keywords: z.array(z.string().min(1)).min(1),
+  source_platform: z.string().optional(),
   filters: z.any().optional().default({}),
   limits: z.any().optional().default({}),
   mode: z.string().optional(),
@@ -151,6 +152,24 @@ export const JobDetailCapturedPayloadSchema = z.object({
   zp_data: z.any(),
 });
 
+export const JobNormalizedCapturedPayloadSchema = z.object({
+  encrypt_job_id: z.string().min(1),
+  source_platform: z.string().min(1),
+  source_url: z.string().optional(),
+  dedup_key: z.string().min(1),
+  position_name: z.string().optional(),
+  boss_name: z.string().optional(),
+  brand_name: z.string().optional(),
+  city_name: z.string().optional(),
+  salary_desc: z.string().optional(),
+  experience_name: z.string().optional(),
+  degree_name: z.string().optional(),
+  jd_text: z.string().optional(),
+  raw_payload: z.any(),
+  keyword: z.string().optional(),
+  filters: z.any().optional(),
+});
+
 export const JobFilteredPayloadSchema = z.object({
   encrypt_job_id: z.string().optional(),
   keyword: z.string().optional(),
@@ -194,6 +213,7 @@ export const EventOutSchema = z.union([
   z.object({ type: z.literal("COOKIE_COLLECTED"), payload: CookieCollectedPayloadSchema }),
   z.object({ type: z.literal("JOB_LIST_CAPTURED"), payload: JobListCapturedPayloadSchema }),
   z.object({ type: z.literal("JOB_DETAIL_CAPTURED"), payload: JobDetailCapturedPayloadSchema }),
+  z.object({ type: z.literal("JOB_NORMALIZED_CAPTURED"), payload: JobNormalizedCapturedPayloadSchema }),
   z.object({ type: z.literal("JOB_FILTERED"), payload: JobFilteredPayloadSchema }),
   z.object({ type: z.literal("AI_RESULT"), payload: AiResultPayloadSchema }),
   z.object({ type: z.literal("BOSS_META_SYNCED"), payload: BossMetaSyncedPayloadSchema }),

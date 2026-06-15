@@ -21,6 +21,13 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 | [External Dependency Diagnostics](./external-dependency-diagnostics.md) | Settings IPC contract for local dependency diagnostics | Active |
+| [Collection Source Contracts](./collection-source-contracts.md) | Cross-layer automatic collection source contracts | Active |
+
+---
+
+## Pre-Development Checklist
+
+- For collection source selection, platform capabilities, `crawl_auto_start`, worker collection events, or unified job writes, read [Collection Source Contracts](./collection-source-contracts.md).
 
 ---
 

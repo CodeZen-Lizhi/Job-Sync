@@ -148,7 +148,7 @@ const {
                 @click="goReviewQueue"
               >
                 <ClipboardList class="h-3.5 w-3.5" aria-hidden="true" />
-                查看 Top 20 确认队列
+                查看岗位候选库
               </button>
               <span class="truncate">{{ selectedMeta.encrypt_job_id }}</span>
             </div>

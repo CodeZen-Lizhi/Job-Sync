@@ -1,9 +1,8 @@
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use serde_json::Value;
 
 use crate::{commands::filter_profile, db, paths};
 
-use super::{models::CompanyScoreRebuildResult, shared::open_conn, JobRow};
+use super::{models::CompanyScoreRebuildResult, shared::open_conn};
 
 const REVIEW_STATUSES: &[&str] = &[
     "pending",
@@ -140,38 +139,41 @@ pub fn rebuild_company_scores(app: tauri::AppHandle) -> Result<CompanyScoreRebui
     })
 }
 
-pub(super) fn import_external_job_on_conn(
+pub(super) fn set_job_source_enabled_on_conn(
     conn: &Connection,
-    platform: String,
-    payload: Value,
-) -> Result<JobRow, String> {
+    platform: &str,
+    enabled: bool,
+) -> Result<(), String> {
     let platform = platform.trim().to_ascii_lowercase();
     if platform.is_empty() {
-        return Err("来源平台不能为空".to_string());
+        return Err("平台不能为空".to_string());
     }
-    if !db::models::is_supported_manual_import_platform(&platform) {
-        return Err(format!("来源平台暂不支持手动导入: {platform}"));
-    }
-    if !payload.is_object() {
-        return Err("导入 payload 必须是 JSON 对象".to_string());
-    }
-
-    let encrypt_job_id = db::models::upsert_job_from_external_source(conn, &platform, &payload)
+    let updated = conn
+        .execute(
+            r#"
+            UPDATE job_sources
+            SET enabled = ?2,
+                updated_at = datetime('now')
+            WHERE platform = ?1
+            "#,
+            params![platform, if enabled { 1 } else { 0 }],
+        )
         .map_err(|e| e.to_string())?;
-    let _ =
-        filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, &encrypt_job_id)?;
-    super::queries::get_job_on_conn(conn, &encrypt_job_id)?
-        .ok_or_else(|| "导入成功但未能读取岗位记录".to_string())
+    if updated == 0 {
+        return Err(format!("未知平台: {platform}"));
+    }
+    Ok(())
 }
 
-pub fn import_external_job(
+pub fn set_job_source_enabled(
     app: tauri::AppHandle,
     platform: String,
-    payload: Value,
-) -> Result<JobRow, String> {
+    enabled: bool,
+) -> Result<Vec<super::JobSourceEntry>, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
     let conn = open_conn(&app_data_dir)?;
-    import_external_job_on_conn(&conn, platform, payload)
+    set_job_source_enabled_on_conn(&conn, &platform, enabled)?;
+    super::queries::list_job_sources_on_conn(&conn)
 }
 
 fn normalize_optional_value(value: Option<String>) -> Option<String> {
@@ -453,7 +455,7 @@ mod tests {
     use super::*;
     use crate::commands::jobs::queries;
     use crate::db::{self, models};
-    use serde_json::{json, Value};
+    use serde_json::Value;
 
     fn seed_job(conn: &Connection, encrypt_job_id: &str, position_name: &str, company_name: &str) {
         conn
@@ -496,126 +498,6 @@ mod tests {
             |row| row.get(0),
         )
         .expect("load filter eligible")
-    }
-
-    #[test]
-    fn import_external_job_on_conn_recomputes_default_filter_result() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let app_data_dir = tmp.path().join("app-data");
-        let conn = db::init_db(&app_data_dir).expect("init db");
-
-        let imported = import_external_job_on_conn(
-            &conn,
-            "liepin".to_string(),
-            json!({
-              "job_id": "liepin-command-1",
-              "title": "Go 平台工程师",
-              "company": "Command Co",
-              "city": "上海",
-              "salary": "30-50K",
-              "experience": "5-10年",
-              "education": "本科",
-              "description": "负责 Go 平台工程"
-            }),
-        )
-        .expect("import external job");
-
-        assert_eq!(imported.source_platform, "liepin");
-        assert_eq!(imported.dedup_key.as_deref(), Some("liepin-command-1"));
-        assert_eq!(filter_eligible(&conn, &imported.encrypt_job_id), 0);
-        let reason = filter_reason(&conn, &imported.encrypt_job_id);
-        assert!(reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")));
-    }
-
-    #[test]
-    fn import_external_job_on_conn_accepts_every_manual_source_adapter() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let app_data_dir = tmp.path().join("app-data");
-        let conn = db::init_db(&app_data_dir).expect("init db");
-        let manual_platforms: Vec<&str> = models::supported_job_source_adapters()
-            .iter()
-            .filter(|spec| spec.adapter_kind == "manual_import")
-            .map(|spec| spec.platform)
-            .collect();
-
-        assert!(!manual_platforms.is_empty());
-        for platform in manual_platforms {
-            let job_id = format!("{platform}-manual-source-1");
-            let job_url = format!("https://example.com/{platform}/jobs/1");
-            let title = format!("{platform} Go 平台工程师");
-            let company = format!("{platform} Unified Co");
-            let description =
-                format!("{platform} 手动导入岗位，负责 Go 平台工程和 Kubernetes 基础设施");
-
-            let imported = import_external_job_on_conn(
-                &conn,
-                platform.to_string(),
-                json!({
-                  "job_id": job_id.clone(),
-                  "job_url": job_url.clone(),
-                  "title": title.clone(),
-                  "company": company.clone(),
-                  "city": "远程",
-                  "salary": "30-50K",
-                  "experience": "5-10年",
-                  "education": "本科",
-                  "description": description.clone()
-                }),
-            )
-            .expect("import manual source job");
-
-            assert_eq!(imported.source_platform, platform);
-            assert_eq!(imported.source_url.as_deref(), Some(job_url.as_str()));
-            assert_eq!(imported.dedup_key.as_deref(), Some(job_id.as_str()));
-            assert_eq!(imported.position_name.as_deref(), Some(title.as_str()));
-            assert_eq!(imported.brand_name.as_deref(), Some(company.as_str()));
-            assert_eq!(imported.filter_eligible, Some(false));
-
-            let (jd_text, source_link): (Option<String>, String) = conn
-                .query_row(
-                    r#"
-                    SELECT j.jd_text, s.keyword
-                    FROM job j
-                    INNER JOIN job_source_link s ON s.encrypt_job_id = j.encrypt_job_id
-                    WHERE j.encrypt_job_id = ?1
-                    "#,
-                    params![imported.encrypt_job_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .expect("query unified source job");
-            assert_eq!(jd_text.as_deref(), Some(description.as_str()));
-            assert_eq!(source_link, format!("手动导入:{platform}"));
-
-            let reason = filter_reason(&conn, &imported.encrypt_job_id);
-            assert!(reason["blocked_by"]
-                .as_array()
-                .expect("blocked rules")
-                .iter()
-                .any(
-                    |item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")
-                ));
-        }
-    }
-
-    #[test]
-    fn import_external_job_on_conn_rejects_unsupported_platform_and_non_object_payload() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        let app_data_dir = tmp.path().join("app-data");
-        let conn = db::init_db(&app_data_dir).expect("init db");
-
-        let unsupported =
-            import_external_job_on_conn(&conn, "boss".to_string(), json!({"title": "Go"}))
-                .expect_err("boss manual import should be rejected");
-        assert!(unsupported.contains("暂不支持手动导入"));
-
-        let invalid_payload =
-            import_external_job_on_conn(&conn, "liepin".to_string(), json!(["not", "object"]))
-                .expect_err("array payload should be rejected");
-        assert!(invalid_payload.contains("JSON 对象"));
     }
 
     #[test]

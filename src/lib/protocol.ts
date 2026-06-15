@@ -30,6 +30,26 @@ export type SidecarEvent =
       payload: { encrypt_job_id: string; zp_data: unknown };
     }
   | {
+      type: "JOB_NORMALIZED_CAPTURED";
+      payload: {
+        encrypt_job_id: string;
+        source_platform: string;
+        source_url?: string;
+        dedup_key: string;
+        position_name?: string;
+        boss_name?: string;
+        brand_name?: string;
+        city_name?: string;
+        salary_desc?: string;
+        experience_name?: string;
+        degree_name?: string;
+        jd_text?: string;
+        raw_payload: unknown;
+        keyword?: string;
+        filters?: unknown;
+      };
+    }
+  | {
       type: "JOB_FILTERED";
       payload: {
         encrypt_job_id?: string;

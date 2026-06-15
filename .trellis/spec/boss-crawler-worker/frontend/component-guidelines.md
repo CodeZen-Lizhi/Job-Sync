@@ -62,6 +62,25 @@ Questions to answer:
 
 **Related**: After changing shell navigation or page-level panels, smoke test `/jobs` at desktop width and a mobile viewport around `390x844`. The navigation should have `scrollWidth <= clientWidth`, visible text should not extend past the viewport, and the page should have no console errors.
 
+### Convention: Split Setup Pages from Execution Pages
+
+**What**: Workflow configuration pages should own dense setup forms, while execution pages should stay focused on the action controls, current selection, and runtime feedback. When the setup page and execution page need the same draft state, expose that state through one shared composable instance instead of creating independent page-local refs.
+
+**Why**: Users can maintain collection intent, platform settings, and filter profiles once, then switch profiles during collection without re-entering form data. This also prevents route switches from resetting unsaved collection settings.
+
+**Example**:
+```ts
+let crawlPageState: CrawlPageState | null = null;
+
+export function useCrawlPage(): CrawlPageState {
+  const state = crawlPageState ?? createCrawlPageState();
+  crawlPageState = state;
+  return state;
+}
+```
+
+**Related**: After splitting a setup page from an execution page, browser-smoke both routes and verify that editing setup state on one route is visible to the execution route.
+
 ---
 
 ## Accessibility
