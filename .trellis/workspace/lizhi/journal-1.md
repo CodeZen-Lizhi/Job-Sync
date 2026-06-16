@@ -445,3 +445,38 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 收口采集后置筛选后台流程
+
+**Date**: 2026-06-17
+**Task**: 收口采集后置筛选后台流程
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+实现自动采集先入库、Rust canonical 采后筛选、待确认/已过滤/推荐 bucket 查询，并记录采后筛选分桶契约。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fae2eb1` | (see git log) |
+| `6521543` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
