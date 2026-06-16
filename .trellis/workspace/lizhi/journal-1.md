@@ -411,3 +411,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: 重构采集到职位库 UI
+
+**Date**: 2026-06-17
+**Task**: 重构采集到职位库 UI
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+按 PRD 将采集配置和职位库重构为采集意图、平台适配器、采后规则和职位库分桶工作台，并完成构建、合约、worker 与浏览器烟测。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38240b2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
