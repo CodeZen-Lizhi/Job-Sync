@@ -124,9 +124,24 @@ const {
 
 <template>
   <section class="space-y-4">
-    <header class="space-y-1">
-      <h1 class="text-xl font-semibold text-content-primary">采集配置</h1>
-      <p class="text-sm text-content-secondary">维护采集意图、平台设置和筛选画像；采集时只需要回到执行台切换画像并启动。</p>
+    <header class="space-y-2">
+      <div class="ui-section-kicker">Collection Pipeline</div>
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-semibold text-content-primary">采集到职位库</h1>
+          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary">
+            先用采集意图扩大来源，再用采后判断规则基于 JD、帖子正文和岗位详情生成候选结果；被过滤岗位仍保留在职位库中。
+          </p>
+        </div>
+        <button
+          class="ui-btn-primary px-3 py-1.5 text-xs"
+          type="button"
+          :disabled="sidecarRunning"
+          @click="syncCollectionIntentToPlatforms"
+        >
+          {{ collectionIntentSyncLabel }}
+        </button>
+      </div>
     </header>
 
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">
@@ -135,30 +150,39 @@ const {
 
     <div v-if="error" class="ui-status-danger p-3 text-sm">{{ error }}</div>
 
-    <div class="ui-crawl-panel space-y-5 p-5">
-      <section class="space-y-3">
-        <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="grid gap-3 md:grid-cols-3">
+      <div class="ui-card-soft p-4">
+        <div class="text-xs font-semibold text-content-primary">1. 采集意图</div>
+        <p class="mt-2 text-xs leading-5 text-content-muted">关键词、城市、技术栈用于扩大平台搜索，不代表最终必须命中。</p>
+      </div>
+      <div class="ui-card-soft p-4">
+        <div class="text-xs font-semibold text-content-primary">2. 平台适配器</div>
+        <p class="mt-2 text-xs leading-5 text-content-muted">Boss、V2EX 等平台保持各自配置；同步动作只在你点击时发生。</p>
+      </div>
+      <div class="ui-card-soft p-4">
+        <div class="text-xs font-semibold text-content-primary">3. 采后判断</div>
+        <p class="mt-2 text-xs leading-5 text-content-muted">岗位先入库，再基于 JD/正文/状态规则进入推荐、待确认或已过滤。</p>
+      </div>
+    </div>
+
+    <div class="space-y-5">
+      <section class="ui-panel overflow-hidden">
+        <div class="ui-section-header">
           <div>
-            <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">采集意图</div>
-            <p class="mt-1 text-xs text-content-muted">多值字段默认用于 OR 扩样本；必须满足、排除和排序交给采后的筛选画像。</p>
+            <div class="ui-section-kicker">Collection Intent</div>
+            <h2 class="ui-section-title mt-1">我要找什么范围</h2>
+            <p class="ui-section-copy">这里决定去平台上怎么搜。多值字段默认是 OR 扩样本，真正的硬限制交给下方采后判断规则。</p>
           </div>
-          <button
-            class="ui-btn-primary px-3 py-1.5 text-xs"
-            type="button"
-            :disabled="sidecarRunning"
-            @click="syncCollectionIntentToPlatforms"
-          >
-            {{ collectionIntentSyncLabel }}
-          </button>
         </div>
 
-        <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div class="grid gap-3 p-4 md:grid-cols-2 lg:grid-cols-3">
           <label class="space-y-1 lg:col-span-2">
-            <div class="text-xs font-medium text-content-muted">关键词（多行或逗号分隔）</div>
+            <div class="ui-field-label">平台搜索关键词（多行或逗号分隔）</div>
             <textarea v-model="collectionKeywordsText" class="ui-textarea h-24 w-full" placeholder="Go&#10;后端&#10;平台工程" />
+            <div class="text-[11px] leading-5 text-content-muted">用于扩大采集样本，不是最终职位库过滤条件。</div>
           </label>
           <label class="space-y-1">
-            <div class="text-xs font-medium text-content-muted">本次采集来源</div>
+            <div class="ui-field-label">本次采集来源</div>
             <UiMultiSelect v-model="selectedCollectionSources" :disabled="collectableSourceOptions.length === 0">
               <option v-for="option in collectableSourceOptions" :key="option.value" :value="option.value">
                 {{ option.label }}
@@ -167,23 +191,24 @@ const {
             <div class="text-[11px] text-content-muted">下拉项来自设置中已启用且支持自动采集的平台；当前选择 {{ selectedCollectionSourceLabel }}。</div>
           </label>
           <label class="space-y-1">
-            <div class="text-xs font-medium text-content-muted">目标城市（多选意图）</div>
+            <div class="ui-field-label">目标城市（多选意图）</div>
             <textarea v-model="collectionTargetCitiesText" class="ui-textarea h-20 w-full" placeholder="上海&#10;深圳&#10;远程" />
           </label>
           <label class="space-y-1">
-            <div class="text-xs font-medium text-content-muted">工作方式</div>
+            <div class="ui-field-label">工作方式</div>
             <textarea v-model="collectionWorkModesText" class="ui-textarea h-20 w-full" placeholder="远程&#10;混合&#10;到岗" />
           </label>
           <label class="space-y-1">
-            <div class="text-xs font-medium text-content-muted">技术栈</div>
+            <div class="ui-field-label">技术栈</div>
             <textarea v-model="collectionTechStackText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Kubernetes&#10;Docker" />
           </label>
           <label class="space-y-1">
-            <div class="text-xs font-medium text-content-muted">排除关键词</div>
+            <div class="ui-field-label">采集阶段排除词</div>
             <textarea v-model="collectionExcludedKeywordsText" class="ui-textarea h-20 w-full" placeholder="外包&#10;驻场&#10;培训" />
+            <div class="text-[11px] leading-5 text-content-muted">仅用于减少明显噪音；最终排除仍以采后规则为准。</div>
           </label>
           <label class="space-y-1">
-            <div class="text-xs font-medium text-content-muted">学历</div>
+            <div class="ui-field-label">学历</div>
             <textarea v-model="collectionDegreesText" class="ui-textarea h-20 w-full" placeholder="学历不限&#10;本科" />
           </label>
           <div class="grid gap-3 md:col-span-2 md:grid-cols-4">
@@ -206,7 +231,7 @@ const {
           </div>
         </div>
 
-        <div v-if="bossSyncMessage" class="rounded-md border border-border/10 bg-surface-secondary/60 px-3 py-3 text-xs">
+        <div v-if="bossSyncMessage" class="mx-4 mb-4 rounded-md border border-border/10 bg-surface-secondary/60 px-3 py-3 text-xs">
           <div class="font-medium text-content-secondary">{{ bossSyncMessage }}</div>
           <div v-if="bossSyncMappedFields.length > 0" class="mt-2 text-emerald-300">
             已映射：{{ bossSyncMappedFields.join("；") }}
@@ -217,16 +242,17 @@ const {
         </div>
       </section>
 
-      <section class="space-y-3 border-t border-border/10 pt-4">
-        <button class="flex w-full items-center justify-between gap-3 text-left" type="button" @click="bossSettingsOpen = !bossSettingsOpen">
+      <section class="ui-panel overflow-hidden">
+        <button class="ui-section-header w-full text-left" type="button" @click="bossSettingsOpen = !bossSettingsOpen">
           <span>
-            <span class="block text-xs font-semibold uppercase tracking-wider text-content-muted">Boss 平台配置</span>
-            <span class="mt-1 block text-xs text-content-muted">浏览器登录型采集；采集意图同步后可在这里微调 Boss 专属筛选。</span>
+            <span class="ui-section-kicker">Platform Adapter</span>
+            <span class="ui-section-title mt-1 block">Boss 平台配置</span>
+            <span class="ui-section-copy block">浏览器登录型采集；采集意图同步后可在这里微调 Boss 专属搜索参数。</span>
           </span>
           <span class="ui-badge">{{ bossSettingsOpen ? "收起" : "展开" }}</span>
         </button>
 
-        <div v-if="bossSettingsOpen" class="space-y-3">
+        <div v-if="bossSettingsOpen" class="space-y-3 p-4">
           <div class="ui-crawl-toolbar flex flex-wrap items-center justify-between gap-2 px-3 py-3">
             <div class="text-xs text-content-muted">
               Boss 筛选字典：
@@ -308,16 +334,17 @@ const {
         </div>
       </section>
 
-      <section v-if="v2exSelected" class="space-y-3 border-t border-border/10 pt-4">
-        <button class="flex w-full items-center justify-between gap-3 text-left" type="button" @click="v2exFeedSettingsOpen = !v2exFeedSettingsOpen">
+      <section v-if="v2exSelected" class="ui-panel overflow-hidden">
+        <button class="ui-section-header w-full text-left" type="button" @click="v2exFeedSettingsOpen = !v2exFeedSettingsOpen">
           <span>
-            <span class="block text-xs font-semibold uppercase tracking-wider text-content-muted">V2EX Feed 配置</span>
-            <span class="mt-1 block text-xs text-content-muted">公开 Atom Feed 采集，无需平台登录；仅明确招聘帖会进入职位库。</span>
+            <span class="ui-section-kicker">Platform Adapter</span>
+            <span class="ui-section-title mt-1 block">V2EX Feed 配置</span>
+            <span class="ui-section-copy block">公开 Atom Feed 采集，无需平台登录；明确招聘帖入库后仍会走采后判断。</span>
           </span>
           <span class="ui-badge">{{ v2exFeedSettingsOpen ? "收起" : "展开" }}</span>
         </button>
 
-        <div v-if="v2exFeedSettingsOpen" class="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+        <div v-if="v2exFeedSettingsOpen" class="grid gap-3 p-4 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">Feed URL</div>
             <input v-model="v2exFeedUrl" class="ui-input w-full" placeholder="https://www.v2ex.com/feed/tab/jobs.xml" />
@@ -331,32 +358,33 @@ const {
             <span>{{ v2exKeywords.length > 0 ? v2exKeywords.join("、") : "未填写关键词时只使用招聘帖识别规则" }}</span>
           </div>
           <div class="md:col-span-2 text-xs text-content-muted">
-            V2EX 会用这里的关键词做 OR 匹配；“同步到平台配置”会用采集意图里的关键词和技术栈填充这里，但你可以单独调整。排除关键词仍来自采集意图和筛选画像；城市、薪资、经验、学历继续交给采后筛选画像。
+            V2EX 会用这里的关键词做 OR 匹配；“同步到平台配置”会用采集意图里的关键词和技术栈填充这里，但你可以单独调整。排除词仍来自采集意图和采后判断规则；城市、薪资、经验、学历继续交给采后判断规则。
           </div>
         </div>
       </section>
 
-      <section class="space-y-3 border-t border-border/10 pt-4">
-        <button class="flex w-full items-center justify-between gap-3 text-left" type="button" @click="filterProfileOpen = !filterProfileOpen">
+      <section class="ui-panel overflow-hidden">
+        <button class="ui-section-header w-full text-left" type="button" @click="filterProfileOpen = !filterProfileOpen">
           <span>
-            <span class="block text-xs font-semibold uppercase tracking-wider text-content-muted">筛选画像（采后候选过滤）</span>
-            <span class="mt-1 block text-xs text-content-muted">控制候选队列、Top 20 和排序，不阻止原始岗位进入职位库。</span>
+            <span class="ui-section-kicker">Post-Collection Rules</span>
+            <span class="ui-section-title mt-1 block">采后判断规则</span>
+            <span class="ui-section-copy block">岗位先进入职位库，再用这些规则基于标题、列表字段、JD 和帖子正文判断是否进入候选结果。</span>
           </span>
           <span class="ui-badge">{{ filterProfileOpen ? "收起" : "展开" }}</span>
         </button>
 
-        <div v-if="filterProfileOpen" class="space-y-3">
+        <div v-if="filterProfileOpen" class="space-y-4 p-4">
           <div class="space-y-2 border-y border-border/10 py-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">画像管理</div>
-                <div class="mt-1 text-xs text-content-muted">修改后可保存并重算已有职位的候选资格。</div>
+                <div class="ui-section-kicker">Rule Set</div>
+                <div class="mt-1 text-xs text-content-muted">修改后可保存并重算已有职位的候选资格；不会删除已入库岗位。</div>
               </div>
               <span v-if="activeFilterProfileIsDefault" class="ui-badge">默认策略</span>
             </div>
             <div class="grid gap-2 lg:grid-cols-[minmax(10rem,12rem)_minmax(10rem,12rem)_minmax(10rem,12rem)_auto]">
               <label class="space-y-1">
-                <div class="text-xs font-medium text-content-muted">当前画像</div>
+                <div class="text-xs font-medium text-content-muted">当前规则集</div>
                 <select v-model="activeFilterProfileId" class="ui-input w-full" :disabled="!tauri || sidecarRunning" @change="selectFilterProfile(activeFilterProfileId)">
                   <option v-for="profile in filterProfiles" :key="profile.id" :value="profile.id">
                     {{ profile.name }}{{ profile.is_default ? "（默认）" : "" }}
@@ -364,48 +392,61 @@ const {
                 </select>
               </label>
               <label class="space-y-1">
-                <div class="text-xs font-medium text-content-muted">画像名称</div>
+                <div class="text-xs font-medium text-content-muted">规则集名称</div>
                 <input v-model="activeFilterProfileName" class="ui-input w-full" :disabled="!tauri || sidecarRunning" />
               </label>
               <label class="space-y-1">
-                <div class="text-xs font-medium text-content-muted">新建画像</div>
+                <div class="text-xs font-medium text-content-muted">新建规则集</div>
                 <input v-model="newFilterProfileName" class="ui-input w-full" placeholder="例如：薪资优先" :disabled="!tauri || sidecarRunning" />
               </label>
               <div class="flex flex-wrap items-end gap-2">
                 <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning || !newFilterProfileName.trim()" @click="createFilterProfile">新建</button>
-                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning" @click="saveActiveFilterProfile">保存画像</button>
+                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning" @click="saveActiveFilterProfile">保存规则集</button>
                 <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning || activeFilterProfileIsDefault" @click="setActiveFilterProfileAsDefault">设为默认</button>
               </div>
             </div>
           </div>
 
+          <div class="ui-rule-group">
+            <div class="ui-rule-group-title">正文与 JD 信号</div>
+            <p class="ui-rule-group-copy">这些规则会参与采后判断；现有筛选器会合并列表字段、详情文本和 JD 文本进行匹配。关键词只是其中一种信号。</p>
+          </div>
+
           <div class="grid gap-3 md:grid-cols-3">
             <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须包含关键词</div>
+              <div class="ui-field-label">必须命中的正文信号</div>
               <textarea v-model="mustKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Kubernetes&#10;SRE" />
             </label>
             <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须排除关键词</div>
+              <div class="ui-field-label">正文排除信号</div>
               <textarea v-model="mustNotKeywordsText" class="ui-textarea h-20 w-full" placeholder="外包&#10;驻场&#10;培训" />
             </label>
             <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好关键词</div>
+              <div class="ui-field-label">正文偏好信号</div>
               <textarea v-model="preferenceKeywordsText" class="ui-textarea h-20 w-full" placeholder="远程&#10;云原生&#10;AI Infra" />
             </label>
           </div>
+          <div class="ui-rule-group">
+            <div class="ui-rule-group-title">岗位方向与技术证据</div>
+            <p class="ui-rule-group-copy">用于判断 JD 是否真的描述了你要做的方向，而不只是平台搜索标题里出现过某个词。</p>
+          </div>
           <div class="grid gap-3 md:grid-cols-3">
             <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须岗位方向</div>
+              <div class="ui-field-label">必须岗位方向</div>
               <textarea v-model="requiredDirectionsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Infra&#10;云原生" />
             </label>
             <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除岗位方向</div>
+              <div class="ui-field-label">排除岗位方向</div>
               <textarea v-model="excludedDirectionsText" class="ui-textarea h-20 w-full" placeholder="前端&#10;销售型售前" />
             </label>
             <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好岗位方向</div>
+              <div class="ui-field-label">偏好岗位方向</div>
               <textarea v-model="preferenceDirectionsText" class="ui-textarea h-20 w-full" placeholder="AI Infra&#10;平台工程" />
             </label>
+          </div>
+          <div class="ui-rule-group">
+            <div class="ui-rule-group-title">工作方式与状态门槛</div>
+            <p class="ui-rule-group-copy">这些规则决定岗位能否成为候选，但被挡掉的记录仍在已过滤/全部入库视图中可追溯。</p>
           </div>
           <div class="grid gap-3 md:grid-cols-3">
             <label class="space-y-1">
@@ -585,7 +626,7 @@ const {
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || filterRecomputing || sidecarRunning" @click="recomputeDefaultFilterProfile">
-              {{ filterRecomputing ? "重算中…" : "保存画像并重算已有职位" }}
+              {{ filterRecomputing ? "重算中…" : "保存规则集并重算已有职位" }}
             </button>
             <span v-if="filterRecomputeMessage" class="text-xs text-emerald-300">{{ filterRecomputeMessage }}</span>
           </div>

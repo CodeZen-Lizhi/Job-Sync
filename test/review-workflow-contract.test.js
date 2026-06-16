@@ -23,11 +23,15 @@ describe("review workflow contract", () => {
     const jobsCommand = readProjectFile("src-tauri/src/commands/jobs.rs");
     const tauriLib = readProjectFile("src-tauri/src/lib.rs");
 
-    assert.match(jobsPage, /岗位候选库/);
-    assert.match(jobsPage, /岗位情报/);
-    assert.match(jobsPage, /筛选条件/);
-    assert.match(jobsPage, /岗位列表/);
-    assert.match(jobsPage, /所有手动和自动采集岗位都在这里统一处理/);
+    assert.match(jobsPage, /职位库工作台/);
+    assert.match(jobsPage, /采后结果分区/);
+    assert.match(jobsPage, /视图筛选/);
+    assert.match(jobsPage, /\{\{ activeBucket\.label \}\}/);
+    assert.match(jobsPage, /自动采集先保留岗位事实/);
+    assert.match(jobsPage, /推荐查看/);
+    assert.match(jobsPage, /待确认/);
+    assert.match(jobsPage, /已过滤/);
+    assert.match(jobsPage, /全部入库/);
     assert.match(jobsPage, /JOB_TIME_RANGE_OPTIONS/);
     assert.match(jobsPage, /PROCESSED_FILTER_OPTIONS/);
     assert.match(jobsPage, /JOB_STATUS_FILTER_OPTIONS/);
@@ -73,7 +77,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /toggleJobStatusFilter/);
     assert.match(jobsLogic, /toggleSourcePlatformFilter/);
     assert.match(jobsLogic, /toggleCollectionMethodFilter/);
-    assert.match(jobsLogic, /clearJobCandidateFilters/);
+    assert.match(jobsPage, /clearCurrentViewFilters/);
 
     assert.match(jobsCommand, /pub fn list_job_candidates/);
     assert.match(tauriLib, /commands::jobs::list_job_candidates/);
@@ -348,14 +352,14 @@ describe("review workflow contract", () => {
     assert.match(jobsPageLogic, /已设为默认画像，并重算/);
     assert.match(jobsPageLogic, /await refreshAfterJobStateChange\(false\)/);
 
-    assert.match(crawlConfigPage, /当前画像/);
+    assert.match(crawlConfigPage, /当前规则集/);
     assert.match(crawlConfigPage, /activeFilterProfileId/);
     assert.match(crawlConfigPage, /selectFilterProfile\(activeFilterProfileId\)/);
-    assert.match(crawlConfigPage, /新建画像/);
-    assert.match(crawlConfigPage, /保存画像/);
+    assert.match(crawlConfigPage, /新建规则集/);
+    assert.match(crawlConfigPage, /保存规则集/);
     assert.match(crawlConfigPage, /设为默认/);
     assert.match(crawlConfigPage, /默认策略/);
-    assert.match(crawlConfigPage, /保存画像并重算已有职位/);
+    assert.match(crawlConfigPage, /保存规则集并重算已有职位/);
   });
 
   it("keeps company scale, financing stage and industry wired as filter-profile dimensions", () => {
@@ -412,8 +416,8 @@ describe("review workflow contract", () => {
     assert.match(appShell, /精准求职岗位研究台/);
     assert.match(crawlPage, /岗位采集/);
     assert.match(crawlPage, /不执行投递或开聊/);
-    assert.match(jobsPage, /岗位候选库/);
-    assert.match(jobsPage, /统一查看所有采集岗位/);
+    assert.match(jobsPage, /职位库工作台/);
+    assert.match(jobsPage, /自动采集先保留岗位事实/);
     assert.match(aiPage, /AI 岗位研究/);
     assert.match(aiPage, /人工确认后的精准投递准备/);
     assert.match(reportsPage, /岗位研究报告/);
@@ -536,8 +540,8 @@ describe("review workflow contract", () => {
     assert.match(aiPage, /source\.value === "top20" \|\| source\.value === "candidates"/);
     assert.match(aiPage, /router\.push\(\{ path: "\/jobs" \}\)/);
     assert.match(aiPage, /await routeAfterResumeAnalysis\(\)/);
-    assert.match(jobsPage, /岗位候选库/);
-    assert.match(jobsPage, /岗位列表/);
+    assert.match(jobsPage, /职位库工作台/);
+    assert.match(jobsPage, /采后结果分区/);
   });
 
   it("does not treat hashed group report ids as expected job ids in coverage checks", () => {
@@ -706,7 +710,7 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(jobsPage, /<h2[^>]*>黑名单管理/);
     assert.match(jobsPage, /JOB_STATUS_FILTER_OPTIONS/);
     assert.match(jobsPage, /岗位状态/);
-    assert.match(jobsPage, /筛选条件/);
+    assert.match(jobsPage, /视图筛选/);
     assert.match(jobsLogic, /\{ value: "has_notes", label: "有备注" \}/);
     assert.match(jobsLogic, /\{ value: "company_not_fit", label: "公司不合适" \}/);
     assert.match(jobsLogic, /\{ value: "blacklisted", label: "黑名单" \}/);
@@ -1019,7 +1023,7 @@ describe("review workflow contract", () => {
     const jobsPageLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsPageView = readProjectFile("src/pages/Jobs.vue");
 
-    assert.match(jobsPageView, /岗位情报/);
+    assert.match(jobsPageView, /采后结果分区/);
     assert.match(jobsPageView, /jobIntelligenceRangeLabel/);
     assert.match(jobsPageView, /currentPageUnprocessedCount/);
     assert.match(jobsPageView, /currentPageProcessedCount/);

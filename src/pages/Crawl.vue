@@ -31,6 +31,7 @@ const {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold text-content-primary">岗位采集</h1>
+          <p class="mt-1 text-xs text-content-muted">自动采集只负责写入职位库并触发采后判断，不执行投递或开聊。</p>
         </div>
         <RouterLink class="ui-btn-secondary px-3 py-1.5 text-xs" to="/crawl-config">采集配置</RouterLink>
       </div>
@@ -62,7 +63,7 @@ const {
 
       <div v-if="mode === 'auto'" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1.4fr)_repeat(3,minmax(8rem,1fr))]">
         <label class="space-y-1.5">
-          <div class="text-xs font-medium text-content-muted">筛选画像</div>
+          <div class="text-xs font-medium text-content-muted">采后规则集</div>
           <select
             v-model="activeFilterProfileId"
             class="ui-input w-full"
