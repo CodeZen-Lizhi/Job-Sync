@@ -1,0 +1,3 @@
+{"file":".trellis/spec/boss-crawler-worker/frontend/collection-source-contracts.md","reason":"Check source selection stays separate from candidate source filtering and all collectable jobs write unified job facts."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check worker event, SQLite write, filter recompute, and query display contracts stay aligned."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check no second filter truth source is added in worker or jobs queries."}

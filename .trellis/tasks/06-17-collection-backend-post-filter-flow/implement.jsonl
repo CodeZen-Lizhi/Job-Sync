@@ -1,0 +1,3 @@
+{"file":".trellis/spec/boss-crawler-worker/frontend/collection-source-contracts.md","reason":"Owns automatic collection source contracts, sourcePlatforms post-ingest semantics, and unified job write expectations."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Backend flow crosses worker events, sidecar persistence, Rust filter results, and UI queries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Avoid duplicating canonical filter judgment across worker, Rust commands, and page queries."}

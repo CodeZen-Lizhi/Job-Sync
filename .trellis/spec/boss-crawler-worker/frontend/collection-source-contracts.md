@@ -241,3 +241,127 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
     continue;
 }
 ```
+
+## Scenario: Post-Collection Filter Buckets
+
+### 1. Scope / Trigger
+
+- Trigger: automatic collection writes jobs that are later grouped into job-library buckets.
+- Applies when changing Boss worker `JOB_LIST_CAPTURED`, sidecar upsert/recompute paths, Rust Filter profile evaluator, `job_filter_result.reason_json`, or job-library bucket queries.
+- Keep collection persistence separate from candidate actionability. Collection decides what facts were observed; Rust filter results decide what bucket a saved job belongs to.
+
+### 2. Signatures
+
+- Worker event:
+  - `JOB_LIST_CAPTURED`
+  - payload: `{ keyword?: string, filters?: object, raw: object }`
+  - For Boss, `raw.zpData.jobList` must remain the full API list payload.
+- Optional worker evidence event:
+  - `JOB_FILTERED`
+  - payload: `{ encrypt_job_id?: string, keyword?: string, filters?: object, reason: object, raw?: object }`
+  - This is worker-side evidence/telemetry only; it is not the persistence truth.
+- SQLite write target:
+  - `job.jd_text`
+  - `job.raw_payload_json`
+  - `job_detail_raw.zp_data_json`
+  - `job_filter_result.eligible`
+  - `job_filter_result.reason_json`
+- Tauri query:
+  - `list_filtered_jobs(limit?: number) -> JobRow[]`
+  - `list_pending_confirmation_jobs(limit?: number) -> JobRow[]`
+
+### 3. Contracts
+
+- Boss worker may use the lightweight profile filter to control detail-fetch priority and volume.
+- Boss worker must still emit the original full job-list raw payload through `JOB_LIST_CAPTURED`; do not replace the list with only eligible jobs.
+- Sidecar/Rust must upsert list-level jobs before final eligibility is decided.
+- Rust default Filter profile recompute must build its searchable evidence from:
+  - normalized job fields
+  - `job.jd_text`
+  - `job.raw_payload_json`
+  - Boss `job_detail_raw.zp_data_json`
+  - review / communication / company state
+  - blacklist hits
+- `reason_json.bucket` is the canonical bucket hint:
+  - `recommended`
+  - `pending_confirmation`
+  - `filtered`
+- `eligible` remains backward-compatible:
+  - `eligible=true` means recommended unless later manual/communication/blacklist state excludes it.
+  - `eligible=false` plus `bucket=pending_confirmation` means keep visible in pending confirmation, not filtered.
+  - `eligible=false` without pending bucket remains filtered.
+- `sourcePlatforms` is a post-ingest candidate rule. It must never block `job` upsert.
+
+### 4. Validation & Error Matrix
+
+- Boss API returns list items that fail worker profile filter -> still present in `JOB_LIST_CAPTURED.raw`, still upsertable into `job`, may additionally emit `JOB_FILTERED`.
+- Job has required text rules but no JD/detail and only missing evidence-sensitive rules -> `reason_json.bucket = "pending_confirmation"` and `eligible = false`.
+- Job JD or raw payload matches `mustKeywords` / `requiredTechTags` -> default recompute may mark recommended even if title/list fields do not contain those terms.
+- Job raw payload or JD matches `mustNotKeywords` -> default recompute marks filtered with `blocked_by` reason.
+- Existing rows without `reason_json.bucket` -> degrade through `eligible`: true as recommended-style, false as filtered-style.
+
+### 5. Good/Base/Bad Cases
+
+- Good: Boss list response has ten rows, worker detail gate keeps three rows for detail fetch, but `JOB_LIST_CAPTURED.raw.zpData.jobList` still contains all ten rows.
+- Good: V2EX normalized job stores `jd_text`; Rust recompute can satisfy `mustKeywords` from the post body.
+- Good: A weak Boss list-only job missing JD cannot prove required JD terms, so it enters pending confirmation instead of disappearing.
+- Base: old filter result rows without a bucket still render using `eligible`.
+- Bad: `withFilteredJobListRaw(jobListRaw, eligibleJobs)` before emitting `JOB_LIST_CAPTURED`.
+- Bad: page queries re-implement profile matching instead of consuming `job_filter_result.reason_json`.
+
+### 6. Tests Required
+
+- Worker contract test:
+  - assert `JOB_LIST_CAPTURED` emits `raw: jobListRaw`
+  - assert worker can still set `jobsToCapture = eligibleJobs` for detail priority
+- Rust filter tests:
+  - `jd_text` satisfies required keyword/tag rules
+  - `raw_payload_json` triggers must-not keyword filtering
+  - missing JD/detail with strict text rules produces `bucket = "pending_confirmation"`
+- Rust query tests:
+  - `list_filtered_jobs` excludes pending-confirmation rows
+  - `list_pending_confirmation_jobs` returns pending-confirmation rows
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+ctx.emit({
+  type: "JOB_LIST_CAPTURED",
+  payload: {
+    raw: withFilteredJobListRaw(jobListRaw, eligibleJobs),
+  },
+});
+```
+
+#### Correct
+
+```ts
+ctx.emit({
+  type: "JOB_LIST_CAPTURED",
+  payload: {
+    raw: jobListRaw,
+  },
+});
+```
+
+#### Wrong
+
+```rust
+json_object(
+  'position_name', j.position_name,
+  'brand_name', j.brand_name
+)
+```
+
+#### Correct
+
+```rust
+json_object(
+  'position_name', j.position_name,
+  'brand_name', j.brand_name,
+  'jd_text', j.jd_text,
+  'raw_payload_json', j.raw_payload_json
+)
+```
