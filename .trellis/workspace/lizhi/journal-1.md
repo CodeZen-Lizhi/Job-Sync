@@ -377,3 +377,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 多源采集与Boss沟通状态同步
+
+**Date**: 2026-06-16
+**Task**: 多源采集与Boss沟通状态同步
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成多源采集选择、Boss聊天页沟通状态同步、跨层协议与验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3f983d2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

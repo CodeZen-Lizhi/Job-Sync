@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~379 | Active |
+| `journal-1.md` | ~413 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-06-16 | 多源采集与Boss沟通状态同步 | `3f983d2` | `remote-job-intelligence` |
 | 11 | 2026-06-16 | 完成采集配置与职位库统一列表 | `ce3fe67` | `remote-job-intelligence` |
 | 10 | 2026-06-15 | 归档 Job-Sync 二开父任务 | `506ea6c` | `remote-job-intelligence` |
 | 9 | 2026-06-15 | 最终验收审计 | `506ea6c` | `remote-job-intelligence` |
