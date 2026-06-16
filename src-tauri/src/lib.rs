@@ -55,6 +55,7 @@ pub fn run() {
             commands::jobs::list_application_ready_jobs,
             commands::jobs::list_communication_followup_jobs,
             commands::jobs::list_filtered_jobs,
+            commands::jobs::list_pending_confirmation_jobs,
             commands::jobs::list_job_blacklist,
             commands::jobs::list_job_sources,
             commands::jobs::set_job_source_enabled,

@@ -71,6 +71,7 @@ interface AiCompanyScoreErrorState {
 
 type JobTimeRange = "today" | "yesterday" | "last7" | "last30" | "last90" | "custom";
 type ProcessedFilter = "all" | "processed" | "unprocessed";
+type JobCandidateBucket = "all" | "recommended" | "pending_confirmation" | "filtered" | "processed";
 
 export type JobStatusFilter =
   | ReviewStatus
@@ -655,6 +656,7 @@ export function useJobsPage() {
   const jobCandidateCustomStartDate = ref(localDateInputValue(addDays(new Date(), -6)));
   const jobCandidateCustomEndDate = ref(localDateInputValue(new Date()));
   const jobCandidateProcessedFilter = ref<ProcessedFilter>("all");
+  const jobCandidateBucket = ref<JobCandidateBucket>("all");
   const selectedJobStatusFilters = ref<JobStatusFilter[]>([]);
   const selectedSourcePlatformFilters = ref<string[]>([]);
   const selectedCollectionMethodFilters = ref<CollectionMethod[]>([]);
@@ -912,6 +914,7 @@ export function useJobsPage() {
     jobCandidatesLoading.value = true;
     try {
       const page = await invoke<JobCandidatePage>("list_job_candidates", {
+        bucket: jobCandidateBucket.value,
         query: jobCandidateSearch.value.trim() || null,
         startDate,
         endDate,
@@ -959,6 +962,7 @@ export function useJobsPage() {
     jobCandidateCustomStartDate.value = localDateInputValue(addDays(new Date(), -6));
     jobCandidateCustomEndDate.value = localDateInputValue(new Date());
     jobCandidateProcessedFilter.value = "all";
+    jobCandidateBucket.value = "all";
     selectedJobStatusFilters.value = [];
     selectedSourcePlatformFilters.value = [];
     selectedCollectionMethodFilters.value = [];
@@ -1940,6 +1944,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     jobCandidateCustomStartDate,
     jobCandidateCustomEndDate,
     jobCandidateProcessedFilter,
+    jobCandidateBucket,
     selectedJobStatusFilters,
     selectedSourcePlatformFilters,
     selectedCollectionMethodFilters,

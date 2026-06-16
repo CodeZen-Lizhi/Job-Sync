@@ -68,6 +68,9 @@ describe("review workflow contract", () => {
     }
 
     assert.match(jobsLogic, /invoke<JobCandidatePage>\("list_job_candidates"/);
+    assert.match(jobsLogic, /jobCandidateBucket/);
+    assert.match(jobsLogic, /bucket: jobCandidateBucket\.value/);
+    assert.match(jobsPage, /jobCandidateBucket\.value = bucket === "confirm" \? "pending_confirmation" : bucket/);
     assert.match(jobsLogic, /function loadJobCandidates/);
     assert.match(jobsLogic, /function isProcessedJob/);
     assert.match(jobsLogic, /processed: jobCandidateProcessedFilter/);

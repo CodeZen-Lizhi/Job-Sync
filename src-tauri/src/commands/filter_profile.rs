@@ -657,6 +657,62 @@ fn push_blocked(
     }));
 }
 
+fn has_text_detail_evidence(job: &Value, detail: Option<&str>) -> bool {
+    let has_jd = job
+        .get("jd_text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let has_detail = detail.map(str::trim).is_some_and(|value| !value.is_empty());
+    has_jd || has_detail
+}
+
+fn has_raw_payload_evidence(job: &Value) -> bool {
+    job.get("raw_payload_json")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty() && value != "{}" && value != "null")
+}
+
+fn profile_has_strict_text_rules(profile: &NormalizedFilterProfile) -> bool {
+    !profile.must_keywords.is_empty()
+        || !profile.must_not_keywords.is_empty()
+        || !profile.required_directions.is_empty()
+        || !profile.excluded_directions.is_empty()
+        || !profile.required_tech_tags.is_empty()
+        || !profile.excluded_tech_tags.is_empty()
+        || !profile.required_work_modes.is_empty()
+        || !profile.excluded_work_modes.is_empty()
+        || !profile.company_must_keywords.is_empty()
+        || !profile.company_must_not_keywords.is_empty()
+        || !profile.company_required_scales.is_empty()
+        || !profile.company_excluded_scales.is_empty()
+        || !profile.company_required_financing_stages.is_empty()
+        || !profile.company_excluded_financing_stages.is_empty()
+        || !profile.company_required_industries.is_empty()
+        || !profile.company_excluded_industries.is_empty()
+}
+
+fn rule_type_of(blocked: &Value) -> Option<&str> {
+    blocked.get("rule_type").and_then(Value::as_str)
+}
+
+fn is_evidence_sensitive_missing_rule(blocked: &Value) -> bool {
+    matches!(
+        rule_type_of(blocked),
+        Some(
+            "must_keyword"
+                | "required_direction"
+                | "required_tech_tag"
+                | "required_work_mode"
+                | "company_must_keyword"
+                | "company_required_scale"
+                | "company_required_financing_stage"
+                | "company_required_industry"
+        )
+    )
+}
+
 fn has_any(items: &[String], rules: &[String]) -> bool {
     rules
         .iter()
@@ -1442,12 +1498,56 @@ fn evaluate_filter_profile_with_blacklist(
         &search_text,
         &profile.company_preference_industries,
     );
-    let eligible = blocked_by.is_empty();
+    let has_detail_evidence = has_text_detail_evidence(job, detail);
+    let has_raw_payload = has_raw_payload_evidence(job);
+    let evidence_quality = if has_detail_evidence {
+        "strong"
+    } else {
+        "weak"
+    };
+    let mut evidence_sources = Vec::new();
+    if has_detail_evidence {
+        evidence_sources.push("jd_or_detail");
+    }
+    if has_raw_payload {
+        evidence_sources.push("raw_payload");
+    }
+    if evidence_sources.is_empty() {
+        evidence_sources.push("list_fields");
+    }
+
+    let only_missing_evidence_sensitive_rules =
+        !blocked_by.is_empty() && blocked_by.iter().all(is_evidence_sensitive_missing_rule);
+    let pending_confirmation = !has_detail_evidence
+        && profile_has_strict_text_rules(profile)
+        && only_missing_evidence_sensitive_rules;
+    let eligible = blocked_by.is_empty() && !pending_confirmation;
+    let bucket = if pending_confirmation {
+        "pending_confirmation"
+    } else if eligible {
+        "recommended"
+    } else {
+        "filtered"
+    };
+    let pending_by = if pending_confirmation {
+        json!([{
+          "rule_type": "insufficient_evidence",
+          "field": "jd_text",
+          "value": "missing_jd_or_detail",
+          "reason": "职位缺少 JD 或详情正文，当前采后判断规则需要正文证据，先进入待确认"
+        }])
+    } else {
+        json!([])
+    };
 
     (
         eligible,
         json!({
           "eligible": eligible,
+          "bucket": bucket,
+          "evidence_quality": evidence_quality,
+          "evidence_sources": evidence_sources,
+          "pending_by": pending_by,
           "blocked_by": blocked_by,
           "matched_preferences": matched_preferences,
           "missing_preferences": missing_preferences,
@@ -1559,6 +1659,8 @@ pub(crate) fn recompute_default_filter_profile_for_job_on_conn(
           'salary_desc', j.salary_desc,
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
+          'jd_text', j.jd_text,
+          'raw_payload_json', j.raw_payload_json,
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
           'communication_status', COALESCE(rs.communication_status, 'not_contacted'),
@@ -1631,6 +1733,8 @@ fn recompute_filter_profile_on_conn(conn: &Connection) -> Result<u64, String> {
           'salary_desc', j.salary_desc,
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
+          'jd_text', j.jd_text,
+          'raw_payload_json', j.raw_payload_json,
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
           'communication_status', COALESCE(rs.communication_status, 'not_contacted'),
@@ -1697,6 +1801,8 @@ pub(crate) fn recompute_missing_default_filter_profile_on_conn(
           'salary_desc', j.salary_desc,
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
+          'jd_text', j.jd_text,
+          'raw_payload_json', j.raw_payload_json,
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
           'communication_status', COALESCE(rs.communication_status, 'not_contacted'),
@@ -1857,6 +1963,7 @@ mod tests {
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
         assert!(!eligible);
+        assert_eq!(reason["bucket"], json!("filtered"));
         assert_eq!(reason["blocked_by"].as_array().map(Vec::len), Some(2));
         assert_eq!(
             reason["matched_preferences"].as_array().map(Vec::len),
@@ -1903,6 +2010,8 @@ mod tests {
         let (eligible, reason) = evaluate_filter_profile(&job, Some(detail), &profile);
 
         assert!(eligible);
+        assert_eq!(reason["bucket"], json!("recommended"));
+        assert_eq!(reason["evidence_quality"], json!("strong"));
         assert_eq!(reason["blocked_by"].as_array().map(Vec::len), Some(0));
         assert_eq!(
             reason["matched_preferences"][0],
@@ -1920,6 +2029,30 @@ mod tests {
             .any(|item| item.as_str() == Some("company_industry:SaaS")));
         assert_eq!(reason["dimensions"]["experience"]["min_years"], json!(3.0));
         assert_eq!(reason["dimensions"]["salary"]["min_k"], json!(30.0));
+    }
+
+    #[test]
+    fn evaluate_filter_profile_marks_missing_detail_as_pending_confirmation() {
+        let profile = normalize_filter_profile(&json!({
+          "mustKeywords": ["Kubernetes"]
+        }));
+        let job = json!({
+          "source_platform": "boss",
+          "position_name": "后端开发",
+          "brand_name": "Pending Co"
+        });
+
+        let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
+
+        assert!(!eligible);
+        assert_eq!(reason["bucket"], json!("pending_confirmation"));
+        assert_eq!(reason["evidence_quality"], json!("weak"));
+        assert!(reason["pending_by"]
+            .as_array()
+            .expect("pending reasons")
+            .iter()
+            .any(|item| item.get("rule_type").and_then(Value::as_str)
+                == Some("insufficient_evidence")));
     }
 
     #[test]
@@ -2212,6 +2345,108 @@ mod tests {
             .expect("query go result");
         assert_eq!(profile_id, "go-only");
         assert_eq!(eligible, 1);
+    }
+
+    #[test]
+    fn recompute_default_filter_profile_uses_jd_text_and_raw_payload_json() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        conn.execute(
+            r#"
+        INSERT INTO job (
+          encrypt_job_id,
+          source_platform,
+          raw_payload_json,
+          position_name,
+          boss_name,
+          brand_name,
+          city_name,
+          salary_desc,
+          experience_name,
+          degree_name,
+          jd_text,
+          last_seen_at
+        )
+        VALUES (
+          'v2ex_jd_hit',
+          'v2ex',
+          '{"post":"团队使用 Kubernetes 和 Rust，不接受外包驻场"}',
+          '后端工程师',
+          NULL,
+          'V2EX Co',
+          '远程',
+          '30-50K',
+          '3-5年',
+          '本科',
+          '负责 Kubernetes 平台工程和 Rust 服务开发',
+          '2026-06-13T00:00:00Z'
+        )
+        "#,
+            [],
+        )
+        .expect("seed v2ex jd job");
+
+        db::models::upsert_filter_profile(
+            &conn,
+            "jd-required",
+            "JD Required",
+            &json!({
+              "mustKeywords": ["Kubernetes"],
+              "requiredTechTags": ["Rust"]
+            }),
+            true,
+        )
+        .expect("seed jd profile");
+
+        let recomputed = recompute_default_filter_profile_for_job_on_conn(&conn, "v2ex_jd_hit")
+            .expect("recompute jd job");
+        assert!(recomputed);
+        let (eligible, reason): (i64, String) = conn
+            .query_row(
+                "SELECT eligible, reason_json FROM job_filter_result WHERE encrypt_job_id = 'v2ex_jd_hit'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query jd result");
+        let reason: Value = serde_json::from_str(&reason).expect("parse reason");
+
+        assert_eq!(eligible, 1);
+        assert_eq!(reason["bucket"], json!("recommended"));
+        assert_eq!(reason["evidence_quality"], json!("strong"));
+
+        db::models::upsert_filter_profile(
+            &conn,
+            "raw-blocked",
+            "Raw Blocked",
+            &json!({
+              "mustKeywords": ["Kubernetes"],
+              "mustNotKeywords": ["外包驻场"]
+            }),
+            true,
+        )
+        .expect("seed raw blocked profile");
+
+        let recomputed =
+            recompute_missing_default_filter_profile_on_conn(&conn).expect("recompute raw profile");
+        assert_eq!(recomputed, 1);
+        let (eligible, reason): (i64, String) = conn
+            .query_row(
+                "SELECT eligible, reason_json FROM job_filter_result WHERE encrypt_job_id = 'v2ex_jd_hit'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query raw result");
+        let reason: Value = serde_json::from_str(&reason).expect("parse raw reason");
+
+        assert_eq!(eligible, 0);
+        assert_eq!(reason["bucket"], json!("filtered"));
+        assert!(reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .iter()
+            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("must_not_keyword")));
     }
 
     #[test]

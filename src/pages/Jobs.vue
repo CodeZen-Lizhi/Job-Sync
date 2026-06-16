@@ -24,6 +24,7 @@ const {
   jobCandidateCustomStartDate,
   jobCandidateCustomEndDate,
   jobCandidateProcessedFilter,
+  jobCandidateBucket,
   selectedJobStatusFilters,
   selectedSourcePlatformFilters,
   selectedCollectionMethodFilters,
@@ -34,7 +35,6 @@ const {
   reviewCandidates,
   filteredJobs,
   applicationReadyJobsLoading,
-  filteredJobsLoading,
   expandedJobId,
   detailLoading,
   expandedDetail,
@@ -128,21 +128,18 @@ const hasActiveFilters = computed(
 
 const activeBucket = computed(() => bucketOptions.find((bucket) => bucket.value === activeJobLibraryBucket.value) ?? bucketOptions[0]);
 
-const displayedJobs = computed(() => (activeJobLibraryBucket.value === "filtered" ? filteredJobs.value : jobCandidates.value));
+const displayedJobs = computed(() => jobCandidates.value);
 
 const displayedJobsLoading = computed(() => {
-  if (activeJobLibraryBucket.value === "filtered") return filteredJobsLoading.value;
   if (activeJobLibraryBucket.value === "processed") return jobCandidatesLoading.value || applicationReadyJobsLoading.value;
   return jobCandidatesLoading.value;
 });
 
 const displayedJobsTotal = computed(() => {
-  if (activeJobLibraryBucket.value === "filtered") return filteredJobs.value.length;
-  if (activeJobLibraryBucket.value === "confirm") return 0;
   return jobCandidatesTotal.value;
 });
 
-const showPagination = computed(() => activeJobLibraryBucket.value !== "filtered" && activeJobLibraryBucket.value !== "confirm");
+const showPagination = computed(() => true);
 
 const bucketSummaryCards = computed(() => [
   {
@@ -164,6 +161,7 @@ const bucketSummaryCards = computed(() => [
 
 function applyBucket(bucket: JobLibraryBucket): void {
   activeJobLibraryBucket.value = bucket;
+  jobCandidateBucket.value = bucket === "confirm" ? "pending_confirmation" : bucket;
   if (bucket === "recommended") {
     jobCandidateProcessedFilter.value = "unprocessed";
     selectedJobStatusFilters.value = [];
@@ -179,7 +177,10 @@ function applyBucket(bucket: JobLibraryBucket): void {
     return;
   }
   if (bucket === "filtered") {
+    jobCandidateProcessedFilter.value = "all";
+    selectedJobStatusFilters.value = [];
     void loadFilteredJobs();
+    void loadJobCandidates();
     return;
   }
   if (bucket === "all") {
@@ -228,10 +229,7 @@ const jobCandidatePageSizeModel = computed<string>({
 });
 
 function refreshCandidates(): void {
-  if (activeJobLibraryBucket.value === "filtered") {
-    void loadFilteredJobs();
-    return;
-  }
+  if (activeJobLibraryBucket.value === "filtered") void loadFilteredJobs();
   if (activeJobLibraryBucket.value === "processed") {
     void loadApplicationReadyJobs();
   }

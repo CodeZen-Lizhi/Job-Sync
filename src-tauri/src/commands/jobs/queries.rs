@@ -562,6 +562,7 @@ fn placeholders(count: usize) -> String {
 }
 
 fn build_job_candidate_filters(
+    bucket: Option<String>,
     query: Option<String>,
     start_date: Option<String>,
     end_date: Option<String>,
@@ -572,6 +573,37 @@ fn build_job_candidate_filters(
 ) -> (String, Vec<SqlValue>) {
     let mut where_parts = vec!["1 = 1".to_string()];
     let mut params = Vec::new();
+
+    match bucket.as_deref().map(str::trim) {
+        Some("recommended") => where_parts.push(
+            r#"
+            r.eligible = 1
+            AND COALESCE(json_extract(r.reason_json, '$.bucket'), 'recommended') = 'recommended'
+            AND NOT "#
+                .to_string()
+                + JOB_PROCESSED_SQL,
+        ),
+        Some("pending_confirmation") | Some("confirm") => where_parts.push(
+            "COALESCE(json_extract(r.reason_json, '$.bucket'), '') = 'pending_confirmation'"
+                .to_string(),
+        ),
+        Some("filtered") => where_parts.push(
+            r#"
+            (
+              r.eligible = 0
+              OR jb.id IS NOT NULL
+              OR cb.id IS NOT NULL
+              OR COALESCE(crs.review_status, 'pending') = 'manual_not_fit'
+              OR COALESCE(rs.review_status, 'pending') IN ('ignored', 'applied')
+              OR COALESCE(rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
+            )
+            AND COALESCE(json_extract(r.reason_json, '$.bucket'), '') != 'pending_confirmation'
+            "#
+            .to_string(),
+        ),
+        Some("processed") => where_parts.push(JOB_PROCESSED_SQL.to_string()),
+        _ => {}
+    }
 
     if let Some(query) = query
         .map(|value| value.trim().to_string())
@@ -700,6 +732,7 @@ fn build_job_candidate_filters(
 #[allow(clippy::too_many_arguments)]
 pub fn list_job_candidates(
     app: tauri::AppHandle,
+    bucket: Option<String>,
     query: Option<String>,
     start_date: Option<String>,
     end_date: Option<String>,
@@ -714,6 +747,7 @@ pub fn list_job_candidates(
     let conn = open_conn(&app_data_dir)?;
     list_job_candidates_on_conn(
         &conn,
+        bucket,
         query,
         start_date,
         end_date,
@@ -729,6 +763,7 @@ pub fn list_job_candidates(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn list_job_candidates_on_conn(
     conn: &Connection,
+    bucket: Option<String>,
     query: Option<String>,
     start_date: Option<String>,
     end_date: Option<String>,
@@ -744,6 +779,7 @@ pub(super) fn list_job_candidates_on_conn(
     let limit = limit.unwrap_or(20).clamp(1, 100);
     let offset = offset.unwrap_or(0);
     let (where_sql, params) = build_job_candidate_filters(
+        bucket,
         query,
         start_date,
         end_date,
@@ -1766,6 +1802,9 @@ pub(super) fn list_communication_followup_jobs_on_conn(
 }
 
 fn is_filtered_out_job(job: &JobRow) -> bool {
+    if is_pending_confirmation_job(job) {
+        return false;
+    }
     job.filter_eligible == Some(false)
         || job.company_blacklisted
         || job.job_blacklisted
@@ -1776,6 +1815,19 @@ fn is_filtered_out_job(job: &JobRow) -> bool {
             job.communication_status.as_deref(),
             Some("read_no_reply" | "rejected" | "manual_not_fit")
         )
+}
+
+fn filter_reason_bucket(job: &JobRow) -> Option<String> {
+    let reason = job.filter_reason_json.as_deref()?;
+    let reason = serde_json::from_str::<Value>(reason).ok()?;
+    reason
+        .get("bucket")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+fn is_pending_confirmation_job(job: &JobRow) -> bool {
+    filter_reason_bucket(job).as_deref() == Some("pending_confirmation")
 }
 
 pub(super) fn list_filtered_jobs_on_conn(
@@ -1791,6 +1843,30 @@ pub(super) fn list_filtered_jobs_on_conn(
         .collect::<Vec<_>>();
     out.truncate(limit);
     Ok(out)
+}
+
+pub(super) fn list_pending_confirmation_jobs_on_conn(
+    conn: &Connection,
+    limit: Option<u32>,
+) -> Result<Vec<JobRow>, String> {
+    let limit = limit.unwrap_or(20).min(100) as usize;
+    let scan_limit = ((limit as i64) * 10).max(200).min(1000);
+    let _ = filter_profile::recompute_missing_default_filter_profile_on_conn(conn)?;
+    let mut out = list_jobs_like(conn, None, None, scan_limit, 0)?
+        .into_iter()
+        .filter(is_pending_confirmation_job)
+        .collect::<Vec<_>>();
+    out.truncate(limit);
+    Ok(out)
+}
+
+pub fn list_pending_confirmation_jobs(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<JobRow>, String> {
+    let app_data_dir = paths::resolve_data_dir(&app)?;
+    let conn = open_conn(&app_data_dir)?;
+    list_pending_confirmation_jobs_on_conn(&conn, limit)
 }
 
 fn today_date_string() -> String {
@@ -2350,6 +2426,7 @@ mod tests {
         let page = list_job_candidates_on_conn(
             &conn,
             None,
+            None,
             Some("2026-06-13T00:00:00Z".to_string()),
             Some("2026-06-15T00:00:00Z".to_string()),
             None,
@@ -2442,6 +2519,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some("processed".to_string()),
             Some(vec!["favorited".to_string(), "replied".to_string()]),
             None,
@@ -2469,6 +2547,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some("unprocessed".to_string()),
             None,
             None,
@@ -2491,6 +2570,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(vec!["v2ex".to_string()]),
             None,
             Some(20),
@@ -2499,6 +2579,144 @@ mod tests {
         .expect("list v2ex candidates");
         assert_eq!(v2ex.total, 1);
         assert_eq!(v2ex.jobs[0].encrypt_job_id, "job_v2ex_replied");
+    }
+
+    #[test]
+    fn list_job_candidates_filters_by_canonical_bucket() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        for (job_id, position) in [
+            ("job_recommended", "Go 平台工程师"),
+            ("job_pending", "后端工程师"),
+            ("job_filtered", "外包驻场工程师"),
+            ("job_processed", "Go 已处理岗位"),
+        ] {
+            seed_job_fixture(&conn, job_id, "Bucket Co", position);
+            seed_resume_score(&conn, job_id, 80.0);
+        }
+
+        models::upsert_job_filter_result(
+            &conn,
+            "job_recommended",
+            models::DEFAULT_FILTER_PROFILE_ID,
+            true,
+            &json!({
+              "eligible": true,
+              "bucket": "recommended",
+              "blocked_by": [],
+              "matched_preferences": ["Go"],
+              "missing_preferences": []
+            }),
+        )
+        .expect("seed recommended");
+        models::upsert_job_filter_result(
+            &conn,
+            "job_pending",
+            models::DEFAULT_FILTER_PROFILE_ID,
+            false,
+            &json!({
+              "eligible": false,
+              "bucket": "pending_confirmation",
+              "pending_by": [{"rule_type": "insufficient_evidence"}],
+              "blocked_by": []
+            }),
+        )
+        .expect("seed pending");
+        models::upsert_job_filter_result(
+            &conn,
+            "job_filtered",
+            models::DEFAULT_FILTER_PROFILE_ID,
+            false,
+            &json!({
+              "eligible": false,
+              "bucket": "filtered",
+              "blocked_by": [{"rule_type": "must_not_keyword"}]
+            }),
+        )
+        .expect("seed filtered");
+        models::upsert_job_filter_result(
+            &conn,
+            "job_processed",
+            models::DEFAULT_FILTER_PROFILE_ID,
+            true,
+            &json!({
+              "eligible": true,
+              "bucket": "recommended",
+              "blocked_by": []
+            }),
+        )
+        .expect("seed processed");
+        models::upsert_job_review_state(
+            &conn,
+            "job_processed",
+            Some("favorited"),
+            Some("not_contacted"),
+            None,
+            None,
+        )
+        .expect("mark processed");
+        conn.execute(
+            "UPDATE job_filter_result SET updated_at = '2099-01-01T00:00:00Z'",
+            [],
+        )
+        .expect("pin seeded filter results");
+
+        let recommended = list_job_candidates_on_conn(
+            &conn,
+            Some("recommended".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(20),
+            Some(0),
+        )
+        .expect("list recommended");
+        assert_eq!(
+            recommended
+                .jobs
+                .iter()
+                .map(|job| job.encrypt_job_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["job_recommended"]
+        );
+
+        let pending = list_job_candidates_on_conn(
+            &conn,
+            Some("pending_confirmation".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(20),
+            Some(0),
+        )
+        .expect("list pending bucket");
+        assert_eq!(pending.jobs[0].encrypt_job_id, "job_pending");
+
+        let filtered = list_job_candidates_on_conn(
+            &conn,
+            Some("filtered".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(20),
+            Some(0),
+        )
+        .expect("list filtered bucket");
+        assert_eq!(filtered.jobs[0].encrypt_job_id, "job_filtered");
     }
 
     #[test]
@@ -3273,6 +3491,7 @@ mod tests {
         seed_job_fixture(&conn, "job_read_no_reply", "No Reply Co", "Go SRE 工程师");
         seed_job_fixture(&conn, "job_applied", "Applied Co", "Go 平台工程师");
         seed_job_fixture(&conn, "job_blacklisted", "Blacklist Co", "Go 平台工程师");
+        seed_job_fixture(&conn, "job_pending", "Pending Co", "后端工程师");
 
         for job_id in [
             "job_keep",
@@ -3309,6 +3528,25 @@ mod tests {
             }),
         )
         .expect("seed blocked filter");
+        models::upsert_job_filter_result(
+            &conn,
+            "job_pending",
+            models::DEFAULT_FILTER_PROFILE_ID,
+            false,
+            &json!({
+              "eligible": false,
+              "bucket": "pending_confirmation",
+              "evidence_quality": "weak",
+              "pending_by": [{
+                "rule_type": "insufficient_evidence",
+                "field": "jd_text",
+                "value": "missing_jd_or_detail",
+                "reason": "缺少 JD 或详情正文"
+              }],
+              "blocked_by": []
+            }),
+        )
+        .expect("seed pending filter");
 
         models::upsert_job_review_state(
             &conn,
@@ -3346,16 +3584,24 @@ mod tests {
         .expect("seed job blacklist");
 
         let filtered = list_filtered_jobs_on_conn(&conn, Some(20)).expect("list filtered jobs");
+        let pending =
+            list_pending_confirmation_jobs_on_conn(&conn, Some(20)).expect("list pending jobs");
         let ids = filtered
+            .iter()
+            .map(|job| job.encrypt_job_id.as_str())
+            .collect::<Vec<_>>();
+        let pending_ids = pending
             .iter()
             .map(|job| job.encrypt_job_id.as_str())
             .collect::<Vec<_>>();
 
         assert!(!ids.contains(&"job_keep"));
+        assert!(!ids.contains(&"job_pending"));
         assert!(ids.contains(&"job_profile_blocked"));
         assert!(ids.contains(&"job_read_no_reply"));
         assert!(ids.contains(&"job_applied"));
         assert!(ids.contains(&"job_blacklisted"));
+        assert_eq!(pending_ids, vec!["job_pending"]);
 
         let profile_blocked = filtered
             .iter()

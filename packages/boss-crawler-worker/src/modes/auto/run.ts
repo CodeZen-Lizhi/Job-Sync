@@ -15,20 +15,6 @@ import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, detectRiskUrl,
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
 import { runV2exFeedMode } from "../../v2ex/feed.js";
 
-function withFilteredJobListRaw(raw: any, jobs: any[]): any {
-  if (!raw || typeof raw !== "object") return raw;
-  const cloned = structuredClone(raw);
-  if (cloned?.zpData && typeof cloned.zpData === "object") {
-    if (Array.isArray(cloned.zpData.jobList)) cloned.zpData.jobList = jobs;
-    if (Array.isArray(cloned.zpData.list)) cloned.zpData.list = jobs;
-    if (Array.isArray(cloned.zpData.data)) cloned.zpData.data = jobs;
-    return cloned;
-  }
-  if (Array.isArray(cloned.jobList)) cloned.jobList = jobs;
-  if (Array.isArray(cloned.data)) cloned.data = jobs;
-  return cloned;
-}
-
 export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeContext): Promise<void> {
   if (payload.task.source_platform === "v2ex") {
     try {
@@ -214,7 +200,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
           payload: {
             keyword,
             filters: payload.task.filters,
-            raw: profileFilterEnabled ? withFilteredJobListRaw(jobListRaw, jobsToCapture) : jobListRaw,
+            raw: jobListRaw,
           },
         });
         ctx.emit({

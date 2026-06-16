@@ -34,6 +34,7 @@ pub fn list_jobs(
 #[tauri::command]
 pub fn list_job_candidates(
     app: tauri::AppHandle,
+    bucket: Option<String>,
     query: Option<String>,
     start_date: Option<String>,
     end_date: Option<String>,
@@ -46,6 +47,7 @@ pub fn list_job_candidates(
 ) -> Result<JobCandidatePage, String> {
     queries::list_job_candidates(
         app,
+        bucket,
         query,
         start_date,
         end_date,
@@ -117,6 +119,14 @@ pub fn list_filtered_jobs(
     limit: Option<u32>,
 ) -> Result<Vec<JobRow>, String> {
     queries::list_filtered_jobs(app, limit)
+}
+
+#[tauri::command]
+pub fn list_pending_confirmation_jobs(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<JobRow>, String> {
+    queries::list_pending_confirmation_jobs(app, limit)
 }
 
 #[tauri::command]
