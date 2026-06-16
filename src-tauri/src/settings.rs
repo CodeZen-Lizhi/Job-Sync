@@ -44,6 +44,9 @@ pub struct AppSettings {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wecom_webhook_url: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proxy_url: Option<String>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -80,6 +83,7 @@ impl AppSettings {
             openai_prompt_extra: String::new(),
             openai_schema_extra: String::new(),
             wecom_webhook_url: None,
+            proxy_url: None,
             ai_resume_text: String::new(),
             ai_context_text: String::new(),
             ai_resume_files: String::new(),
@@ -249,6 +253,12 @@ pub fn apply_worker_env(cmd: &mut Command, app_data_dir: &Path) {
     }
 
     if let Ok(settings) = read_settings(app_data_dir) {
+        if let Some(v) = opt_trimmed(settings.proxy_url.clone()) {
+            cmd.env("HTTP_PROXY", &v);
+            cmd.env("HTTPS_PROXY", &v);
+            cmd.env("ALL_PROXY", &v);
+            cmd.env("NO_PROXY", "localhost,127.0.0.1,::1");
+        }
         if let Some(v) = opt_trimmed(settings.openai_api_key) {
             cmd.env("OPENAI_API_KEY", v);
         }
@@ -270,5 +280,45 @@ pub fn apply_worker_env(cmd: &mut Command, app_data_dir: &Path) {
         if let Some(v) = opt_trimmed(Some(settings.openai_schema_extra)) {
             cmd.env("OPENAI_SCHEMA_EXTRA", v);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+
+    use super::*;
+
+    fn command_env_value<'a>(cmd: &'a Command, key: &str) -> Option<&'a OsStr> {
+        cmd.get_envs()
+            .find_map(|(name, value)| (name == key).then_some(value).flatten())
+    }
+
+    #[test]
+    fn apply_worker_env_injects_saved_proxy_url() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut settings = AppSettings::platform_default();
+        settings.proxy_url = Some("http://127.0.0.1:7890".to_string());
+        write_settings(tmp.path(), &settings).expect("write settings");
+
+        let mut cmd = Command::new("node");
+        apply_worker_env(&mut cmd, tmp.path());
+
+        assert_eq!(
+            command_env_value(&cmd, "HTTP_PROXY").and_then(OsStr::to_str),
+            Some("http://127.0.0.1:7890")
+        );
+        assert_eq!(
+            command_env_value(&cmd, "HTTPS_PROXY").and_then(OsStr::to_str),
+            Some("http://127.0.0.1:7890")
+        );
+        assert_eq!(
+            command_env_value(&cmd, "ALL_PROXY").and_then(OsStr::to_str),
+            Some("http://127.0.0.1:7890")
+        );
+        assert_eq!(
+            command_env_value(&cmd, "NO_PROXY").and_then(OsStr::to_str),
+            Some("localhost,127.0.0.1,::1")
+        );
     }
 }

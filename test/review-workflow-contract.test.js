@@ -1277,6 +1277,8 @@ describe("review workflow contract", () => {
     assert.match(settingsCommand, /has_wecom_webhook_url/);
     assert.match(settingsCommand, /wecom_webhook_url: None/);
     assert.match(settingsCommand, /public_settings_redacts_saved_wecom_webhook_url/);
+    assert.match(settingsCommand, /proxy_url: Option<String>/);
+    assert.match(settingsCommand, /public_settings_exposes_saved_proxy_url/);
     assert.match(settingsPage, /has_openai_api_key/);
     assert.match(settingsPage, /has_wecom_webhook_url/);
     assert.match(settingsPage, /wecomWebhookUrl/);
@@ -1320,6 +1322,25 @@ describe("review workflow contract", () => {
     assert.match(settingsPage, /不会触发采集、投递、开聊或企业微信发送/);
     assert.match(settingsPage, /apiKey: apiKey\.value\.trim\(\) \|\| null/);
     assert.match(settingsPage, /baseUrl: baseUrl\.value\.trim\(\) \|\| null/);
+  });
+
+  it("keeps saved worker proxy settings wired to worker environment", () => {
+    const settingsPage = readProjectFile("src/pages/Settings.vue");
+    const settingsCommand = readProjectFile("src-tauri/src/commands/settings.rs");
+    const settingsCore = readProjectFile("src-tauri/src/settings.rs");
+
+    assert.match(settingsPage, /网络代理/);
+    assert.match(settingsPage, /Worker 代理 URL/);
+    assert.match(settingsPage, /proxyUrl/);
+    assert.match(settingsPage, /proxyUrl: proxyUrl\.value\.trim\(\) \|\| null/);
+    assert.match(settingsCommand, /proxy_url: Option<String>/);
+    assert.match(settingsCommand, /current\.proxy_url = opt_trimmed\(proxy_url\)/);
+    assert.match(settingsCore, /pub proxy_url: Option<String>/);
+    assert.match(settingsCore, /cmd\.env\("HTTP_PROXY", &v\)/);
+    assert.match(settingsCore, /cmd\.env\("HTTPS_PROXY", &v\)/);
+    assert.match(settingsCore, /cmd\.env\("ALL_PROXY", &v\)/);
+    assert.match(settingsCore, /cmd\.env\("NO_PROXY", "localhost,127\.0\.0\.1,::1"\)/);
+    assert.match(settingsCore, /apply_worker_env_injects_saved_proxy_url/);
   });
 
   it("keeps first-class model provider, temperature and prompt-extra settings wired end to end", () => {

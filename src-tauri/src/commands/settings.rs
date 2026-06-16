@@ -16,6 +16,7 @@ pub struct PublicAppSettings {
     pub openai_schema_extra: String,
     pub wecom_webhook_url: Option<String>,
     pub has_wecom_webhook_url: bool,
+    pub proxy_url: Option<String>,
     pub ai_resume_text: String,
     pub ai_context_text: String,
     pub ai_resume_files: String,
@@ -88,6 +89,7 @@ impl From<settings::AppSettings> for PublicAppSettings {
             openai_schema_extra: settings.openai_schema_extra,
             wecom_webhook_url: None,
             has_wecom_webhook_url,
+            proxy_url: settings.proxy_url,
             ai_resume_text: settings.ai_resume_text,
             ai_context_text: settings.ai_context_text,
             ai_resume_files: settings.ai_resume_files,
@@ -315,6 +317,7 @@ pub fn save_settings(
     openai_prompt_extra: Option<String>,
     openai_schema_extra: Option<String>,
     wecom_webhook_url: Option<String>,
+    proxy_url: Option<String>,
 ) -> Result<PublicAppSettings, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
 
@@ -335,6 +338,7 @@ pub fn save_settings(
     if let Some(webhook_url) = wecom_webhook_url {
         current.wecom_webhook_url = opt_trimmed(Some(webhook_url));
     }
+    current.proxy_url = opt_trimmed(proxy_url);
 
     settings::write_settings(&app_data_dir, &current).map_err(|e| e.to_string())?;
     Ok(PublicAppSettings::from(current))
@@ -367,6 +371,16 @@ mod tests {
 
         assert_eq!(public.wecom_webhook_url, None);
         assert!(public.has_wecom_webhook_url);
+    }
+
+    #[test]
+    fn public_settings_exposes_saved_proxy_url() {
+        let mut settings = settings::AppSettings::platform_default();
+        settings.proxy_url = Some("http://127.0.0.1:7890".to_string());
+
+        let public = PublicAppSettings::from(settings);
+
+        assert_eq!(public.proxy_url.as_deref(), Some("http://127.0.0.1:7890"));
     }
 
     #[test]

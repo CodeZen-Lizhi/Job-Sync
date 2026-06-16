@@ -20,6 +20,7 @@ interface AppSettings {
   openai_schema_extra?: string | null;
   wecom_webhook_url?: string | null;
   has_wecom_webhook_url?: boolean | null;
+  proxy_url?: string | null;
 }
 
 interface ModelInfo {
@@ -87,6 +88,7 @@ const promptExtra = ref("");
 const schemaExtra = ref("");
 const wecomWebhookUrl = ref("");
 const hasSavedWecomWebhookUrl = ref(false);
+const proxyUrl = ref("");
 
 const models = ref<ModelInfo[]>([]);
 const jobSources = ref<JobSourceEntry[]>([]);
@@ -173,6 +175,7 @@ async function loadSettings(): Promise<void> {
     hasSavedWecomWebhookUrl.value = typeof settings.has_wecom_webhook_url === "boolean"
       ? settings.has_wecom_webhook_url
       : !!settings.wecom_webhook_url;
+    proxyUrl.value = settings.proxy_url ?? "";
     if (settings.openai_api_mode) {
       const m = settings.openai_api_mode.trim().toLowerCase();
       if (m === "responses") apiMode.value = "responses";
@@ -392,6 +395,7 @@ async function save(): Promise<void> {
       openaiPromptExtra: promptExtra.value.trim() || null,
       openaiSchemaExtra: schemaExtra.value.trim() || null,
       wecomWebhookUrl: wecomWebhookUrl.value.trim() || (hasSavedWecomWebhookUrl.value ? null : ""),
+      proxyUrl: proxyUrl.value.trim() || null,
     });
     hasSavedApiKey.value = typeof saved.has_openai_api_key === "boolean"
       ? saved.has_openai_api_key
@@ -401,6 +405,7 @@ async function save(): Promise<void> {
       ? saved.has_wecom_webhook_url
       : !!wecomWebhookUrl.value.trim() || hasSavedWecomWebhookUrl.value;
     wecomWebhookUrl.value = "";
+    proxyUrl.value = saved.proxy_url ?? proxyUrl.value.trim();
     success.value = true;
     setTimeout(() => { success.value = false; }, 2000);
   } catch (e) {
@@ -557,6 +562,24 @@ watch(
             placeholder="C:\Program Files\Google\Chrome\Application\chrome.exe"
           />
           <div class="text-xs text-content-muted">Mac 默认使用 Google Chrome.app 路径；必要时可改为本机 Chrome/Edge 可执行文件。</div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Network Proxy Config -->
+    <div class="space-y-3">
+      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">网络代理</div>
+      <div class="ui-panel-muted p-5">
+        <label class="block space-y-1">
+          <div class="text-xs font-medium text-content-muted">Worker 代理 URL（可选）</div>
+          <input
+            v-model="proxyUrl"
+            class="ui-input w-full"
+            placeholder="例如：http://127.0.0.1:7890"
+          />
+          <div class="text-xs text-content-muted">
+            保存后会注入到采集与 AI worker 的 HTTP_PROXY、HTTPS_PROXY 和 ALL_PROXY；本地 localhost 会保持直连。
+          </div>
         </label>
       </div>
     </div>

@@ -1,3 +1,8 @@
+import * as http from "node:http";
+import * as https from "node:https";
+
+import { ProxyAgent } from "proxy-agent";
+
 import type { EventOut } from "../protocol.js";
 
 type ModeContext = {
@@ -23,6 +28,7 @@ type Classification = {
 };
 
 const DEFAULT_FEED_URL = "https://www.v2ex.com/feed/tab/jobs.xml";
+const FEED_REQUEST_TIMEOUT_MS = 30_000;
 const POSITIVE_TERMS = [
   "招聘",
   "招人",
@@ -59,6 +65,13 @@ const NEGATIVE_TERMS = [
   "怎么通俗",
   "想做",
 ];
+
+const feedProxyAgent = new ProxyAgent();
+
+type FeedHttpResponse = {
+  status: number;
+  body: string;
+};
 
 function decodeEntities(text: string): string {
   return text
@@ -166,6 +179,87 @@ function asStringList(value: unknown): string[] {
   return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
 }
 
+function readNestedError(err: unknown): string {
+  if (!err || typeof err !== "object") return "";
+  const cause = (err as { cause?: unknown }).cause;
+  if (!cause) return "";
+  if (cause instanceof Error) {
+    const maybeCode = (cause as Error & { code?: unknown }).code;
+    const code = typeof maybeCode === "string" ? ` ${maybeCode}` : "";
+    return `${cause.name}${code}: ${cause.message}`;
+  }
+  return String(cause);
+}
+
+function formatFeedRequestError(err: unknown): Error {
+  if (err instanceof Error) {
+    const nested = readNestedError(err);
+    const detail = nested ? `${err.message}；${nested}` : err.message;
+    return new Error(`V2EX feed 请求失败：${detail}`);
+  }
+  return new Error(`V2EX feed 请求失败：${String(err)}`);
+}
+
+export async function fetchV2exFeedXml(feedUrl: string, signal: AbortSignal): Promise<FeedHttpResponse> {
+  const url = new URL(feedUrl);
+  const client = url.protocol === "https:" ? https : http;
+
+  return await new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("V2EX feed 请求已取消"));
+      return;
+    }
+
+    const req = client.request(
+      url,
+      {
+        agent: feedProxyAgent,
+        headers: {
+          accept: "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+          "user-agent": "Job-Sync/0.1 V2EX feed collector",
+        },
+        timeout: FEED_REQUEST_TIMEOUT_MS,
+      },
+      (res) => {
+        res.setEncoding("utf8");
+        let body = "";
+        res.on("data", (chunk: string) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          cleanup();
+          resolve({ status: res.statusCode ?? 0, body });
+        });
+      },
+    );
+
+    const cleanup = (): void => {
+      signal.removeEventListener("abort", onAbort);
+      req.removeListener("timeout", onTimeout);
+      req.removeListener("error", onError);
+    };
+    const onAbort = (): void => {
+      cleanup();
+      req.destroy(new Error("V2EX feed 请求已取消"));
+      reject(new Error("V2EX feed 请求已取消"));
+    };
+    const onTimeout = (): void => {
+      cleanup();
+      req.destroy(new Error(`V2EX feed 请求超时：${FEED_REQUEST_TIMEOUT_MS}ms`));
+      reject(new Error(`V2EX feed 请求超时：${FEED_REQUEST_TIMEOUT_MS}ms`));
+    };
+    const onError = (err: Error): void => {
+      cleanup();
+      reject(formatFeedRequestError(err));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    req.on("timeout", onTimeout);
+    req.on("error", onError);
+    req.end();
+  });
+}
+
 function inferPositionName(title: string): string {
   return title
     .replace(/^\s*[\[【][^\]】]+[\]】]\s*/u, "")
@@ -188,17 +282,11 @@ export async function runV2exFeedMode(payload: any, ctx: ModeContext): Promise<v
   const maxJobs = typeof limits.maxJobs === "number" ? limits.maxJobs : 50;
 
   ctx.emit({ type: "LOG", payload: { level: "info", message: `开始 V2EX Feed 自动采集：${feedUrl}` } });
-  const response = await fetch(feedUrl, {
-    signal: ctx.signal,
-    headers: {
-      accept: "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-      "user-agent": "Job-Sync/0.1 V2EX feed collector",
-    },
-  });
-  if (!response.ok) {
+  const response = await fetchV2exFeedXml(feedUrl, ctx.signal);
+  if (response.status < 200 || response.status >= 300) {
     throw new Error(`V2EX feed 返回异常：HTTP ${response.status}`);
   }
-  const xml = await response.text();
+  const xml = response.body;
   const entries = parseV2exAtomFeed(xml).slice(0, Math.max(1, maxEntries));
   let captured = 0;
   let filtered = 0;
