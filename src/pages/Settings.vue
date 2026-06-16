@@ -203,17 +203,6 @@ function clearSavedWecomWebhookUrl(): void {
   hasSavedWecomWebhookUrl.value = false;
 }
 
-function hasSourceConfig(source: JobSourceEntry): boolean {
-  const rawConfig = source.config_json?.trim();
-  if (!rawConfig) return false;
-  try {
-    const parsed = JSON.parse(rawConfig) as unknown;
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && Object.keys(parsed).length > 0;
-  } catch {
-    return true;
-  }
-}
-
 function automaticCollectionLabel(source: JobSourceEntry): string {
   if (source.adapter_kind === "boss") return "支持自动采集";
   if (source.adapter_kind === "feed") return "支持自动采集";
@@ -549,7 +538,6 @@ watch(
               </template>
               <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>无需登录</button>
               <button v-else class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>登录预留</button>
-              <span class="text-xs text-content-muted">配置：{{ hasSourceConfig(source) ? "已配置" : "默认" }}</span>
             </div>
           </div>
         </div>

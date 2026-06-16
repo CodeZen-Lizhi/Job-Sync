@@ -11,8 +11,6 @@ const {
   clearLogs,
   mode,
   selectedCollectionSources,
-  selectedCollectionSourceLabel,
-  v2exSelected,
   maxPages,
   maxJobs,
   delayMs,
@@ -20,8 +18,6 @@ const {
   error,
   filterProfiles,
   activeFilterProfileId,
-  activeFilterProfileName,
-  activeFilterProfileIsDefault,
   sidecarRunning,
   selectFilterProfile,
   start,
@@ -35,8 +31,6 @@ const {
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 class="text-xl font-semibold text-content-primary">岗位采集</h1>
-          <p class="text-sm text-content-secondary">这里是采集执行台；采集意图、平台设置和筛选画像在采集配置里维护。</p>
-          <p class="mt-1 text-xs text-content-muted">只采集和入库岗位，不执行投递或开聊。</p>
         </div>
         <RouterLink class="ui-btn-secondary px-3 py-1.5 text-xs" to="/crawl-config">采集配置</RouterLink>
       </div>
@@ -64,15 +58,11 @@ const {
             自动采集
           </button>
         </div>
-        <div class="text-xs text-content-muted">
-          自动来源：
-          <span class="text-content-secondary">{{ selectedCollectionSourceLabel }}</span>
-        </div>
       </div>
 
-      <div v-if="mode === 'auto'" class="grid gap-3 lg:grid-cols-[minmax(14rem,1.1fr)_2fr]">
-        <section class="space-y-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">本次筛选画像</div>
+      <div v-if="mode === 'auto'" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1.4fr)_repeat(3,minmax(8rem,1fr))]">
+        <label class="space-y-1.5">
+          <div class="text-xs font-medium text-content-muted">筛选画像</div>
           <select
             v-model="activeFilterProfileId"
             class="ui-input w-full"
@@ -83,38 +73,23 @@ const {
               {{ profile.name }}{{ profile.is_default ? "（默认）" : "" }}
             </option>
           </select>
-          <div class="text-xs text-content-muted">
-            当前使用
-            <span class="text-content-secondary">{{ activeFilterProfileName }}</span>
-            <span v-if="activeFilterProfileIsDefault">，默认画像</span>
-            ；只影响候选队列和排序，不阻止岗位入库。
-          </div>
-        </section>
-
-        <section class="space-y-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">采集规模</div>
-          <div class="grid grid-cols-3 gap-3">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最大页数</div>
-              <input v-model.number="maxPages" type="number" min="1" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最大职位数</div>
-              <input v-model.number="maxJobs" type="number" min="1" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">延迟 (ms)</div>
-              <input v-model.number="delayMs" type="number" min="0" class="ui-input w-full" />
-            </label>
-          </div>
-        </section>
+        </label>
+        <label class="space-y-1.5">
+          <div class="text-xs font-medium text-content-muted">最大页数</div>
+          <input v-model.number="maxPages" type="number" min="1" class="ui-input w-full" />
+        </label>
+        <label class="space-y-1.5">
+          <div class="text-xs font-medium text-content-muted">最大职位数</div>
+          <input v-model.number="maxJobs" type="number" min="1" class="ui-input w-full" />
+        </label>
+        <label class="space-y-1.5">
+          <div class="text-xs font-medium text-content-muted">延迟 (ms)</div>
+          <input v-model.number="delayMs" type="number" min="0" class="ui-input w-full" />
+        </label>
       </div>
 
       <div v-if="mode === 'auto' && selectedCollectionSources.length === 0" class="ui-status-warning p-3 text-xs">
         当前没有可执行的自动采集来源。请到设置页启用 Boss 或 V2EX，并在采集配置里选择本次采集来源。
-      </div>
-      <div v-else-if="mode === 'auto' && v2exSelected" class="ui-status-warning p-3 text-xs">
-        多平台会按顺序采集。V2EX 使用公开 Feed，不需要 Boss 登录；只会入库识别为招聘帖的主题。
       </div>
 
       <CrawlActionBar
