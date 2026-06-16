@@ -16,7 +16,7 @@ export const runtime = reactive({
   },
   sidecarTask: {
     running: false,
-    type: undefined as "login" | "meta_sync" | "crawl_manual" | "crawl_auto" | undefined,
+    type: undefined as "login" | "meta_sync" | "chat_sync" | "crawl_manual" | "crawl_auto" | undefined,
   },
   bossMeta: undefined as
     | {
@@ -34,6 +34,7 @@ export const runtime = reactive({
     filtered_job: 0,
   },
   lastCookieCollectedAt: undefined as string | undefined,
+  bossChatStatusSyncedCount: 0,
   /** Incremented each time a FINISHED event arrives — watchers can react to this. */
   finishedCounter: 0,
   /** Set to the encrypt_job_id of the most recently captured detail. */
@@ -119,6 +120,15 @@ export function applySidecarEvent(evt: SidecarEvent): void {
         runtime.bossMeta = evt.payload;
       }
       pushLog({ ts: nowIso(), level: "info", message: "已同步城市、行业与筛选项。" });
+      return;
+    case "BOSS_CHAT_STATUS_SYNCED":
+      runtime.bossChatStatusSyncedCount += 1;
+      runtime.lastDetailCapturedId = evt.payload.encrypt_job_id;
+      pushLog({
+        ts: nowIso(),
+        level: "info",
+        message: `已同步 Boss 沟通状态：${evt.payload.position_name ?? evt.payload.encrypt_job_id} / ${evt.payload.communication_status}`,
+      });
       return;
     case "FINISHED":
       pushLog({ ts: nowIso(), level: "info", message: "任务已结束。" });

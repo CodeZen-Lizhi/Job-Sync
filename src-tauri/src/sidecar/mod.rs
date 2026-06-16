@@ -10,7 +10,9 @@ use std::{
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+use rusqlite::params;
 use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
 
 use crate::{
     commands::filter_profile,
@@ -37,6 +39,20 @@ pub type Result<T> = std::result::Result<T, SidecarError>;
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+fn now_rfc3339() -> String {
+    time::OffsetDateTime::now_utc().format(&Rfc3339).unwrap()
+}
+
+fn local_job_exists(conn: &rusqlite::Connection, encrypt_job_id: &str) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM job WHERE encrypt_job_id = ?1)",
+        params![encrypt_job_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|exists| exists != 0)
+    .unwrap_or(false)
+}
 
 fn extract_job_id_from_list_item(item: &Value) -> Option<String> {
     item.get("securityId")
@@ -291,6 +307,12 @@ impl SidecarManager {
                                             stack: None,
                                         }),
                                     );
+                                } else {
+                                    let _ =
+                                        filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                            conn,
+                                            &payload.encrypt_job_id,
+                                        );
                                 }
                             }
                         }
@@ -342,24 +364,68 @@ impl SidecarManager {
                                 .filters
                                 .as_ref()
                                 .and_then(|v| serde_json::to_string(v).ok());
-                            let has_profile_filter = payload
-                                .filters
-                                .as_ref()
-                                .and_then(|v| v.get("profile"))
-                                .map(|v| v.is_object())
-                                .unwrap_or(false);
                             for (id, item) in jobs {
-                                let _ = models::upsert_job_from_list_item(conn, &id, &item);
+                                let upserted =
+                                    models::upsert_job_from_list_item(conn, &id, &item).is_ok();
                                 let _ = models::insert_job_source_link(
                                     conn,
                                     &id,
                                     payload.keyword.as_deref(),
                                     filters_json.as_deref(),
                                 );
-                                if has_profile_filter {
+                                if upserted {
                                     let _ = filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, &id);
                                 }
                             }
+                        }
+                        EventOut::BossChatStatusSynced(payload) => {
+                            if !matches!(
+                                payload.communication_status.as_str(),
+                                "greeted_unread" | "read_no_reply" | "replied" | "rejected"
+                            ) {
+                                let _ = ipc::emit_event_all(
+                                    &app_handle,
+                                    &EventOut::Error(crate::ipc::protocol::ErrorPayload {
+                                        message: format!(
+                                            "unknown boss chat communication status: {}",
+                                            payload.communication_status
+                                        ),
+                                        stack: None,
+                                    }),
+                                );
+                                continue;
+                            }
+                            if !local_job_exists(conn, &payload.encrypt_job_id) {
+                                continue;
+                            }
+                            let last_greeted_at =
+                                if payload.communication_status == "greeted_unread" {
+                                    Some(now_rfc3339())
+                                } else {
+                                    None
+                                };
+                            if let Err(err) = models::upsert_job_review_state(
+                                conn,
+                                &payload.encrypt_job_id,
+                                None,
+                                Some(&payload.communication_status),
+                                last_greeted_at.as_deref(),
+                                None,
+                            ) {
+                                let _ = ipc::emit_event_all(
+                                    &app_handle,
+                                    &EventOut::Error(crate::ipc::protocol::ErrorPayload {
+                                        message: format!("db sync boss chat status failed: {err}"),
+                                        stack: None,
+                                    }),
+                                );
+                                continue;
+                            }
+                            let _ =
+                                filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                    conn,
+                                    &payload.encrypt_job_id,
+                                );
                         }
                         EventOut::JobFiltered(payload) => {
                             let fallback_id =

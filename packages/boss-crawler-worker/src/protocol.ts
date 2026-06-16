@@ -31,6 +31,11 @@ export const BossMetaSyncPayloadSchema = z.object({
   session: SessionStatePayloadSchema,
 });
 
+export const BossChatSyncPayloadSchema = z.object({
+  session: SessionStatePayloadSchema,
+  limits: z.any().optional().default({}),
+});
+
 export const AiAnalyzePayloadSchema = z.object({
   resume_text: z.string().min(1),
   context_text: z.string().optional(),
@@ -103,6 +108,10 @@ export const CommandInSchema = z.union([
   z.object({
     type: z.literal("BOSS_META_SYNC"),
     payload: BossMetaSyncPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("BOSS_CHAT_SYNC"),
+    payload: BossChatSyncPayloadSchema,
   }),
   z.object({ type: z.literal("AI_ANALYZE"), payload: AiAnalyzePayloadSchema }),
   z.object({ type: z.literal("AI_ANALYZE_GROUP"), payload: AiAnalyzeGroupPayloadSchema }),
@@ -201,6 +210,17 @@ export const BossMetaSyncedPayloadSchema = z.object({
   industry_filter_exemption: z.any().optional(),
 });
 
+export const BossChatStatusSyncedPayloadSchema = z.object({
+  encrypt_job_id: z.string().min(1),
+  communication_status: z.enum(["greeted_unread", "read_no_reply", "replied", "rejected"]),
+  boss_name: z.string().optional(),
+  brand_name: z.string().optional(),
+  position_name: z.string().optional(),
+  message_status: z.string().optional(),
+  message_preview: z.string().optional(),
+  raw_payload: z.any().optional(),
+});
+
 export const ErrorPayloadSchema = z.object({
   message: z.string(),
   stack: z.string().optional(),
@@ -217,6 +237,7 @@ export const EventOutSchema = z.union([
   z.object({ type: z.literal("JOB_FILTERED"), payload: JobFilteredPayloadSchema }),
   z.object({ type: z.literal("AI_RESULT"), payload: AiResultPayloadSchema }),
   z.object({ type: z.literal("BOSS_META_SYNCED"), payload: BossMetaSyncedPayloadSchema }),
+  z.object({ type: z.literal("BOSS_CHAT_STATUS_SYNCED"), payload: BossChatStatusSyncedPayloadSchema }),
   z.object({ type: z.literal("FINISHED") }),
   z.object({ type: z.literal("ERROR"), payload: ErrorPayloadSchema }),
 ]);

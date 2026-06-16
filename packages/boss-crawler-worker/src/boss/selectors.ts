@@ -2,6 +2,7 @@ export const URLS = {
   USER: "https://www.zhipin.com/web/user/",
   DESKTOP: "https://www.zhipin.com/desktop/",
   GEEK_JOBS: "https://www.zhipin.com/web/geek/jobs",
+  GEEK_CHAT: "https://www.zhipin.com/web/geek/chat",
 } as const;
 
 export const API_PATH = {

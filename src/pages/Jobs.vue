@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { ChevronLeft, ChevronRight, Database, Filter, RefreshCw, X } from "lucide-vue-next";
+import { ChevronLeft, ChevronRight, Database, Filter, MessageCircle, RefreshCw, X } from "lucide-vue-next";
 
 import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
@@ -16,6 +16,8 @@ const {
   jobCandidates,
   jobCandidatesTotal,
   jobCandidatesLoading,
+  bossChatStatusSyncing,
+  bossChatStatusSyncMessage,
   jobCandidatePage,
   jobCandidatePageSize,
   jobCandidateTimeRange,
@@ -44,6 +46,7 @@ const {
   SOURCE_PLATFORM_FILTER_OPTIONS,
   COLLECTION_METHOD_FILTER_OPTIONS,
   loadJobCandidates,
+  syncBossChatStatus,
   toggleJobStatusFilter,
   toggleSourcePlatformFilter,
   toggleCollectionMethodFilter,
@@ -150,12 +153,21 @@ function reloadCandidatesFromFirstPage(): void {
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/10 px-4 py-3">
         <div>
           <h2 class="text-sm font-semibold text-content-primary">岗位情报</h2>
-          <p class="mt-1 text-xs text-content-muted">按当前时间范围统计候选岗位；操作入口都在下方岗位列表中。</p>
+          <p class="mt-1 text-xs text-content-muted">
+            按当前时间范围统计候选岗位；操作入口都在下方岗位列表中。
+            <span v-if="bossChatStatusSyncMessage" class="text-cyan-200">{{ bossChatStatusSyncMessage }}</span>
+          </p>
         </div>
-        <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || jobCandidatesLoading" @click="refreshCandidates">
-          <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
-          {{ jobCandidatesLoading ? "刷新中…" : "刷新" }}
-        </button>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || bossChatStatusSyncing" @click="syncBossChatStatus">
+            <MessageCircle class="h-3.5 w-3.5" aria-hidden="true" />
+            {{ bossChatStatusSyncing ? "同步中…" : "同步 Boss 沟通状态" }}
+          </button>
+          <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || jobCandidatesLoading" @click="refreshCandidates">
+            <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
+            {{ jobCandidatesLoading ? "刷新中…" : "刷新" }}
+          </button>
+        </div>
       </div>
 
       <div class="grid gap-2 p-3 sm:grid-cols-3">

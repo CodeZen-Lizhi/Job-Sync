@@ -31,7 +31,13 @@ function withFilteredJobListRaw(raw: any, jobs: any[]): any {
 
 export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeContext): Promise<void> {
   if (payload.task.source_platform === "v2ex") {
-    await runV2exFeedMode(payload, ctx);
+    try {
+      await runV2exFeedMode(payload, ctx);
+    } catch (err) {
+      ctx.emit({ type: "ERROR", payload: safeError(err) });
+    } finally {
+      ctx.emit({ type: "FINISHED" });
+    }
     return;
   }
 

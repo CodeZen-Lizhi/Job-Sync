@@ -62,11 +62,12 @@ function createCrawlPageState() {
   const collectionMaximumSalaryK = ref<number | null>(null);
   const collectionMinimumExperienceYears = ref<number | null>(null);
   const collectionMaximumExperienceYears = ref<number | null>(null);
-  const selectedCollectionSource = ref<JobSourcePlatform | "">(BOSS_SOURCE_PLATFORM);
+  const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
   const bossCollectionEnabled = ref(true);
   const collectionSourceRegistry = ref<Array<{ platform: string; display_name?: string; adapter_kind: string; enabled: boolean }>>([]);
   const v2exFeedSettingsOpen = ref(true);
   const v2exFeedUrl = ref(DEFAULT_V2EX_FEED_URL);
+  const v2exKeywordsText = ref("");
   const bossKeywordsText = ref("");
   const cityText = ref("");
   const salaryText = ref("");
@@ -145,13 +146,26 @@ function createCrawlPageState() {
     profile: filterProfileState.filterProfile.value,
   }));
   const selectedCollectionSourceLabel = computed(() => {
-    const source = collectableSourceOptions.value.find((option) => option.value === selectedCollectionSource.value);
-    return source?.label ?? (selectedCollectionSource.value || "未选择");
+    const labels = selectedCollectionSources.value
+      .map((source) => collectableSourceOptions.value.find((option) => option.value === source)?.label ?? source)
+      .filter(Boolean);
+    if (labels.length === 0) return "未选择";
+    return labels.join("、");
   });
-  const v2exKeywords = computed(() => uniqueList([...collectionKeywords.value, ...collectionTechStack.value]));
+  const v2exKeywords = computed(() => uniqueList(parseList(v2exKeywordsText.value)));
   const v2exTaskKeywords = computed(() => v2exKeywords.value.length > 0 ? v2exKeywords.value : ["V2EX"]);
-  const task = computed(() => {
-    if (selectedCollectionSource.value === V2EX_SOURCE_PLATFORM) {
+  const selectedCollectionSourceSet = computed(() => new Set(selectedCollectionSources.value));
+  const bossSelected = computed(() => selectedCollectionSourceSet.value.has(BOSS_SOURCE_PLATFORM));
+  const v2exSelected = computed(() => selectedCollectionSourceSet.value.has(V2EX_SOURCE_PLATFORM));
+  const collectionIntentSyncLabel = computed(() => {
+    const selected = selectedCollectionSources.value.length;
+    if (selected > 1) return "同步到已选平台配置";
+    if (bossSelected.value) return "同步到 Boss 配置";
+    if (v2exSelected.value) return "同步到 V2EX 配置";
+    return "同步到平台配置";
+  });
+  function buildTaskForSource(sourcePlatform: JobSourcePlatform) {
+    if (sourcePlatform === V2EX_SOURCE_PLATFORM) {
       return {
         keywords: v2exTaskKeywords.value,
         source_platform: V2EX_SOURCE_PLATFORM,
@@ -184,7 +198,7 @@ function createCrawlPageState() {
       limits: { maxPages: maxPages.value, maxJobs: maxJobs.value, delayMs: delayMs.value },
       mode: "auto",
     };
-  });
+  }
   const sidecarRunning = computed(() => runtime.sidecarTask.running);
 
   function normalizeToken(value: string): string {
@@ -219,58 +233,79 @@ function createCrawlPageState() {
     return null;
   }
 
-  function syncCollectionIntentToBoss(): void {
+  function syncCollectionIntentToPlatforms(): void {
     const mapped: string[] = [];
     const unmapped: string[] = [];
     const expandedKeywords = uniqueList([...collectionKeywords.value, ...collectionTechStack.value]);
 
-    if (expandedKeywords.length > 0) {
+    if (bossSelected.value && expandedKeywords.length > 0) {
       bossKeywordsText.value = expandedKeywords.join("\n");
-      mapped.push(`关键词：${expandedKeywords.join("、")}`);
+      mapped.push(`Boss 关键词：${expandedKeywords.join("、")}`);
     }
 
-    const city = findBossOption(collectionTargetCities.value, allBossCities());
-    if (city) {
-      selectedCity.value = String(city.code);
-      cityText.value = "";
-      mapped.push(`城市：${city.name}`);
-    } else if (collectionTargetCities.value.length > 0) {
-      selectedCity.value = "";
-      cityText.value = "";
-      unmapped.push(`目标城市：${collectionTargetCities.value.join("、")}（Boss 字典未匹配）`);
+    if (bossSelected.value) {
+      const city = findBossOption(collectionTargetCities.value, allBossCities());
+      if (city) {
+        selectedCity.value = String(city.code);
+        cityText.value = "";
+        mapped.push(`Boss 城市：${city.name}`);
+      } else if (collectionTargetCities.value.length > 0) {
+        selectedCity.value = "";
+        cityText.value = "";
+        unmapped.push(`目标城市：${collectionTargetCities.value.join("、")}（Boss 字典未匹配）`);
+      }
+
+      const degree = findBossOption(collectionDegrees.value, bossDegreeOptions.value);
+      if (degree) {
+        selectedDegree.value = String(degree.code);
+        degreeText.value = "";
+        mapped.push(`Boss 学历：${degree.name}`);
+      } else if (collectionDegrees.value.length > 0) {
+        selectedDegree.value = "";
+        degreeText.value = "";
+        unmapped.push(`学历：${collectionDegrees.value.join("、")}（Boss 字典未匹配）`);
+      }
+
+      if (collectionWorkModes.value.length > 0) {
+        unmapped.push(`工作方式：${collectionWorkModes.value.join("、")}（Boss 站内筛选暂不支持稳定映射）`);
+      }
+      if (collectionExcludedKeywords.value.length > 0) {
+        unmapped.push(`排除关键词：${collectionExcludedKeywords.value.join("、")}（交给 Boss 筛选画像做采后排除）`);
+      }
+      if (collectionMinimumSalaryK.value !== null || collectionMaximumSalaryK.value !== null) {
+        unmapped.push("薪资范围（暂不自动映射 Boss 薪资枚举，可在 Boss 设置手动选择）");
+      }
+      if (collectionMinimumExperienceYears.value !== null || collectionMaximumExperienceYears.value !== null) {
+        unmapped.push("经验范围（暂不自动映射 Boss 经验枚举，可在 Boss 设置手动选择）");
+      }
     }
 
-    const degree = findBossOption(collectionDegrees.value, bossDegreeOptions.value);
-    if (degree) {
-      selectedDegree.value = String(degree.code);
-      degreeText.value = "";
-      mapped.push(`学历：${degree.name}`);
-    } else if (collectionDegrees.value.length > 0) {
-      selectedDegree.value = "";
-      degreeText.value = "";
-      unmapped.push(`学历：${collectionDegrees.value.join("、")}（Boss 字典未匹配）`);
+    if (v2exSelected.value) {
+      mapped.push("V2EX Feed：已纳入本次采集来源");
+      if (expandedKeywords.length > 0) {
+        v2exKeywordsText.value = expandedKeywords.join("\n");
+        mapped.push(`V2EX 关键词：${expandedKeywords.join("、")}`);
+      }
+      if (
+        collectionTargetCities.value.length > 0 ||
+        collectionWorkModes.value.length > 0 ||
+        collectionDegrees.value.length > 0 ||
+        collectionMinimumSalaryK.value !== null ||
+        collectionMaximumSalaryK.value !== null ||
+        collectionMinimumExperienceYears.value !== null ||
+        collectionMaximumExperienceYears.value !== null
+      ) {
+        unmapped.push("V2EX 城市、工作方式、学历、薪资和经验继续交给采后筛选画像");
+      }
     }
 
-    if (collectionWorkModes.value.length > 0) {
-      unmapped.push(`工作方式：${collectionWorkModes.value.join("、")}（Boss 站内筛选暂不支持稳定映射）`);
-    }
-    if (collectionExcludedKeywords.value.length > 0) {
-      unmapped.push(`排除关键词：${collectionExcludedKeywords.value.join("、")}（交给筛选画像做采后排除）`);
-    }
-    if (collectionMinimumSalaryK.value !== null || collectionMaximumSalaryK.value !== null) {
-      unmapped.push("薪资范围（暂不自动映射 Boss 薪资枚举，可在 Boss 设置手动选择）");
-    }
-    if (collectionMinimumExperienceYears.value !== null || collectionMaximumExperienceYears.value !== null) {
-      unmapped.push("经验范围（暂不自动映射 Boss 经验枚举，可在 Boss 设置手动选择）");
-    }
-
-    selectedCollectionSource.value = bossCollectionEnabled.value ? BOSS_SOURCE_PLATFORM : "";
     bossSyncMappedFields.value = mapped;
     bossSyncUnmappedFields.value = unmapped;
     bossSyncMessage.value = mapped.length > 0
-      ? `已同步 ${mapped.length} 项到 Boss 配置`
-      : "没有可直接同步到 Boss 的采集意图；请补充关键词或手动调整 Boss 配置";
-    bossSettingsOpen.value = true;
+      ? `已同步 ${mapped.length} 项到已选平台配置`
+      : "没有可直接同步的平台配置；请先选择自动采集平台或补充采集意图";
+    if (bossSelected.value) bossSettingsOpen.value = true;
+    if (v2exSelected.value) v2exFeedSettingsOpen.value = true;
   }
 
   async function loadBossMeta(): Promise<void> {
@@ -327,12 +362,13 @@ function createCrawlPageState() {
       collectionSourceRegistry.value = sources;
       const boss = sources.find((source) => source.platform === BOSS_SOURCE_PLATFORM && source.adapter_kind === "boss");
       bossCollectionEnabled.value = boss?.enabled !== false;
-      const selectedStillAvailable = collectableSourceOptions.value.some((source) => source.value === selectedCollectionSource.value);
-      if (!selectedStillAvailable) {
-        selectedCollectionSource.value = collectableSourceOptions.value[0]?.value ?? "";
+      const availableValues = new Set(collectableSourceOptions.value.map((source) => source.value));
+      selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => availableValues.has(source));
+      if (selectedCollectionSources.value.length === 0 && collectableSourceOptions.value[0]) {
+        selectedCollectionSources.value = [collectableSourceOptions.value[0].value];
       }
-      if (!bossCollectionEnabled.value && selectedCollectionSource.value === BOSS_SOURCE_PLATFORM) {
-        selectedCollectionSource.value = "";
+      if (!bossCollectionEnabled.value) {
+        selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => source !== BOSS_SOURCE_PLATFORM);
       }
     } catch {
       bossCollectionEnabled.value = true;
@@ -411,16 +447,23 @@ function createCrawlPageState() {
         await invoke<void>("crawl_manual_start");
         return;
       }
-      if (!selectedCollectionSource.value) {
+      const selectedSources = selectedCollectionSources.value.filter((source) =>
+        collectableSourceOptions.value.some((option) => option.value === source),
+      );
+      if (selectedSources.length === 0) {
         throw new Error("请先到采集配置里选择一个已启用的自动采集平台。");
       }
-      if (selectedCollectionSource.value === BOSS_SOURCE_PLATFORM && bossKeywords.value.length === 0) {
+      if (selectedSources.includes(BOSS_SOURCE_PLATFORM) && bossKeywords.value.length === 0) {
         throw new Error("请先填写采集意图并同步到 Boss，或在 Boss 配置中输入至少 1 个关键词。");
       }
       await filterProfileState.saveDefaultFilterProfile();
-      runtime.sidecarTask.running = true;
-      runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
-      await invoke<void>("crawl_auto_start", { task: task.value });
+      for (const source of selectedSources) {
+        const beforeFinished = runtime.finishedCounter;
+        runtime.sidecarTask.running = true;
+        runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
+        await invoke<void>("crawl_auto_start", { task: buildTaskForSource(source) });
+        await waitForFinishedCounterToAdvance(beforeFinished);
+      }
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
       if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_MANUAL || runtime.sidecarTask.type === CRAWL_TASK_TYPE_AUTO) {
@@ -477,11 +520,15 @@ function createCrawlPageState() {
     collectionMaximumSalaryK,
     collectionMinimumExperienceYears,
     collectionMaximumExperienceYears,
-    selectedCollectionSource,
+    selectedCollectionSources,
     selectedCollectionSourceLabel,
+    collectionIntentSyncLabel,
+    bossSelected,
+    v2exSelected,
     collectableSourceOptions,
     v2exFeedSettingsOpen,
     v2exFeedUrl,
+    v2exKeywordsText,
     v2exKeywords,
     bossKeywordsText,
     cityText,
@@ -530,7 +577,7 @@ function createCrawlPageState() {
     createFilterProfile,
     setActiveFilterProfileAsDefault,
     recomputeDefaultFilterProfile,
-    syncCollectionIntentToBoss,
+    syncCollectionIntentToPlatforms,
     initialize,
     clearBossMetaSyncTimeout,
     start,
@@ -541,5 +588,19 @@ function createCrawlPageState() {
     if (bossMetaSyncTimeout === null) return;
     window.clearTimeout(bossMetaSyncTimeout);
     bossMetaSyncTimeout = null;
+  }
+
+  function waitForFinishedCounterToAdvance(previousValue: number): Promise<void> {
+    if (runtime.finishedCounter > previousValue) return Promise.resolve();
+    return new Promise((resolve) => {
+      const stop = watch(
+        () => runtime.finishedCounter,
+        (value) => {
+          if (value <= previousValue) return;
+          stop();
+          resolve();
+        },
+      );
+    });
   }
 }

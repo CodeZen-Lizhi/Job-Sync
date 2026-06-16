@@ -10,8 +10,9 @@ const {
   runtime,
   clearLogs,
   mode,
-  selectedCollectionSource,
+  selectedCollectionSources,
   selectedCollectionSourceLabel,
+  v2exSelected,
   maxPages,
   maxJobs,
   delayMs,
@@ -109,11 +110,11 @@ const {
         </section>
       </div>
 
-      <div v-if="mode === 'auto' && !selectedCollectionSource" class="ui-status-warning p-3 text-xs">
+      <div v-if="mode === 'auto' && selectedCollectionSources.length === 0" class="ui-status-warning p-3 text-xs">
         当前没有可执行的自动采集来源。请到设置页启用 Boss 或 V2EX，并在采集配置里选择本次采集来源。
       </div>
-      <div v-else-if="mode === 'auto' && selectedCollectionSource === 'v2ex'" class="ui-status-warning p-3 text-xs">
-        V2EX 使用公开 Feed 自动采集，不需要 Boss 登录；只会入库识别为招聘帖的主题。
+      <div v-else-if="mode === 'auto' && v2exSelected" class="ui-status-warning p-3 text-xs">
+        多平台会按顺序采集。V2EX 使用公开 Feed，不需要 Boss 登录；只会入库识别为招聘帖的主题。
       </div>
 
       <CrawlActionBar

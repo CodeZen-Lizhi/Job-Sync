@@ -77,6 +77,7 @@ export const CRAWL_TASK_TYPE_MANUAL = "crawl_manual";
 export const CRAWL_TASK_TYPE_AUTO = "crawl_auto";
 export const CRAWL_TASK_TYPE_LOGIN = "login";
 export const CRAWL_TASK_TYPE_META_SYNC = "meta_sync";
+export const CRAWL_TASK_TYPE_CHAT_SYNC = "chat_sync";
 export const DEFAULT_MUST_NOT_KEYWORDS = ["外包", "驻场", "培训", "销售", "电话销售"];
 export const DEFAULT_PREFERENCE_DIRECTIONS = ["Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"];
 export const DEFAULT_PREFERENCE_TECH_TAGS = ["Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI/CD", "Terraform"];

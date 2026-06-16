@@ -44,6 +44,7 @@ pub fn run() {
             commands::crawl::crawl_stop,
             commands::crawl::get_boss_meta,
             commands::crawl::sync_boss_meta,
+            commands::crawl::sync_boss_chat_status,
             commands::jobs::list_jobs,
             commands::jobs::list_job_candidates,
             commands::jobs::get_job,

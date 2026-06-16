@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRoute, useRouter } from "vue-router";
 
 import { clearAiSelectedJobs, upsertAiSelectedJob } from "./aiSelection";
+import { CRAWL_TASK_TYPE_CHAT_SYNC } from "./crawl";
 import { useFilterProfile } from "./filterProfile";
 import {
   companyReviewStatusLabel,
@@ -680,6 +681,8 @@ export function useJobsPage() {
   const filteredJobsLoading = ref(false);
   const linkedJobLoading = ref(false);
   const linkedJobError = ref<string | null>(null);
+  const bossChatStatusSyncing = ref(false);
+  const bossChatStatusSyncMessage = ref<string | null>(null);
   const dailyIntelligenceLoading = ref(false);
   const companyScoreRebuilding = ref(false);
   const companyScoreRebuildMessage = ref<string | null>(null);
@@ -783,6 +786,37 @@ export function useJobsPage() {
       void router.push({ path: "/resume-workspace", query: { jobId } });
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
+    }
+  }
+  async function syncBossChatStatus(): Promise<void> {
+    error.value = null;
+    bossChatStatusSyncMessage.value = null;
+    if (!tauri) return;
+    bossChatStatusSyncing.value = true;
+    const beforeCount = runtime.bossChatStatusSyncedCount;
+    const stop = watch(
+      () => runtime.finishedCounter,
+      () => {
+        stop();
+        bossChatStatusSyncing.value = false;
+        const synced = runtime.bossChatStatusSyncedCount - beforeCount;
+        bossChatStatusSyncMessage.value = synced > 0 ? `已同步 ${synced} 个 Boss 沟通状态。` : "未同步到可关联岗位的 Boss 聊天状态。";
+      },
+    );
+    try {
+      runtime.sidecarTask.running = true;
+      runtime.sidecarTask.type = CRAWL_TASK_TYPE_CHAT_SYNC;
+      await invoke<void>("sync_boss_chat_status");
+      bossChatStatusSyncMessage.value = "正在读取 Boss 聊天页…";
+    } catch (cause) {
+      stop();
+      error.value = cause instanceof Error ? cause.message : String(cause);
+      bossChatStatusSyncing.value = false;
+      if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_CHAT_SYNC) {
+        runtime.sidecarTask.running = false;
+        runtime.sidecarTask.type = undefined;
+      }
+      return;
     }
   }
   function scheduleRealtimeRefresh(): void {
@@ -1937,6 +1971,8 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     filteredJobsLoading,
     linkedJobLoading,
     linkedJobError,
+    bossChatStatusSyncing,
+    bossChatStatusSyncMessage,
     dailyIntelligenceLoading,
     companyScoreRebuilding,
     companyScoreRebuildMessage,
@@ -1961,6 +1997,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     goAi,
     analyzeReviewCandidates,
     goResumeWorkspace,
+    syncBossChatStatus,
     loadKeywords,
     loadJobCandidates,
     toggleJobStatusFilter,

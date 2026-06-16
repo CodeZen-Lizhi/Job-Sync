@@ -15,11 +15,14 @@ const {
   collectionMaximumSalaryK,
   collectionMinimumExperienceYears,
   collectionMaximumExperienceYears,
-  selectedCollectionSource,
+  selectedCollectionSources,
   selectedCollectionSourceLabel,
+  collectionIntentSyncLabel,
+  v2exSelected,
   collectableSourceOptions,
   v2exFeedSettingsOpen,
   v2exFeedUrl,
+  v2exKeywordsText,
   v2exKeywords,
   bossKeywordsText,
   cityText,
@@ -115,7 +118,7 @@ const {
   createFilterProfile,
   setActiveFilterProfileAsDefault,
   recomputeDefaultFilterProfile,
-  syncCollectionIntentToBoss,
+  syncCollectionIntentToPlatforms,
 } = useCrawlPage();
 </script>
 
@@ -143,9 +146,9 @@ const {
             class="ui-btn-primary px-3 py-1.5 text-xs"
             type="button"
             :disabled="sidecarRunning"
-            @click="syncCollectionIntentToBoss"
+            @click="syncCollectionIntentToPlatforms"
           >
-            同步到 Boss 配置
+            {{ collectionIntentSyncLabel }}
           </button>
         </div>
 
@@ -156,12 +159,11 @@ const {
           </label>
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">本次采集来源</div>
-            <UiSelect v-model="selectedCollectionSource" :disabled="collectableSourceOptions.length === 0">
-              <option value="" disabled>暂无可用自动采集平台</option>
+            <UiMultiSelect v-model="selectedCollectionSources" :disabled="collectableSourceOptions.length === 0">
               <option v-for="option in collectableSourceOptions" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>
-            </UiSelect>
+            </UiMultiSelect>
             <div class="text-[11px] text-content-muted">下拉项来自设置中已启用且支持自动采集的平台；当前选择 {{ selectedCollectionSourceLabel }}。</div>
           </label>
           <label class="space-y-1">
@@ -306,7 +308,7 @@ const {
         </div>
       </section>
 
-      <section v-if="selectedCollectionSource === 'v2ex'" class="space-y-3 border-t border-border/10 pt-4">
+      <section v-if="v2exSelected" class="space-y-3 border-t border-border/10 pt-4">
         <button class="flex w-full items-center justify-between gap-3 text-left" type="button" @click="v2exFeedSettingsOpen = !v2exFeedSettingsOpen">
           <span>
             <span class="block text-xs font-semibold uppercase tracking-wider text-content-muted">V2EX Feed 配置</span>
@@ -320,12 +322,16 @@ const {
             <div class="text-xs font-medium text-content-muted">Feed URL</div>
             <input v-model="v2exFeedUrl" class="ui-input w-full" placeholder="https://www.v2ex.com/feed/tab/jobs.xml" />
           </label>
-          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3 text-xs text-content-muted">
+          <label class="space-y-1">
             <div class="font-medium text-content-secondary">本次 Feed 关键词</div>
-            <div class="mt-1 break-words">{{ v2exKeywords.length > 0 ? v2exKeywords.join("、") : "未填写关键词时只使用招聘帖识别规则" }}</div>
+            <textarea v-model="v2exKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;远程&#10;Kubernetes" />
+          </label>
+          <div class="md:col-span-2 rounded-md border border-border/10 bg-surface-secondary/50 p-3 text-xs text-content-muted">
+            <span class="font-medium text-content-secondary">当前关键词：</span>
+            <span>{{ v2exKeywords.length > 0 ? v2exKeywords.join("、") : "未填写关键词时只使用招聘帖识别规则" }}</span>
           </div>
           <div class="md:col-span-2 text-xs text-content-muted">
-            V2EX 会用采集意图里的关键词和技术栈做 OR 匹配，并用排除关键词跳过明显不合适的帖子；城市、薪资、经验、学历继续交给采后筛选画像。
+            V2EX 会用这里的关键词做 OR 匹配；“同步到平台配置”会用采集意图里的关键词和技术栈填充这里，但你可以单独调整。排除关键词仍来自采集意图和筛选画像；城市、薪资、经验、学历继续交给采后筛选画像。
           </div>
         </div>
       </section>

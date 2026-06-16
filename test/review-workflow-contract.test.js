@@ -659,6 +659,7 @@ describe("review workflow contract", () => {
     const allowedDraftCommands = new Set([
       "generate_greeting_message",
       "send_daily_job_intelligence_wecom_notification",
+      "sync_boss_chat_status",
     ]);
     const forbiddenPattern = /(apply|deliver|send|chat|message|auto_apply|autoApply|batch_apply|batchApply)/i;
     const forbiddenCommands = commands.filter((command) => forbiddenPattern.test(command));

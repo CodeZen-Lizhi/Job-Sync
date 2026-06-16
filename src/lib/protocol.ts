@@ -74,6 +74,19 @@ export type SidecarEvent =
         industry_filter_exemption?: unknown;
       };
     }
+  | {
+      type: "BOSS_CHAT_STATUS_SYNCED";
+      payload: {
+        encrypt_job_id: string;
+        communication_status: "greeted_unread" | "read_no_reply" | "replied" | "rejected";
+        boss_name?: string;
+        brand_name?: string;
+        position_name?: string;
+        message_status?: string;
+        message_preview?: string;
+        raw_payload?: unknown;
+      };
+    }
   | { type: "FINISHED" }
   | {
       type: "ERROR";

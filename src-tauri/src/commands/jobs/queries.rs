@@ -573,7 +573,10 @@ fn build_job_candidate_filters(
     let mut where_parts = vec!["1 = 1".to_string()];
     let mut params = Vec::new();
 
-    if let Some(query) = query.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) {
+    if let Some(query) = query
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
         let like = format!("%{query}%");
         where_parts.push(
             r#"(
@@ -750,9 +753,7 @@ pub(super) fn list_job_candidates_on_conn(
         collection_methods,
     );
 
-    let count_sql = format!(
-        "SELECT COUNT(*) {JOB_CANDIDATE_FROM_SQL} WHERE {where_sql}"
-    );
+    let count_sql = format!("SELECT COUNT(*) {JOB_CANDIDATE_FROM_SQL} WHERE {where_sql}");
     let total = conn
         .query_row(&count_sql, params_from_iter(params.iter()), |row| {
             row.get::<_, i64>(0)
@@ -2335,7 +2336,13 @@ mod tests {
             ("job_recent_c", "2026-06-13T08:00:00Z"),
             ("job_old", "2026-05-01T08:00:00Z"),
         ] {
-            seed_job_fixture_with_last_seen(&conn, job_id, "Candidate Co", "Go 平台工程师", last_seen_at);
+            seed_job_fixture_with_last_seen(
+                &conn,
+                job_id,
+                "Candidate Co",
+                "Go 平台工程师",
+                last_seen_at,
+            );
             seed_eligible_candidate(&conn, job_id);
             seed_resume_score(&conn, job_id, 80.0);
         }
@@ -2394,14 +2401,23 @@ mod tests {
         )
         .expect("mark v2ex source");
 
-        for job_id in ["job_manual_unprocessed", "job_auto_favorite", "job_v2ex_replied"] {
+        for job_id in [
+            "job_manual_unprocessed",
+            "job_auto_favorite",
+            "job_v2ex_replied",
+        ] {
             seed_eligible_candidate(&conn, job_id);
             seed_resume_score(&conn, job_id, 85.0);
         }
         models::insert_job_source_link(&conn, "job_auto_favorite", Some("Go"), Some("{}"))
             .expect("seed automatic source link");
-        models::insert_job_source_link(&conn, "job_v2ex_replied", None, Some(r#"{"feed_url":"https://www.v2ex.com/feed/tab/jobs.xml"}"#))
-            .expect("seed v2ex automatic source link");
+        models::insert_job_source_link(
+            &conn,
+            "job_v2ex_replied",
+            None,
+            Some(r#"{"feed_url":"https://www.v2ex.com/feed/tab/jobs.xml"}"#),
+        )
+        .expect("seed v2ex automatic source link");
         models::upsert_job_review_state(
             &conn,
             "job_auto_favorite",
@@ -2442,7 +2458,10 @@ mod tests {
                 .iter()
                 .map(|job| (job.encrypt_job_id.as_str(), job.collection_method.as_str()))
                 .collect::<Vec<_>>(),
-            vec![("job_auto_favorite", "automatic"), ("job_v2ex_replied", "automatic")]
+            vec![
+                ("job_auto_favorite", "automatic"),
+                ("job_v2ex_replied", "automatic")
+            ]
         );
 
         let manual_unprocessed = list_job_candidates_on_conn(
@@ -2459,7 +2478,10 @@ mod tests {
         )
         .expect("list manual unprocessed candidates");
         assert_eq!(manual_unprocessed.total, 1);
-        assert_eq!(manual_unprocessed.jobs[0].encrypt_job_id, "job_manual_unprocessed");
+        assert_eq!(
+            manual_unprocessed.jobs[0].encrypt_job_id,
+            "job_manual_unprocessed"
+        );
         assert_eq!(manual_unprocessed.jobs[0].collection_method, "manual");
 
         let v2ex = list_job_candidates_on_conn(

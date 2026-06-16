@@ -2,8 +2,8 @@ use tauri::State;
 
 use crate::{
     ipc::protocol::{
-        BossMetaSyncPayload, CommandIn, CrawlAutoStartPayload, CrawlManualStartPayload,
-        SearchTaskPayload, SessionStatePayload,
+        BossChatSyncPayload, BossMetaSyncPayload, CommandIn, CrawlAutoStartPayload,
+        CrawlManualStartPayload, SearchTaskPayload, SessionStatePayload,
     },
     sidecar::SidecarManager,
     storage,
@@ -92,6 +92,18 @@ pub fn sync_boss_meta(sidecar: State<SidecarManager>) -> Result<(), String> {
     let session = load_session_optional(sidecar.app_data_dir());
     sidecar
         .send(&CommandIn::BossMetaSync(BossMetaSyncPayload { session }))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn sync_boss_chat_status(sidecar: State<SidecarManager>) -> Result<(), String> {
+    let session = load_session(sidecar.app_data_dir())?;
+    sidecar
+        .send(&CommandIn::BossChatSync(BossChatSyncPayload {
+            session,
+            limits: serde_json::Value::Object(serde_json::Map::new()),
+        }))
         .map_err(|e| e.to_string())?;
     Ok(())
 }

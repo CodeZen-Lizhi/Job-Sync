@@ -34,6 +34,13 @@ pub struct BossMetaSyncPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BossChatSyncPayload {
+    pub session: SessionStatePayload,
+    #[serde(default)]
+    pub limits: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchTaskPayload {
     pub keywords: Vec<String>,
     #[serde(default)]
@@ -169,6 +176,8 @@ pub enum CommandIn {
     CrawlAutoStart(CrawlAutoStartPayload),
     #[serde(rename = "BOSS_META_SYNC")]
     BossMetaSync(BossMetaSyncPayload),
+    #[serde(rename = "BOSS_CHAT_SYNC")]
+    BossChatSync(BossChatSyncPayload),
     #[serde(rename = "AI_ANALYZE")]
     AiAnalyze(AiAnalyzePayload),
     #[serde(rename = "AI_ANALYZE_GROUP")]
@@ -304,6 +313,30 @@ pub struct BossMetaSyncedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BossChatStatusSyncedPayload {
+    pub encrypt_job_id: String,
+    pub communication_status: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boss_name: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brand_name: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_name: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_status: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_preview: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_payload: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorPayload {
     pub message: String,
     #[serde(default)]
@@ -333,6 +366,8 @@ pub enum EventOut {
     AiResult(AiResultPayload),
     #[serde(rename = "BOSS_META_SYNCED")]
     BossMetaSynced(BossMetaSyncedPayload),
+    #[serde(rename = "BOSS_CHAT_STATUS_SYNCED")]
+    BossChatStatusSynced(BossChatStatusSyncedPayload),
     #[serde(rename = "FINISHED")]
     Finished,
     #[serde(rename = "ERROR")]
