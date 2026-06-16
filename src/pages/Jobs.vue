@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { ChevronLeft, ChevronRight, Database, Filter, MessageCircle, RefreshCw, X } from "lucide-vue-next";
+import { Activity, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, X } from "lucide-vue-next";
 
 import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
 import JobsJobItem from "../components/jobs/JobsJobItem.vue";
+import UiSelect from "../components/ui/UiSelect.vue";
 import { useJobsPage } from "../lib/useJobsPage";
 
 const {
@@ -16,8 +17,6 @@ const {
   jobCandidates,
   jobCandidatesTotal,
   jobCandidatesLoading,
-  bossChatStatusSyncing,
-  bossChatStatusSyncMessage,
   jobCandidatePage,
   jobCandidatePageSize,
   jobCandidateTimeRange,
@@ -46,7 +45,6 @@ const {
   SOURCE_PLATFORM_FILTER_OPTIONS,
   COLLECTION_METHOD_FILTER_OPTIONS,
   loadJobCandidates,
-  syncBossChatStatus,
   toggleJobStatusFilter,
   toggleSourcePlatformFilter,
   toggleCollectionMethodFilter,
@@ -84,6 +82,34 @@ const hasActiveFilters = computed(
     jobCandidateTimeRange.value !== "last7",
 );
 
+const jobCandidateTimeRangeModel = computed<string>({
+  get: () => jobCandidateTimeRange.value,
+  set: (value) => {
+    if (jobCandidateTimeRange.value === value) return;
+    jobCandidateTimeRange.value = value as typeof jobCandidateTimeRange.value;
+    reloadCandidatesFromFirstPage();
+  },
+});
+
+const jobCandidateProcessedFilterModel = computed<string>({
+  get: () => jobCandidateProcessedFilter.value,
+  set: (value) => {
+    if (jobCandidateProcessedFilter.value === value) return;
+    jobCandidateProcessedFilter.value = value as typeof jobCandidateProcessedFilter.value;
+    reloadCandidatesFromFirstPage();
+  },
+});
+
+const jobCandidatePageSizeModel = computed<string>({
+  get: () => String(jobCandidatePageSize.value),
+  set: (value) => {
+    const next = Number(value);
+    if (!Number.isFinite(next) || jobCandidatePageSize.value === next) return;
+    jobCandidatePageSize.value = next;
+    reloadCandidatesFromFirstPage();
+  },
+});
+
 function refreshCandidates(): void {
   void loadJobCandidates({ keepPage: true });
 }
@@ -95,17 +121,6 @@ function reloadCandidatesFromFirstPage(): void {
 
 <template>
   <section class="space-y-5">
-    <header class="flex flex-wrap items-start justify-between gap-4">
-      <div class="space-y-1">
-        <h1 class="text-xl font-semibold text-content-primary">岗位候选库</h1>
-        <p class="text-sm text-content-secondary">统一查看所有采集岗位，用时间、状态、平台和采集方式筛选候选。</p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2 text-xs text-content-muted">
-        <span class="ui-badge">范围 {{ jobIntelligenceRangeLabel }}</span>
-        <span class="ui-badge">共 {{ jobCandidatesTotal }} 个岗位</span>
-      </div>
-    </header>
-
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。查询命令不可用。</div>
     <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
 
@@ -151,18 +166,23 @@ function reloadCandidatesFromFirstPage(): void {
 
     <section class="ui-panel overflow-hidden">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/10 px-4 py-3">
-        <div>
-          <h2 class="text-sm font-semibold text-content-primary">岗位情报</h2>
-          <p class="mt-1 text-xs text-content-muted">
-            按当前时间范围统计候选岗位；操作入口都在下方岗位列表中。
-            <span v-if="bossChatStatusSyncMessage" class="text-cyan-200">{{ bossChatStatusSyncMessage }}</span>
-          </p>
+        <div class="flex items-center gap-2">
+          <div class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-border-glow/10 text-cyan-200 ring-1 ring-border-glow/15" aria-hidden="true">
+            <Activity class="h-4 w-4" />
+          </div>
+          <div>
+            <h2 class="text-sm font-semibold text-content-primary">岗位情报</h2>
+            <p class="mt-1 text-xs text-content-muted">按时间范围查看当前候选池。</p>
+          </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || bossChatStatusSyncing" @click="syncBossChatStatus">
-            <MessageCircle class="h-3.5 w-3.5" aria-hidden="true" />
-            {{ bossChatStatusSyncing ? "同步中…" : "同步 Boss 沟通状态" }}
-          </button>
+          <div class="w-36">
+            <UiSelect v-model="jobCandidateTimeRangeModel" aria-label="时间范围">
+              <option v-for="option in JOB_TIME_RANGE_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </UiSelect>
+          </div>
           <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || jobCandidatesLoading" @click="refreshCandidates">
             <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
             {{ jobCandidatesLoading ? "刷新中…" : "刷新" }}
@@ -170,18 +190,21 @@ function reloadCandidatesFromFirstPage(): void {
         </div>
       </div>
 
-      <div class="grid gap-2 p-3 sm:grid-cols-3">
-        <div class="rounded-md border border-border/10 bg-surface-secondary/45 px-3 py-3">
-          <div class="text-xs text-content-muted">时间范围</div>
-          <div class="mt-2 text-lg font-semibold text-content-primary">{{ jobIntelligenceRangeLabel }}</div>
+      <div class="grid gap-3 p-4 md:grid-cols-3">
+        <div class="rounded-xl border border-border/10 bg-card-alt/55 p-4">
+          <div class="text-xs font-medium text-content-muted">候选总数</div>
+          <div class="mt-3 flex items-end justify-between gap-3">
+            <div class="text-3xl font-semibold leading-none text-content-primary">{{ jobCandidatesTotal }}</div>
+            <span class="ui-badge">{{ jobIntelligenceRangeLabel }}</span>
+          </div>
         </div>
-        <div class="rounded-md border border-border/10 bg-surface-secondary/45 px-3 py-3">
-          <div class="text-xs text-content-muted">当前页未处理</div>
-          <div class="mt-2 text-lg font-semibold text-content-primary">{{ currentPageUnprocessedCount }}</div>
+        <div class="rounded-xl border border-border/10 bg-card-alt/55 p-4">
+          <div class="text-xs font-medium text-content-muted">当前页未处理</div>
+          <div class="mt-3 text-3xl font-semibold leading-none text-content-primary">{{ currentPageUnprocessedCount }}</div>
         </div>
-        <div class="rounded-md border border-border/10 bg-surface-secondary/45 px-3 py-3">
-          <div class="text-xs text-content-muted">当前页已处理</div>
-          <div class="mt-2 text-lg font-semibold text-content-primary">{{ currentPageProcessedCount }}</div>
+        <div class="rounded-xl border border-border/10 bg-card-alt/55 p-4">
+          <div class="text-xs font-medium text-content-muted">当前页已处理</div>
+          <div class="mt-3 text-3xl font-semibold leading-none text-content-primary">{{ currentPageProcessedCount }}</div>
         </div>
       </div>
     </section>
@@ -191,8 +214,7 @@ function reloadCandidatesFromFirstPage(): void {
         <div class="flex items-center gap-2">
           <Filter class="h-4 w-4 text-content-muted" aria-hidden="true" />
           <div>
-            <h2 class="text-sm font-semibold text-content-primary">筛选条件</h2>
-            <p class="mt-1 text-xs text-content-muted">多选状态会合并到同一个岗位列表中。</p>
+            <h2 class="text-sm font-semibold text-content-primary">直接筛选</h2>
           </div>
         </div>
         <button v-if="hasActiveFilters" class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" @click="clearJobCandidateFilters">
@@ -205,28 +227,28 @@ function reloadCandidatesFromFirstPage(): void {
         <div class="grid gap-3 sm:grid-cols-3">
           <label class="space-y-1 text-xs text-content-muted">
             <span>时间范围</span>
-            <select v-model="jobCandidateTimeRange" class="ui-input w-full" @change="reloadCandidatesFromFirstPage">
+            <UiSelect v-model="jobCandidateTimeRangeModel">
               <option v-for="option in JOB_TIME_RANGE_OPTIONS" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>
-            </select>
+            </UiSelect>
           </label>
           <label class="space-y-1 text-xs text-content-muted">
             <span>处理状态</span>
-            <select v-model="jobCandidateProcessedFilter" class="ui-input w-full" @change="reloadCandidatesFromFirstPage">
+            <UiSelect v-model="jobCandidateProcessedFilterModel">
               <option v-for="option in PROCESSED_FILTER_OPTIONS" :key="option.value" :value="option.value">
                 {{ option.label }}
               </option>
-            </select>
+            </UiSelect>
           </label>
           <label class="space-y-1 text-xs text-content-muted">
             <span>每页数量</span>
-            <select v-model.number="jobCandidatePageSize" class="ui-input w-full" @change="reloadCandidatesFromFirstPage">
-              <option :value="10">10</option>
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option>
-            </select>
+            <UiSelect v-model="jobCandidatePageSizeModel">
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </UiSelect>
           </label>
         </div>
 
@@ -301,19 +323,17 @@ function reloadCandidatesFromFirstPage(): void {
           <Database class="h-4 w-4 text-content-muted" aria-hidden="true" />
           <div>
             <h2 class="text-sm font-semibold text-content-primary">岗位列表</h2>
-            <p class="mt-1 text-xs text-content-muted">所有手动和自动采集岗位都在这里统一处理。</p>
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs text-content-muted">
+          <JobsExportPanel />
           <span class="ui-badge">第 {{ jobCandidatePage }} / {{ jobCandidateTotalPages }} 页</span>
           <span class="ui-badge">{{ jobCandidatesTotal }} 个岗位</span>
         </div>
       </div>
 
-      <JobsExportPanel />
-
       <div v-if="jobCandidatesLoading" class="px-4 py-6 text-sm text-content-muted">正在加载岗位列表…</div>
-      <div v-else-if="jobCandidates.length === 0" class="px-4 py-10 text-center text-sm text-content-muted">当前筛选条件下暂无岗位。</div>
+      <div v-else-if="jobCandidates.length === 0" class="px-4 py-10 text-center text-sm text-content-muted">当前暂无岗位。</div>
       <div v-else class="divide-y divide-border/10">
         <JobsJobItem
           v-for="job in jobCandidates"
