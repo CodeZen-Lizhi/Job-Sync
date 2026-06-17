@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
+- **Total Sessions**: 15
 - **Last Active**: 2026-06-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~482 | Active |
+| `journal-1.md` | ~516 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-06-17 | 采集批次汇总与待确认补证据 | `80ff6c5` | `remote-job-intelligence` |
 | 14 | 2026-06-17 | 收口采集后置筛选后台流程 | `fae2eb1`, `6521543` | `remote-job-intelligence` |
 | 13 | 2026-06-17 | 重构采集到职位库 UI | `38240b2` | `remote-job-intelligence` |
 | 12 | 2026-06-16 | 多源采集与Boss沟通状态同步 | `3f983d2` | `remote-job-intelligence` |

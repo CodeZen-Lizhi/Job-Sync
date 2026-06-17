@@ -480,3 +480,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 采集批次汇总与待确认补证据
+
+**Date**: 2026-06-17
+**Task**: 采集批次汇总与待确认补证据
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+实现自动采集批次统计、失败记录、canonical 分桶计数、Boss 待确认补证据和前端入口，并补充测试与契约文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `80ff6c5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
