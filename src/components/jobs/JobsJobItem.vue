@@ -33,6 +33,7 @@ const props = withDefaults(
     greetingDraft?: string;
     greetingError?: GreetingErrorState;
     greetingLoading?: boolean;
+    pendingEvidenceRefreshing?: boolean;
     resumeWorkspaceStatus?: ResumeWorkspaceJobStatus | null;
     rowPaddingClass?: string;
     detailPaddingClass?: string;
@@ -44,6 +45,7 @@ const props = withDefaults(
     greetingDraft: "",
     greetingError: undefined,
     greetingLoading: false,
+    pendingEvidenceRefreshing: false,
     rowPaddingClass: "px-4",
     detailPaddingClass: "px-10",
   },
@@ -60,6 +62,7 @@ const {
   greetingDraft,
   greetingError,
   greetingLoading,
+  pendingEvidenceRefreshing,
   rowPaddingClass,
   detailPaddingClass,
 } = toRefs(props);
@@ -85,6 +88,7 @@ const emit = defineEmits<{
   (e: "update-greeting-draft", jobId: string, message: string): void;
   (e: "copy-greeting", job: JobRow): void;
   (e: "copy-application-packet", job: JobRow): void;
+  (e: "refresh-pending-evidence", job: JobRow): void;
 }>();
 
 type FilterNextActionKey = "filter-profile" | "blacklist" | "company" | "candidate";
@@ -116,6 +120,8 @@ function formatScore(score?: number | null): string {
 }
 
 const filterReason = computed(() => parseFilterReasonJson(props.job.filter_reason_json));
+const isPendingConfirmation = computed(() => filterReason.value?.bucket === "pending_confirmation");
+const canRefreshPendingEvidence = computed(() => isPendingConfirmation.value && props.job.source_platform === "boss");
 const scoreReason = computed(() => parseScoreReasonJson(props.job.score_reason_json));
 const filterReasonText = computed(() => formatFilterReasonSummary(filterReason.value));
 const filterProfilePassed = computed(() => filterReason.value?.eligible === true || props.job.filter_eligible === true);
@@ -501,6 +507,14 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
       <div class="flex shrink-0 items-center gap-1.5" @click.stop>
         <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('go-ai', job.encrypt_job_id)">AI</button>
         <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('go-resume-workspace', job.encrypt_job_id)">简历</button>
+        <button
+          v-if="canRefreshPendingEvidence"
+          class="ui-btn-secondary px-2.5 py-1 text-xs"
+          :disabled="pendingEvidenceRefreshing"
+          @click="$emit('refresh-pending-evidence', job)"
+        >
+          {{ pendingEvidenceRefreshing ? '补证据中' : '补证据' }}
+        </button>
         <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('copy-link', job)">复制</button>
         <button
           v-if="allowDelete"

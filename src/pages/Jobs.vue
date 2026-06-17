@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Activity, AlertTriangle, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
+import { Activity, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
 import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
@@ -42,6 +42,8 @@ const {
   greetingDrafts,
   greetingErrors,
   greetingLoading,
+  pendingEvidenceRefreshingJobId,
+  pendingEvidenceRefreshMessage,
   resumeWorkspaceStatuses,
   confirmDialog,
   JOB_TIME_RANGE_OPTIONS,
@@ -76,6 +78,7 @@ const {
   updateGreetingDraft,
   copyGreeting,
   copyApplicationPacket,
+  refreshPendingJobEvidence,
   closeConfirm,
   executeConfirm,
 } = useJobsPage();
@@ -282,6 +285,7 @@ onMounted(() => {
 
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。查询命令不可用。</div>
     <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
+    <div v-if="pendingEvidenceRefreshMessage" class="ui-status-success p-4 text-sm">{{ pendingEvidenceRefreshMessage }}</div>
 
     <section v-if="linkedJob || linkedJobLoading || linkedJobError" class="ui-panel overflow-hidden">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/10 px-4 py-3">
@@ -302,6 +306,7 @@ onMounted(() => {
         :greeting-draft="greetingDrafts.get(linkedJob.encrypt_job_id) ?? ''"
         :greeting-error="greetingErrors.get(linkedJob.encrypt_job_id)"
         :greeting-loading="greetingLoading === linkedJob.encrypt_job_id"
+        :pending-evidence-refreshing="pendingEvidenceRefreshingJobId === linkedJob.encrypt_job_id"
         :resume-workspace-status="resumeWorkspaceStatuses.get(linkedJob.encrypt_job_id)"
         @toggle-detail="(jobId) => toggleDetail(jobId)"
         @go-ai="(jobId) => goAi(jobId)"
@@ -320,6 +325,7 @@ onMounted(() => {
         @update-greeting-draft="(jobId, message) => updateGreetingDraft(jobId, message)"
         @copy-greeting="(job) => copyGreeting(job)"
         @copy-application-packet="(job) => copyApplicationPacket(job)"
+        @refresh-pending-evidence="(job) => refreshPendingJobEvidence(job)"
       />
     </section>
 
@@ -500,18 +506,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div v-if="activeJobLibraryBucket === 'confirm'" class="px-4 py-10">
-        <div class="mx-auto max-w-xl rounded-lg border border-amber-400/20 bg-amber-400/10 p-5 text-sm text-amber-100">
-          <div class="flex items-center gap-2 font-semibold">
-            <AlertTriangle class="h-4 w-4" aria-hidden="true" />
-            待确认分区需要后端 bucket 支持
-          </div>
-          <p class="mt-2 text-xs leading-6 text-amber-100/80">
-            PRD 要求把信息不足、缺少 JD 或证据弱的岗位放到待确认。当前后端尚未单独返回这个 bucket，本次 UI 先保留入口，避免把推荐岗位冒充为待确认。
-          </p>
-        </div>
-      </div>
-      <div v-else-if="displayedJobsLoading" class="px-4 py-6 text-sm text-content-muted">正在加载岗位列表…</div>
+      <div v-if="displayedJobsLoading" class="px-4 py-6 text-sm text-content-muted">正在加载岗位列表…</div>
       <div v-else-if="displayedJobs.length === 0" class="px-4 py-10 text-center text-sm text-content-muted">
         当前分区暂无岗位。
       </div>
@@ -528,6 +523,7 @@ onMounted(() => {
           :greeting-draft="greetingDrafts.get(job.encrypt_job_id) ?? ''"
           :greeting-error="greetingErrors.get(job.encrypt_job_id)"
           :greeting-loading="greetingLoading === job.encrypt_job_id"
+          :pending-evidence-refreshing="pendingEvidenceRefreshingJobId === job.encrypt_job_id"
           :resume-workspace-status="resumeWorkspaceStatuses.get(job.encrypt_job_id)"
           @toggle-detail="(jobId) => toggleDetail(jobId)"
           @go-ai="(jobId) => goAi(jobId)"
@@ -547,6 +543,7 @@ onMounted(() => {
           @update-greeting-draft="(jobId, message) => updateGreetingDraft(jobId, message)"
           @copy-greeting="(job) => copyGreeting(job)"
           @copy-application-packet="(job) => copyApplicationPacket(job)"
+          @refresh-pending-evidence="(job) => refreshPendingJobEvidence(job)"
         />
       </div>
 

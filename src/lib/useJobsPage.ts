@@ -4,7 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRoute, useRouter } from "vue-router";
 
 import { clearAiSelectedJobs, upsertAiSelectedJob } from "./aiSelection";
-import { CRAWL_TASK_TYPE_CHAT_SYNC } from "./crawl";
+import { CRAWL_TASK_TYPE_CHAT_SYNC, type RecomputeFilterProfileResult } from "./crawl";
 import { useFilterProfile } from "./filterProfile";
 import {
   companyReviewStatusLabel,
@@ -675,6 +675,8 @@ export function useJobsPage() {
   const filterProfileLoading = ref(false);
   const filterRecomputing = ref(false);
   const filterRecomputeMessage = ref<string | null>(null);
+  const pendingEvidenceRefreshingJobId = ref<string | null>(null);
+  const pendingEvidenceRefreshMessage = ref<string | null>(null);
   const isSearchMode = ref(false);
   const reviewCandidatesLoading = ref(false);
   const favoritedJobsLoading = ref(false);
@@ -1116,8 +1118,8 @@ export function useJobsPage() {
     try {
       const profile = await filterProfileState.setActiveFilterProfileAsDefault();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
-      const result = await invoke<{ updated: number }>("recompute_default_filter_profile");
-      filterRecomputeMessage.value = `已设为默认画像，并重算 ${result.updated} 个职位`;
+      const result = await invoke<RecomputeFilterProfileResult>("recompute_default_filter_profile");
+      filterRecomputeMessage.value = `已设为默认画像，并重算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}`;
       await refreshAfterJobStateChange(false);
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -1134,7 +1136,7 @@ export function useJobsPage() {
     try {
       const result = await filterProfileState.recomputeDefaultFilterProfile();
       if (result) {
-        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位`;
+        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
       }
       const profile = await loadDefaultFilterProfile();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
@@ -1193,6 +1195,25 @@ export function useJobsPage() {
     }
     await Promise.all(refreshes);
     await loadLinkedJobFromRoute();
+  }
+  async function refreshPendingJobEvidence(job: JobRow): Promise<void> {
+    error.value = null;
+    pendingEvidenceRefreshMessage.value = null;
+    if (!tauri) return;
+    pendingEvidenceRefreshingJobId.value = job.encrypt_job_id;
+    try {
+      const result = await invoke<{ encrypt_job_id: string; status: string; message: string }>(
+        "refresh_pending_job_evidence",
+        { encryptJobId: job.encrypt_job_id },
+      );
+      pendingEvidenceRefreshMessage.value = result.message;
+      detailCache.delete(job.encrypt_job_id);
+      await refreshAfterJobStateChange(false);
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      pendingEvidenceRefreshingJobId.value = null;
+    }
   }
   async function toggleKeyword(group: KeywordGroup): Promise<void> {
     const key = groupKey(group);
@@ -1968,6 +1989,8 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     filterProfileLoading,
     filterRecomputing,
     filterRecomputeMessage,
+    pendingEvidenceRefreshingJobId,
+    pendingEvidenceRefreshMessage,
     isSearchMode,
     reviewCandidatesLoading,
     favoritedJobsLoading,
@@ -2028,6 +2051,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     createFilterProfile,
     setActiveFilterProfileAsDefault,
     recomputeDefaultFilterProfile,
+    refreshPendingJobEvidence,
     rebuildCompanyScores,
     generateAiCompanyScores,
     toggleKeyword,

@@ -25,6 +25,14 @@ export const CrawlManualStartPayloadSchema = z.object({
 export const CrawlAutoStartPayloadSchema = z.object({
   session: SessionStatePayloadSchema,
   task: SearchTaskPayloadSchema,
+  run_id: z.string().optional(),
+});
+
+export const RefreshJobEvidencePayloadSchema = z.object({
+  session: SessionStatePayloadSchema,
+  encrypt_job_id: z.string().min(1),
+  source_url: z.string().optional(),
+  raw_payload: z.any().optional(),
 });
 
 export const BossMetaSyncPayloadSchema = z.object({
@@ -104,6 +112,10 @@ export const CommandInSchema = z.union([
   z.object({
     type: z.literal("CRAWL_AUTO_START"),
     payload: CrawlAutoStartPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("REFRESH_JOB_EVIDENCE"),
+    payload: RefreshJobEvidencePayloadSchema,
   }),
   z.object({
     type: z.literal("BOSS_META_SYNC"),

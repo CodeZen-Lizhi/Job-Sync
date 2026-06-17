@@ -150,6 +150,7 @@ export interface FilterReasonDimensions {
 
 export interface FilterReasonJson {
   eligible?: boolean;
+  bucket?: "recommended" | "pending_confirmation" | "filtered" | string;
   blocked_by?: FilterBlockedReason[];
   matched_preferences?: string[];
   missing_preferences?: string[];

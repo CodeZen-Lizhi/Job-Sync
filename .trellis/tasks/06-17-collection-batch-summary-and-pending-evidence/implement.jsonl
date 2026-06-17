@@ -1,0 +1,8 @@
+{"file":".trellis/spec/boss-crawler-worker/frontend/collection-source-contracts.md","reason":"Owns collection source contracts, canonical post-filter bucket semantics, and worker event constraints."}
+{"file":"src-tauri/src/sidecar/mod.rs","reason":"Owns worker event handling and job upsert/recompute side effects."}
+{"file":"src-tauri/src/db/schema.sql","reason":"Owns base SQLite schema for new collection run and failure tables."}
+{"file":"src-tauri/src/db/migrate.rs","reason":"Owns additive migrations for existing databases."}
+{"file":"src-tauri/src/commands/jobs/queries.rs","reason":"Owns job-library bucket queries and candidate counts."}
+{"file":"src-tauri/src/commands/crawl.rs","reason":"Owns crawl_auto_start command and run lifecycle entry point."}
+{"file":"src/lib/useCrawlPage.ts","reason":"Owns crawl page state and automatic collection command wiring."}
+{"file":"src/lib/useJobsPage.ts","reason":"Owns job-library bucket state and filter recompute UI behavior."}

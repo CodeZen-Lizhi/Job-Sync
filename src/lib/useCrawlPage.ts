@@ -22,6 +22,8 @@ import {
   type BossCityGroup,
   type BossOption,
   type BossIndustryGroup,
+  type CollectionFailure,
+  type CollectionRun,
   type JobSourcePlatform,
   type CrawlMode,
 } from "./crawl";
@@ -65,6 +67,9 @@ function createCrawlPageState() {
   const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
   const bossCollectionEnabled = ref(true);
   const collectionSourceRegistry = ref<Array<{ platform: string; display_name?: string; adapter_kind: string; enabled: boolean }>>([]);
+  const collectionRuns = ref<CollectionRun[]>([]);
+  const collectionFailures = ref<CollectionFailure[]>([]);
+  const collectionSummaryLoading = ref(false);
   const v2exFeedSettingsOpen = ref(true);
   const v2exFeedUrl = ref(DEFAULT_V2EX_FEED_URL);
   const v2exKeywordsText = ref("");
@@ -129,6 +134,7 @@ function createCrawlPageState() {
         };
       });
   });
+  const latestCollectionRun = computed(() => collectionRuns.value[0] ?? null);
   const collectionKeywords = computed(() => parseList(collectionKeywordsText.value));
   const collectionTechStack = computed(() => parseList(collectionTechStackText.value));
   const collectionTargetCities = computed(() => parseList(collectionTargetCitiesText.value));
@@ -426,9 +432,10 @@ function createCrawlPageState() {
     try {
       const result = await filterProfileState.recomputeDefaultFilterProfile();
       if (result) {
-        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位`;
+        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
         runtime.finishedCounter += 1;
       }
+      await loadCollectionSummary();
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -463,6 +470,7 @@ function createCrawlPageState() {
         runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
         await invoke<void>("crawl_auto_start", { task: buildTaskForSource(source) });
         await waitForFinishedCounterToAdvance(beforeFinished);
+        await loadCollectionSummary();
       }
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -492,8 +500,26 @@ function createCrawlPageState() {
     if (initialized.value) return;
     initialized.value = true;
     void loadCollectionSources();
+    void loadCollectionSummary();
     void loadBossMeta();
     void loadDefaultFilterProfile();
+  }
+
+  async function loadCollectionSummary(): Promise<void> {
+    if (!tauri) return;
+    collectionSummaryLoading.value = true;
+    try {
+      const [runs, failures] = await Promise.all([
+        invoke<CollectionRun[]>("list_collection_runs", { limit: 5 }),
+        invoke<CollectionFailure[]>("list_collection_failures", { limit: 8 }),
+      ]);
+      collectionRuns.value = runs;
+      collectionFailures.value = failures;
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      collectionSummaryLoading.value = false;
+    }
   }
 
   watch(
@@ -521,6 +547,10 @@ function createCrawlPageState() {
     collectionMinimumExperienceYears,
     collectionMaximumExperienceYears,
     selectedCollectionSources,
+    collectionRuns,
+    collectionFailures,
+    collectionSummaryLoading,
+    latestCollectionRun,
     selectedCollectionSourceLabel,
     collectionIntentSyncLabel,
     bossSelected,
@@ -578,6 +608,7 @@ function createCrawlPageState() {
     setActiveFilterProfileAsDefault,
     recomputeDefaultFilterProfile,
     syncCollectionIntentToPlatforms,
+    loadCollectionSummary,
     initialize,
     clearBossMetaSyncTimeout,
     start,

@@ -80,7 +80,12 @@ fn extract_job_id_from_list_item(item: &Value) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn extract_jobs_from_joblist(raw: &Value) -> Vec<(String, Value)> {
+struct ExtractedJobListItem {
+    encrypt_job_id: Option<String>,
+    raw: Value,
+}
+
+fn extract_job_items_from_joblist(raw: &Value) -> Vec<ExtractedJobListItem> {
     let list = raw
         .get("zpData")
         .and_then(|v| {
@@ -97,15 +102,49 @@ fn extract_jobs_from_joblist(raw: &Value) -> Vec<(String, Value)> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     for it in arr {
-        let Some(id) = extract_job_id_from_list_item(it) else {
-            continue;
-        };
-        if !seen.insert(id.clone()) {
-            continue;
+        let encrypt_job_id = extract_job_id_from_list_item(it);
+        if let Some(id) = encrypt_job_id.as_ref() {
+            if !seen.insert(id.clone()) {
+                continue;
+            }
         }
-        out.push((id, it.clone()));
+        out.push(ExtractedJobListItem {
+            encrypt_job_id,
+            raw: it.clone(),
+        });
     }
     out
+}
+
+#[cfg(test)]
+fn extract_jobs_from_joblist(raw: &Value) -> Vec<(String, Value)> {
+    extract_job_items_from_joblist(raw)
+        .into_iter()
+        .filter_map(|item| item.encrypt_job_id.map(|id| (id, item.raw)))
+        .collect()
+}
+
+fn record_collection_failure(
+    conn: &rusqlite::Connection,
+    active_run: Option<&ActiveCollectionRun>,
+    event_type: &str,
+    keyword: Option<&str>,
+    encrypt_job_id: Option<&str>,
+    reason: &str,
+    raw_payload: Option<&Value>,
+) {
+    let _ = models::record_collection_failure(
+        conn,
+        &models::NewCollectionFailure {
+            run_id: active_run.map(|run| run.id.as_str()),
+            source_platform: active_run.map(|run| run.source_platform.as_str()),
+            event_type,
+            keyword,
+            encrypt_job_id,
+            reason,
+            raw_payload,
+        },
+    );
 }
 
 #[cfg(test)]
@@ -153,10 +192,17 @@ struct RunningSidecar {
     stdin: ChildStdin,
 }
 
+#[derive(Clone)]
+struct ActiveCollectionRun {
+    id: String,
+    source_platform: String,
+}
+
 pub struct SidecarManager {
     app_handle: tauri::AppHandle,
     app_data_dir: PathBuf,
     inner: Arc<Mutex<Option<RunningSidecar>>>,
+    active_collection_run: Arc<Mutex<Option<ActiveCollectionRun>>>,
 }
 
 impl SidecarManager {
@@ -165,6 +211,7 @@ impl SidecarManager {
             app_handle,
             app_data_dir,
             inner: Arc::new(Mutex::new(None)),
+            active_collection_run: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -211,6 +258,7 @@ impl SidecarManager {
         let app_handle = self.app_handle.clone();
         let app_data_dir = self.app_data_dir.clone();
         let inner = Arc::clone(&self.inner);
+        let active_collection_run = Arc::clone(&self.active_collection_run);
 
         thread::spawn(move || {
             let conn = db::init_db(&app_data_dir);
@@ -292,31 +340,74 @@ impl SidecarManager {
                 }
 
                 if let Some(conn) = conn.as_ref() {
+                    let active_run = active_collection_run
+                        .lock()
+                        .ok()
+                        .and_then(|guard| guard.clone());
                     match &evt {
                         EventOut::JobDetailCaptured(payload) => {
                             if let Ok(zp_json) = serde_json::to_string(&payload.zp_data) {
-                                if let Err(err) = models::upsert_job_from_detail(
+                                match models::upsert_job_from_detail_with_outcome(
                                     conn,
                                     &payload.encrypt_job_id,
                                     &zp_json,
                                 ) {
-                                    let _ = ipc::emit_event_all(
+                                    Ok(outcome) => {
+                                        if let Some(active_run) = active_run.as_ref() {
+                                            let _ = models::increment_collection_counter(
+                                                conn,
+                                                &active_run.id,
+                                                outcome.counter(),
+                                                1,
+                                            );
+                                        }
+                                        if let Err(err) =
+                                            filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                                conn,
+                                                &payload.encrypt_job_id,
+                                            )
+                                        {
+                                            record_collection_failure(
+                                                conn,
+                                                active_run.as_ref(),
+                                                "JOB_DETAIL_CAPTURED",
+                                                None,
+                                                Some(&payload.encrypt_job_id),
+                                                &format!("filter recompute failed: {err}"),
+                                                Some(&payload.zp_data),
+                                            );
+                                        }
+                                    }
+                                    Err(err) => {
+                                        record_collection_failure(
+                                            conn,
+                                            active_run.as_ref(),
+                                            "JOB_DETAIL_CAPTURED",
+                                            None,
+                                            Some(&payload.encrypt_job_id),
+                                            &format!("db upsert job failed: {err}"),
+                                            Some(&payload.zp_data),
+                                        );
+                                        let _ = ipc::emit_event_all(
                                         &app_handle,
                                         &EventOut::Error(crate::ipc::protocol::ErrorPayload {
                                             message: format!("db upsert job failed: {err}"),
                                             stack: None,
                                         }),
-                                    );
-                                } else {
-                                    let _ =
-                                        filter_profile::recompute_default_filter_profile_for_job_on_conn(
-                                            conn,
-                                            &payload.encrypt_job_id,
                                         );
+                                    }
                                 }
                             }
                         }
                         EventOut::JobNormalizedCaptured(payload) => {
+                            if let Some(active_run) = active_run.as_ref() {
+                                let _ = models::increment_collection_counter(
+                                    conn,
+                                    &active_run.id,
+                                    models::CollectionCounter::Captured,
+                                    1,
+                                );
+                            }
                             let filters_json = payload
                                 .filters
                                 .as_ref()
@@ -336,15 +427,50 @@ impl SidecarManager {
                                 jd_text: payload.jd_text.clone(),
                                 raw_payload: payload.raw_payload.clone(),
                             };
-                            if let Err(err) = models::upsert_job_from_normalized(conn, &input) {
-                                let _ = ipc::emit_event_all(
+                            match models::upsert_job_from_normalized_with_outcome(conn, &input) {
+                                Ok(outcome) => {
+                                    if let Some(active_run) = active_run.as_ref() {
+                                        let _ = models::increment_collection_counter(
+                                            conn,
+                                            &active_run.id,
+                                            outcome.counter(),
+                                            1,
+                                        );
+                                    }
+                                }
+                                Err(err) => {
+                                    record_collection_failure(
+                                        conn,
+                                        active_run.as_ref(),
+                                        "JOB_NORMALIZED_CAPTURED",
+                                        payload.keyword.as_deref(),
+                                        Some(&payload.encrypt_job_id),
+                                        &format!("db upsert normalized job failed: {err}"),
+                                        Some(&payload.raw_payload),
+                                    );
+                                    let _ = ipc::emit_event_all(
                                     &app_handle,
                                     &EventOut::Error(crate::ipc::protocol::ErrorPayload {
                                         message: format!("db upsert normalized job failed: {err}"),
                                         stack: None,
                                     }),
+                                    );
+                                    continue;
+                                }
+                            }
+                            if let Err(err) = filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                conn,
+                                &payload.encrypt_job_id,
+                            ) {
+                                record_collection_failure(
+                                    conn,
+                                    active_run.as_ref(),
+                                    "JOB_NORMALIZED_CAPTURED",
+                                    payload.keyword.as_deref(),
+                                    Some(&payload.encrypt_job_id),
+                                    &format!("filter recompute failed: {err}"),
+                                    Some(&payload.raw_payload),
                                 );
-                                continue;
                             }
                             let _ = models::insert_job_source_link(
                                 conn,
@@ -352,29 +478,76 @@ impl SidecarManager {
                                 payload.keyword.as_deref(),
                                 filters_json.as_deref(),
                             );
-                            let _ =
-                                filter_profile::recompute_default_filter_profile_for_job_on_conn(
-                                    conn,
-                                    &payload.encrypt_job_id,
-                                );
                         }
                         EventOut::JobListCaptured(payload) => {
-                            let jobs = extract_jobs_from_joblist(&payload.raw);
+                            let jobs = extract_job_items_from_joblist(&payload.raw);
+                            if let Some(active_run) = active_run.as_ref() {
+                                let _ = models::increment_collection_counter(
+                                    conn,
+                                    &active_run.id,
+                                    models::CollectionCounter::Captured,
+                                    jobs.len() as i64,
+                                );
+                            }
                             let filters_json = payload
                                 .filters
                                 .as_ref()
                                 .and_then(|v| serde_json::to_string(v).ok());
-                            for (id, item) in jobs {
-                                let upserted =
-                                    models::upsert_job_from_list_item(conn, &id, &item).is_ok();
+                            for item in jobs {
+                                let Some(id) = item.encrypt_job_id.as_deref() else {
+                                    record_collection_failure(
+                                        conn,
+                                        active_run.as_ref(),
+                                        "JOB_LIST_CAPTURED",
+                                        payload.keyword.as_deref(),
+                                        None,
+                                        "missing stable job id",
+                                        Some(&item.raw),
+                                    );
+                                    continue;
+                                };
+                                match models::upsert_job_from_list_item_with_outcome(conn, id, &item.raw) {
+                                    Ok(outcome) => {
+                                        if let Some(active_run) = active_run.as_ref() {
+                                            let _ = models::increment_collection_counter(
+                                                conn,
+                                                &active_run.id,
+                                                outcome.counter(),
+                                                1,
+                                            );
+                                        }
+                                    }
+                                    Err(err) => {
+                                        record_collection_failure(
+                                            conn,
+                                            active_run.as_ref(),
+                                            "JOB_LIST_CAPTURED",
+                                            payload.keyword.as_deref(),
+                                            Some(id),
+                                            &format!("db upsert list job failed: {err}"),
+                                            Some(&item.raw),
+                                        );
+                                        continue;
+                                    }
+                                }
                                 let _ = models::insert_job_source_link(
                                     conn,
-                                    &id,
+                                    id,
                                     payload.keyword.as_deref(),
                                     filters_json.as_deref(),
                                 );
-                                if upserted {
-                                    let _ = filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, &id);
+                                if let Err(err) =
+                                    filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, id)
+                                {
+                                    record_collection_failure(
+                                        conn,
+                                        active_run.as_ref(),
+                                        "JOB_LIST_CAPTURED",
+                                        payload.keyword.as_deref(),
+                                        Some(id),
+                                        &format!("filter recompute failed: {err}"),
+                                        Some(&item.raw),
+                                    );
                                 }
                             }
                         }
@@ -438,18 +611,53 @@ impl SidecarManager {
                                         .filters
                                         .as_ref()
                                         .and_then(|v| serde_json::to_string(v).ok());
-                                    let _ = models::upsert_job_from_list_item(
+                                    match models::upsert_job_from_list_item_with_outcome(
                                         conn,
                                         encrypt_job_id,
                                         raw,
-                                    );
+                                    ) {
+                                        Ok(outcome) => {
+                                            if let Some(active_run) = active_run.as_ref() {
+                                                let _ = models::increment_collection_counter(
+                                                    conn,
+                                                    &active_run.id,
+                                                    outcome.counter(),
+                                                    1,
+                                                );
+                                            }
+                                        }
+                                        Err(err) => {
+                                            record_collection_failure(
+                                                conn,
+                                                active_run.as_ref(),
+                                                "JOB_FILTERED",
+                                                payload.keyword.as_deref(),
+                                                Some(encrypt_job_id),
+                                                &format!("db upsert filtered job failed: {err}"),
+                                                Some(raw),
+                                            );
+                                            continue;
+                                        }
+                                    }
                                     let _ = models::insert_job_source_link(
                                         conn,
                                         encrypt_job_id,
                                         payload.keyword.as_deref(),
                                         filters_json.as_deref(),
                                     );
-                                    let _ = filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, encrypt_job_id);
+                                    if let Err(err) =
+                                        filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, encrypt_job_id)
+                                    {
+                                        record_collection_failure(
+                                            conn,
+                                            active_run.as_ref(),
+                                            "JOB_FILTERED",
+                                            payload.keyword.as_deref(),
+                                            Some(encrypt_job_id),
+                                            &format!("filter recompute failed: {err}"),
+                                            Some(raw),
+                                        );
+                                    }
                                 } else {
                                     let profile_id = models::load_default_filter_profile(conn)
                                         .map(|profile| profile.id)
@@ -463,6 +671,45 @@ impl SidecarManager {
                                         false,
                                         &payload.reason,
                                     );
+                                }
+                            }
+                        }
+                        EventOut::Error(payload) => {
+                            if let Some(active_run) = active_run.as_ref() {
+                                let _ = models::record_collection_failure(
+                                    conn,
+                                    &models::NewCollectionFailure {
+                                        run_id: Some(&active_run.id),
+                                        source_platform: Some(&active_run.source_platform),
+                                        event_type: "ERROR",
+                                        keyword: None,
+                                        encrypt_job_id: None,
+                                        reason: &payload.message,
+                                        raw_payload: None,
+                                    },
+                                );
+                                let _ =
+                                    models::fail_collection_run(conn, &active_run.id, &payload.message);
+                            }
+                        }
+                        EventOut::Finished => {
+                            if let Some(active_run) = active_run.as_ref() {
+                                if let Ok(counts) = filter_profile::count_filter_buckets_on_conn(conn) {
+                                    let _ = models::refresh_collection_run_bucket_counts(
+                                        conn,
+                                        &active_run.id,
+                                        counts,
+                                    );
+                                }
+                                let _ = models::finish_collection_run(conn, &active_run.id, None);
+                                if let Ok(mut guard) = active_collection_run.lock() {
+                                    if guard
+                                        .as_ref()
+                                        .map(|run| run.id.as_str())
+                                        == Some(active_run.id.as_str())
+                                    {
+                                        *guard = None;
+                                    }
                                 }
                             }
                         }
@@ -503,8 +750,33 @@ impl SidecarManager {
             return Err(SidecarError::Message("sidecar exited".into()));
         }
 
+        let next_run = match cmd {
+            CommandIn::CrawlAutoStart(payload) => payload.run_id.as_ref().map(|run_id| {
+                ActiveCollectionRun {
+                    id: run_id.clone(),
+                    source_platform: payload
+                        .task
+                        .source_platform
+                        .clone()
+                        .unwrap_or_else(|| "boss".to_string()),
+                }
+            }),
+            _ => None,
+        };
         let line = serde_json::to_string(cmd)?;
-        running.stdin.write_all(format!("{line}\n").as_bytes())?;
+        if let Some(next_run) = next_run.clone() {
+            if let Ok(mut guard) = self.active_collection_run.lock() {
+                *guard = Some(next_run);
+            }
+        }
+        if let Err(err) = running.stdin.write_all(format!("{line}\n").as_bytes()) {
+            if next_run.is_some() {
+                if let Ok(mut guard) = self.active_collection_run.lock() {
+                    *guard = None;
+                }
+            }
+            return Err(err.into());
+        }
         running.stdin.flush().ok();
         Ok(())
     }

@@ -3,6 +3,7 @@ import { emitEvent, readCommands } from "./stdio.js";
 import { runAiMode, runAiGroupMode, runAiGreetingMode, runAiCompanyScoreBatchMode } from "./modes/ai.js";
 import { runResumeDiagnoseMode, runResumeRewriteModuleMode } from "./modes/resumeWorkspace.js";
 import { runAutoMode } from "./modes/auto.js";
+import { runRefreshJobEvidenceMode } from "./modes/evidenceRefresh.js";
 import { runBossChatSyncMode } from "./modes/chatSync.js";
 import { runLoginMode } from "./modes/login.js";
 import { runBossMetaSyncMode } from "./modes/meta.js";
@@ -58,6 +59,9 @@ readCommands((cmd: CommandIn) => {
         return;
       case "CRAWL_AUTO_START":
         await startMode(runAutoMode, cmd.payload);
+        return;
+      case "REFRESH_JOB_EVIDENCE":
+        await startMode(runRefreshJobEvidenceMode, cmd.payload);
         return;
       case "BOSS_META_SYNC":
         await startMode(runBossMetaSyncMode, cmd.payload);

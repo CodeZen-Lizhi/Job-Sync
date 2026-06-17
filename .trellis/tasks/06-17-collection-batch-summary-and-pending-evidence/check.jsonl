@@ -1,0 +1,5 @@
+{"file":"src-tauri/src/commands/jobs/queries.rs","reason":"Check bucket counts, pending/filtered/recommended query alignment, and tests."}
+{"file":"src-tauri/src/sidecar/mod.rs","reason":"Check event accounting, failure recording, and no worker-side final truth."}
+{"file":"src-tauri/src/db/migrate.rs","reason":"Check additive migration safety."}
+{"file":"packages/boss-crawler-worker/test/auto-run-contract.test.ts","reason":"Check worker collection contract remains full-list persistence first."}
+{"file":"test/review-workflow-contract.test.js","reason":"Check cross-layer command and UI contracts."}

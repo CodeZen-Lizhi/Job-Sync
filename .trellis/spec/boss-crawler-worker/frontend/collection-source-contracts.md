@@ -242,6 +242,116 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 }
 ```
 
+## Scenario: Collection Run Summary and Pending Evidence Refresh
+
+### 1. Scope / Trigger
+
+- Trigger: automatic collection needs explainable batch results and recoverable pending-confirmation jobs.
+- Applies when changing `crawl_auto_start`, sidecar job-write event handling, collection summary tables, bucket count responses, or pending evidence refresh.
+- Collection run summary explains operational outcomes; it must not become a second filter evaluator.
+
+### 2. Signatures
+
+- Tauri command:
+  - `crawl_auto_start(task: SearchTaskPayload)`
+  - creates a local `collection_run` before sending the worker command.
+- Worker command:
+  - `CRAWL_AUTO_START`
+  - payload includes optional `run_id`.
+  - `REFRESH_JOB_EVIDENCE`
+  - payload: `{ session, encrypt_job_id, source_url?, raw_payload? }`
+- Tauri query commands:
+  - `list_collection_runs(limit?: number) -> CollectionRun[]`
+  - `list_collection_failures(limit?: number) -> CollectionFailure[]`
+  - `refresh_pending_job_evidence(encrypt_job_id: string) -> { encrypt_job_id, status, message }`
+- Default filter recompute:
+  - `recompute_default_filter_profile() -> { updated, counts }`
+  - `counts` has `recommended`, `pending`, `filtered`, `processed`, `all`.
+- SQLite tables:
+  - `collection_run(id, source_platform, keywords_json, filters_json, limits_json, status, started_at, finished_at, error_message, captured, inserted, updated, duplicate, recommended, pending, filtered, failed, processed, all_jobs)`
+  - `collection_failure(id, run_id, source_platform, event_type, keyword, encrypt_job_id, reason, raw_payload_json, created_at)`
+
+### 3. Contracts
+
+- `collection_run` is created per automatic source invocation. The frontend may start Boss and V2EX sequentially from one button click; each source invocation owns one run.
+- `captured`, `inserted`, `updated`, `duplicate`, and `failed` are run-operation counters.
+- `recommended`, `pending`, `filtered`, `processed`, and `all_jobs` are refreshed from canonical DB/filter state after recompute/finish. They are not limited to only rows captured in that run.
+- Upsert outcome is based on persisted DB fields before/after write. `last_seen_at` alone must not turn an unchanged row into `updated`.
+- Sidecar records durable failures for missing stable job id, upsert failure, recompute failure, worker error, unsupported pending refresh, and missing Boss session.
+- Pending evidence refresh reuses the worker `JOB_DETAIL_CAPTURED` event after fetching Boss detail. Rust sidecar performs the same upsert and filter recompute path as normal collection detail events.
+- Non-Boss pending jobs or Boss jobs without usable session/path return a clear error and remain in the job library.
+- No collection summary or evidence refresh path may add automatic apply, chat open, greeting send, or resume send behavior.
+
+### 4. Validation & Error Matrix
+
+- Boss selected without session -> run is marked `failed`, a `collection_failure` row is written, command returns the session error.
+- Worker emits `ERROR` during active run -> failure row is written and run status becomes `failed`; later `FINISHED` may still refresh bucket counts but must not overwrite failed status.
+- List item lacks stable ID -> write `collection_failure(event_type='JOB_LIST_CAPTURED', reason='missing stable job id')`.
+- Upsert or recompute fails for one item -> write item-level failure and continue processing other items where possible.
+- `refresh_pending_job_evidence` for non-pending job -> return clear error; do not start worker.
+- `refresh_pending_job_evidence` for unsupported source -> write failure and return `当前来源暂不支持自动补证据`.
+- Successful Boss refresh -> worker emits `JOB_DETAIL_CAPTURED`; sidecar updates detail/JD/raw evidence and recomputes canonical filter.
+
+### 5. Good/Base/Bad Cases
+
+- Good: a Boss run captures 10 list rows, inserts 4, updates 3, sees 3 duplicates, records 1 missing-id failure, then refreshes canonical bucket counts.
+- Good: a V2EX run writes normalized jobs through the same run summary and failure table as Boss.
+- Good: a pending Boss job triggers `REFRESH_JOB_EVIDENCE`, receives a detail payload, and leaves pending if evidence is still insufficient.
+- Base: old databases have no run history but can still query jobs and bucket counts after additive migration.
+- Bad: using worker profile-filter eligibility as the final recommended/pending/filtered count.
+- Bad: silently skipping malformed list rows without a durable failure record.
+- Bad: making pending refresh look successful when the source is unsupported or Boss session is missing.
+
+### 6. Tests Required
+
+- Rust DB tests:
+  - migration creates `collection_run` and `collection_failure`.
+  - run/failure helpers persist counters and raw failure payloads.
+  - upsert outcome classifies inserted/updated/duplicate without counting `last_seen_at` only changes.
+- Rust filter tests:
+  - bucket counts are derived from `job_filter_result.reason_json.bucket`, review/communication/company state, and blacklist state.
+- Worker tests:
+  - command protocol accepts `REFRESH_JOB_EVIDENCE`.
+  - Boss detail refresh emits existing `JOB_DETAIL_CAPTURED` on success.
+- Cross-layer contract tests:
+  - Tauri commands are registered.
+  - Crawl page invokes run/failure queries.
+  - Jobs page exposes pending evidence refresh without automatic apply/chat/send actions.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+let duplicate = conn.execute(upsert_sql, params)? == 0;
+```
+
+`last_seen_at` changes make SQLite report a write even when no meaningful job evidence changed.
+
+#### Correct
+
+```rust
+let before = load_job_persistence_snapshot(conn, encrypt_job_id)?;
+upsert_job_from_list_item(conn, encrypt_job_id, item)?;
+let after = load_job_persistence_snapshot(conn, encrypt_job_id)?;
+```
+
+Compare persisted evidence fields and ignore `last_seen_at` for duplicate vs updated classification.
+
+#### Wrong
+
+```typescript
+if (job.source_platform !== "boss") return { status: "success" };
+```
+
+#### Correct
+
+```typescript
+ctx.emit({ type: "ERROR", payload: { message: "当前来源暂不支持自动补证据" } });
+```
+
+Unsupported evidence refresh must fail explicitly and preserve the pending job.
+
 ## Scenario: Post-Collection Filter Buckets
 
 ### 1. Scope / Trigger

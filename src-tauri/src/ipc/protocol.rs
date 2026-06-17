@@ -21,11 +21,26 @@ pub struct SessionStatePayload {
 pub struct CrawlAutoStartPayload {
     pub session: SessionStatePayload,
     pub task: SearchTaskPayload,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrawlManualStartPayload {
     pub session: SessionStatePayload,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshJobEvidencePayload {
+    pub session: SessionStatePayload,
+    pub encrypt_job_id: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_payload: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,6 +189,8 @@ pub enum CommandIn {
     CrawlManualStart(CrawlManualStartPayload),
     #[serde(rename = "CRAWL_AUTO_START")]
     CrawlAutoStart(CrawlAutoStartPayload),
+    #[serde(rename = "REFRESH_JOB_EVIDENCE")]
+    RefreshJobEvidence(RefreshJobEvidencePayload),
     #[serde(rename = "BOSS_META_SYNC")]
     BossMetaSync(BossMetaSyncPayload),
     #[serde(rename = "BOSS_CHAT_SYNC")]

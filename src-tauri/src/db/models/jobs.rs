@@ -1,14 +1,33 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::db::Result;
 
 use super::{
     common::now_rfc3339,
+    collection::JobUpsertOutcome,
     company_score::upsert_company_score_from_source,
     job_fields::{extract_job_fields_from_detail, extract_job_fields_from_list_item, JobFields},
     source_adapter::{normalize_boss_detail, normalize_boss_list_item, NormalizedJobSource},
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct JobPersistenceSnapshot {
+    source_platform: String,
+    source_url: Option<String>,
+    dedup_key: Option<String>,
+    position_name: Option<String>,
+    boss_name: Option<String>,
+    boss_active_status: Option<String>,
+    brand_name: Option<String>,
+    city_name: Option<String>,
+    salary_desc: Option<String>,
+    experience_name: Option<String>,
+    degree_name: Option<String>,
+    jd_text: Option<String>,
+    raw_payload_json: Option<String>,
+    detail_raw_json: Option<String>,
+}
 
 #[derive(Debug)]
 pub(crate) struct NormalizedJobInput {
@@ -142,6 +161,16 @@ pub(crate) fn upsert_job_from_detail(
     Ok(())
 }
 
+pub(crate) fn upsert_job_from_detail_with_outcome(
+    conn: &Connection,
+    encrypt_job_id: &str,
+    zp_data_json: &str,
+) -> Result<JobUpsertOutcome> {
+    upsert_with_outcome(conn, encrypt_job_id, |conn| {
+        upsert_job_from_detail(conn, encrypt_job_id, zp_data_json)
+    })
+}
+
 pub(crate) fn upsert_job_from_list_item(
     conn: &Connection,
     encrypt_job_id: &str,
@@ -160,6 +189,16 @@ pub(crate) fn upsert_job_from_list_item(
     )?;
     upsert_company_score_for_fields(conn, &fields, &item.to_string())?;
     Ok(())
+}
+
+pub(crate) fn upsert_job_from_list_item_with_outcome(
+    conn: &Connection,
+    encrypt_job_id: &str,
+    item: &Value,
+) -> Result<JobUpsertOutcome> {
+    upsert_with_outcome(conn, encrypt_job_id, |conn| {
+        upsert_job_from_list_item(conn, encrypt_job_id, item)
+    })
 }
 
 pub(crate) fn upsert_job_from_normalized(
@@ -201,6 +240,15 @@ pub(crate) fn upsert_job_from_normalized(
     Ok(())
 }
 
+pub(crate) fn upsert_job_from_normalized_with_outcome(
+    conn: &Connection,
+    input: &NormalizedJobInput,
+) -> Result<JobUpsertOutcome> {
+    upsert_with_outcome(conn, &input.encrypt_job_id, |conn| {
+        upsert_job_from_normalized(conn, input)
+    })
+}
+
 pub(crate) fn rebuild_all_job_fields(conn: &Connection) -> Result<u64> {
     let rows = load_job_detail_rows(conn)?;
     let mut updated = 0_u64;
@@ -226,6 +274,63 @@ pub(crate) fn rebuild_all_job_fields(conn: &Connection) -> Result<u64> {
     }
 
     Ok(updated)
+}
+
+fn load_job_persistence_snapshot(
+    conn: &Connection,
+    encrypt_job_id: &str,
+) -> Result<Option<JobPersistenceSnapshot>> {
+    conn.query_row(
+        r#"
+        SELECT j.source_platform, j.source_url, j.dedup_key,
+               j.position_name, j.boss_name, j.boss_active_status, j.brand_name,
+               j.city_name, j.salary_desc, j.experience_name, j.degree_name,
+               j.jd_text, j.raw_payload_json, d.zp_data_json
+        FROM job j
+        LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+        WHERE j.encrypt_job_id = ?1
+        "#,
+        [encrypt_job_id],
+        |row| {
+            Ok(JobPersistenceSnapshot {
+                source_platform: row.get(0)?,
+                source_url: row.get(1)?,
+                dedup_key: row.get(2)?,
+                position_name: row.get(3)?,
+                boss_name: row.get(4)?,
+                boss_active_status: row.get(5)?,
+                brand_name: row.get(6)?,
+                city_name: row.get(7)?,
+                salary_desc: row.get(8)?,
+                experience_name: row.get(9)?,
+                degree_name: row.get(10)?,
+                jd_text: row.get(11)?,
+                raw_payload_json: row.get(12)?,
+                detail_raw_json: row.get(13)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+fn upsert_with_outcome<F>(
+    conn: &Connection,
+    encrypt_job_id: &str,
+    upsert: F,
+) -> Result<JobUpsertOutcome>
+where
+    F: FnOnce(&Connection) -> Result<()>,
+{
+    let before = load_job_persistence_snapshot(conn, encrypt_job_id)?;
+    upsert(conn)?;
+    let after = load_job_persistence_snapshot(conn, encrypt_job_id)?;
+    Ok(match (before, after) {
+        (None, Some(_)) => JobUpsertOutcome::Inserted,
+        (Some(before), Some(after)) if before == after => JobUpsertOutcome::Duplicate,
+        (Some(_), Some(_)) => JobUpsertOutcome::Updated,
+        _ => JobUpsertOutcome::Duplicate,
+    })
 }
 
 fn upsert_job_detail_raw(

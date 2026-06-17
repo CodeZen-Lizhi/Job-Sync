@@ -464,6 +464,102 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
 }
 
 #[test]
+fn collection_run_and_failure_helpers_persist_summary_records() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let run_id = models::new_collection_run_id();
+
+    models::create_collection_run(
+        &conn,
+        &models::NewCollectionRun {
+            id: &run_id,
+            source_platform: "boss",
+            keywords: &["Go".to_string(), "平台工程".to_string()],
+            filters: &json!({ "city": ["101020100"] }),
+            limits: &json!({ "maxJobs": 20 }),
+        },
+    )
+    .expect("create run");
+    models::increment_collection_counter(&conn, &run_id, models::CollectionCounter::Captured, 3)
+        .expect("increment captured");
+    models::record_collection_failure(
+        &conn,
+        &models::NewCollectionFailure {
+            run_id: Some(&run_id),
+            source_platform: Some("boss"),
+            event_type: "JOB_LIST_CAPTURED",
+            keyword: Some("Go"),
+            encrypt_job_id: None,
+            reason: "missing stable job id",
+            raw_payload: Some(&json!({ "jobName": "No ID" })),
+        },
+    )
+    .expect("record failure");
+    models::refresh_collection_run_bucket_counts(
+        &conn,
+        &run_id,
+        models::BucketCounts {
+            recommended: 1,
+            pending: 1,
+            filtered: 1,
+            processed: 0,
+            all: 3,
+        },
+    )
+    .expect("refresh counts");
+    models::finish_collection_run(&conn, &run_id, None).expect("finish run");
+
+    let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].status, "finished");
+    assert_eq!(runs[0].captured, 3);
+    assert_eq!(runs[0].failed, 1);
+    assert_eq!(runs[0].recommended, 1);
+    assert_eq!(runs[0].pending, 1);
+    assert_eq!(runs[0].all_jobs, 3);
+
+    let failures = models::list_collection_failures(&conn, Some(5)).expect("list failures");
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0].run_id.as_deref(), Some(run_id.as_str()));
+    assert_eq!(failures[0].event_type, "JOB_LIST_CAPTURED");
+    assert_eq!(failures[0].reason, "missing stable job id");
+}
+
+#[test]
+fn upsert_job_from_list_item_with_outcome_classifies_insert_update_duplicate() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let encrypt_job_id = "outcome_job_1";
+    let item = json!({
+      "securityId": "outcome_job_1",
+      "jobName": "Go 后端",
+      "brandName": "Outcome Co",
+      "cityName": "上海"
+    });
+
+    let inserted = models::upsert_job_from_list_item_with_outcome(&conn, encrypt_job_id, &item)
+        .expect("insert outcome");
+    let duplicate = models::upsert_job_from_list_item_with_outcome(&conn, encrypt_job_id, &item)
+        .expect("duplicate outcome");
+    let updated_item = json!({
+      "securityId": "outcome_job_1",
+      "jobName": "Go 后端",
+      "brandName": "Outcome Co",
+      "cityName": "上海",
+      "salaryDesc": "30-45K"
+    });
+    let updated =
+        models::upsert_job_from_list_item_with_outcome(&conn, encrypt_job_id, &updated_item)
+            .expect("update outcome");
+
+    assert_eq!(inserted, models::JobUpsertOutcome::Inserted);
+    assert_eq!(duplicate, models::JobUpsertOutcome::Duplicate);
+    assert_eq!(updated, models::JobUpsertOutcome::Updated);
+}
+
+#[test]
 fn upsert_job_from_normalized_writes_v2ex_unified_source_fields() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");

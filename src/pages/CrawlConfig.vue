@@ -96,6 +96,8 @@ const {
   bossSyncMappedFields,
   bossSyncUnmappedFields,
   bossSyncMessage,
+  collectionFailures,
+  collectionSummaryLoading,
   filterProfiles,
   activeFilterProfileId,
   activeFilterProfileName,
@@ -110,7 +112,9 @@ const {
   bossScaleOptions,
   bossIndustryGroups,
   bossMetaReady,
+  latestCollectionRun,
   sidecarRunning,
+  loadCollectionSummary,
   loadBossMeta,
   syncBossMeta,
   selectFilterProfile,
@@ -120,6 +124,32 @@ const {
   recomputeDefaultFilterProfile,
   syncCollectionIntentToPlatforms,
 } = useCrawlPage();
+
+function parseKeywords(raw?: string | null): string {
+  if (!raw) return "-";
+  try {
+    const values = JSON.parse(raw);
+    if (Array.isArray(values)) return values.join("、") || "-";
+  } catch {
+    return raw;
+  }
+  return "-";
+}
+
+function runStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "running":
+      return "运行中";
+    case "finished":
+      return "已完成";
+    case "failed":
+      return "失败";
+    case "stopped":
+      return "已停止";
+    default:
+      return status || "-";
+  }
+}
 </script>
 
 <template>
@@ -149,6 +179,62 @@ const {
     </div>
 
     <div v-if="error" class="ui-status-danger p-3 text-sm">{{ error }}</div>
+
+    <section class="ui-panel overflow-hidden">
+      <div class="ui-section-header">
+        <div>
+          <div class="ui-section-kicker">Latest Run</div>
+          <h2 class="ui-section-title mt-1">最近采集结果</h2>
+        </div>
+        <button
+          class="ui-btn-secondary px-3 py-1.5 text-xs"
+          type="button"
+          :disabled="collectionSummaryLoading"
+          @click="loadCollectionSummary"
+        >
+          刷新
+        </button>
+      </div>
+      <div class="grid gap-3 p-4 lg:grid-cols-[1.2fr_1fr]">
+        <div class="ui-card-soft p-4">
+          <template v-if="latestCollectionRun">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-semibold text-content-primary">{{ runStatusLabel(latestCollectionRun.status) }}</span>
+              <span class="ui-badge">{{ latestCollectionRun.source_platform }}</span>
+              <span class="text-xs text-content-muted">{{ latestCollectionRun.started_at }}</span>
+            </div>
+            <div class="mt-2 text-xs leading-5 text-content-muted">关键词：{{ parseKeywords(latestCollectionRun.keywords_json) }}</div>
+            <div class="mt-3 grid grid-cols-4 gap-2 text-center text-xs md:grid-cols-9">
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.captured }}</div><div class="text-content-muted">采到</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.inserted }}</div><div class="text-content-muted">新增</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.updated }}</div><div class="text-content-muted">更新</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.duplicate }}</div><div class="text-content-muted">重复</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.recommended }}</div><div class="text-content-muted">推荐</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.pending }}</div><div class="text-content-muted">待确认</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.filtered }}</div><div class="text-content-muted">过滤</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.processed }}</div><div class="text-content-muted">已处理</div></div>
+              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.failed }}</div><div class="text-content-muted">失败</div></div>
+            </div>
+            <div v-if="latestCollectionRun.error_message" class="mt-3 text-xs text-rose-300">{{ latestCollectionRun.error_message }}</div>
+          </template>
+          <div v-else class="text-sm text-content-muted">还没有采集批次记录。</div>
+        </div>
+        <div class="ui-card-soft p-4">
+          <div class="text-xs font-semibold text-content-primary">最近失败</div>
+          <div v-if="collectionFailures.length === 0" class="mt-2 text-xs text-content-muted">暂无失败记录。</div>
+          <div v-else class="mt-2 max-h-40 space-y-2 overflow-auto">
+            <div v-for="failure in collectionFailures" :key="failure.id" class="rounded border border-border/10 bg-card/60 p-2 text-xs">
+              <div class="flex flex-wrap items-center gap-2 text-content-muted">
+                <span class="font-medium text-content-secondary">{{ failure.event_type }}</span>
+                <span v-if="failure.source_platform">{{ failure.source_platform }}</span>
+                <span>{{ failure.created_at }}</span>
+              </div>
+              <div class="mt-1 text-content-primary">{{ failure.reason }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="grid gap-3 md:grid-cols-3">
       <div class="ui-card-soft p-4">

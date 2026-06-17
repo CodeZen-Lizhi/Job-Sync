@@ -64,8 +64,51 @@ export type FilterProfileRecord = {
   updated_at: string;
 };
 
+export type BucketCounts = {
+  recommended: number;
+  pending: number;
+  filtered: number;
+  processed: number;
+  all: number;
+};
+
 export type RecomputeFilterProfileResult = {
   updated: number;
+  counts: BucketCounts;
+};
+
+export type CollectionRun = {
+  id: string;
+  source_platform: string;
+  keywords_json: string;
+  filters_json?: string | null;
+  limits_json?: string | null;
+  status: string;
+  started_at: string;
+  finished_at?: string | null;
+  error_message?: string | null;
+  captured: number;
+  inserted: number;
+  updated: number;
+  duplicate: number;
+  recommended: number;
+  pending: number;
+  filtered: number;
+  failed: number;
+  processed: number;
+  all_jobs: number;
+};
+
+export type CollectionFailure = {
+  id: number;
+  run_id?: string | null;
+  source_platform?: string | null;
+  event_type: string;
+  keyword?: string | null;
+  encrypt_job_id?: string | null;
+  reason: string;
+  raw_payload_json?: string | null;
+  created_at: string;
 };
 
 export const DEFAULT_CRAWL_MODE: CrawlMode = "manual";

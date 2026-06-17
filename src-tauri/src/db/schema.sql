@@ -42,6 +42,40 @@ CREATE TABLE IF NOT EXISTS job_source_link (
   captured_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS collection_run (
+  id TEXT PRIMARY KEY,
+  source_platform TEXT NOT NULL,
+  keywords_json TEXT NOT NULL,
+  filters_json TEXT,
+  limits_json TEXT,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  error_message TEXT,
+  captured INTEGER NOT NULL DEFAULT 0,
+  inserted INTEGER NOT NULL DEFAULT 0,
+  updated INTEGER NOT NULL DEFAULT 0,
+  duplicate INTEGER NOT NULL DEFAULT 0,
+  recommended INTEGER NOT NULL DEFAULT 0,
+  pending INTEGER NOT NULL DEFAULT 0,
+  filtered INTEGER NOT NULL DEFAULT 0,
+  failed INTEGER NOT NULL DEFAULT 0,
+  processed INTEGER NOT NULL DEFAULT 0,
+  all_jobs INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS collection_failure (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT,
+  source_platform TEXT,
+  event_type TEXT NOT NULL,
+  keyword TEXT,
+  encrypt_job_id TEXT,
+  reason TEXT NOT NULL,
+  raw_payload_json TEXT,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS filter_profile (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -118,6 +152,15 @@ CREATE INDEX IF NOT EXISTS idx_ai_report_job_id
 
 CREATE INDEX IF NOT EXISTS idx_job_source_link_encrypt_job_id
   ON job_source_link(encrypt_job_id);
+
+CREATE INDEX IF NOT EXISTS idx_collection_run_started_at
+  ON collection_run(started_at);
+
+CREATE INDEX IF NOT EXISTS idx_collection_failure_run_id
+  ON collection_failure(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_collection_failure_created_at
+  ON collection_failure(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_job_filter_result_profile_id
   ON job_filter_result(profile_id);

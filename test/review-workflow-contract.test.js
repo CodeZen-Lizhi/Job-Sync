@@ -351,7 +351,9 @@ describe("review workflow contract", () => {
     assert.match(filterProfileCommand, /fn set_default_filter_profile_id_on_conn/);
     assert.match(filterProfileCommand, /recompute_default_filter_profile_on_conn\(conn\)\?/);
     assert.match(jobsPageLogic, /async function setActiveFilterProfileAsDefault/);
-    assert.match(jobsPageLogic, /invoke<\{ updated: number \}>\("recompute_default_filter_profile"\)/);
+    assert.match(jobsPageLogic, /invoke<RecomputeFilterProfileResult>\("recompute_default_filter_profile"\)/);
+    assert.match(jobsPageLogic, /result\.counts\.recommended/);
+    assert.match(jobsPageLogic, /result\.counts\.pending/);
     assert.match(jobsPageLogic, /已设为默认画像，并重算/);
     assert.match(jobsPageLogic, /await refreshAfterJobStateChange\(false\)/);
 
@@ -614,7 +616,8 @@ describe("review workflow contract", () => {
     const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
 
     assert.match(sidecar, /commands::filter_profile/);
-    assert.match(sidecar, /recompute_default_filter_profile_for_job_on_conn\(conn, &id\)/);
+    assert.match(sidecar, /recompute_default_filter_profile_for_job_on_conn\(conn, id\)/);
+    assert.match(sidecar, /upsert_job_from_list_item_with_outcome/);
     assert.doesNotMatch(sidecar, /"matched_preferences": \[\]/);
     assert.doesNotMatch(sidecar, /"missing_preferences": \[\]/);
   });
@@ -627,7 +630,7 @@ describe("review workflow contract", () => {
     assert.match(sidecar, /let fallback_id =[\s\S]{0,80}payload\.raw\.as_ref\(\)\.and_then\(extract_job_id_from_list_item\)/);
     assert.match(sidecar, /let encrypt_job_id =[\s\S]{0,80}payload\.encrypt_job_id\.as_deref\(\)\.or\(fallback_id\.as_deref\(\)\)/);
     assert.match(sidecar, /payload\.raw\.as_ref\(\)/);
-    assert.match(sidecar, /upsert_job_from_list_item\([\s\S]{0,80}conn,[\s\S]{0,80}encrypt_job_id,[\s\S]{0,80}raw/);
+    assert.match(sidecar, /upsert_job_from_list_item_with_outcome\([\s\S]{0,120}conn,[\s\S]{0,80}encrypt_job_id,[\s\S]{0,80}raw/);
     assert.match(sidecar, /let filters_json =[\s\S]{0,120}payload[\s\S]{0,80}\.filters[\s\S]{0,80}\.as_ref\(\)[\s\S]{0,80}\.and_then\(\|v\| serde_json::to_string\(v\)\.ok\(\)\)/);
     assert.match(sidecar, /insert_job_source_link\([\s\S]*payload\.keyword\.as_deref\(\),[\s\S]*filters_json\.as_deref\(\),[\s\S]*\)/);
     assert.match(sidecar, /recompute_default_filter_profile_for_job_on_conn\([\s\S]{0,120}conn,[\s\S]{0,80}encrypt_job_id/);
@@ -643,6 +646,42 @@ describe("review workflow contract", () => {
     assert.match(workerProtocol, /export const JobFilteredPayloadSchema = z\.object\([\s\S]*filters: z\.any\(\)\.optional\(\)/);
     assert.match(frontendProtocol, /type: "JOB_FILTERED"[\s\S]*filters\?: unknown/);
     assert.match(rustProtocol, /pub struct JobFilteredPayload[\s\S]*pub filters: Option<Value>/);
+  });
+
+  it("keeps collection run summaries, failures and pending evidence refresh wired without adding apply or chat actions", () => {
+    const schema = readProjectFile("src-tauri/src/db/schema.sql");
+    const crawlCommand = readProjectFile("src-tauri/src/commands/crawl.rs");
+    const tauriLib = readProjectFile("src-tauri/src/lib.rs");
+    const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
+    const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
+    const workerMain = readProjectFile("packages/boss-crawler-worker/src/main.ts");
+    const crawlPageLogic = readProjectFile("src/lib/useCrawlPage.ts");
+    const crawlConfigPage = readProjectFile("src/pages/CrawlConfig.vue");
+    const jobsPageLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const jobsPage = readProjectFile("src/pages/Jobs.vue");
+    const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
+
+    assert.match(schema, /CREATE TABLE IF NOT EXISTS collection_run/);
+    assert.match(schema, /CREATE TABLE IF NOT EXISTS collection_failure/);
+    for (const command of ["list_collection_runs", "list_collection_failures", "refresh_pending_job_evidence"]) {
+      assert.match(tauriLib, new RegExp(`commands::crawl::${command}`));
+      assert.match(crawlCommand, new RegExp(`pub fn ${command}`));
+    }
+    assert.match(crawlCommand, /create_collection_run/);
+    assert.match(crawlCommand, /RefreshJobEvidencePayload/);
+    assert.match(sidecar, /active_collection_run/);
+    assert.match(sidecar, /record_collection_failure/);
+    assert.match(sidecar, /refresh_collection_run_bucket_counts/);
+    assert.match(workerProtocol, /REFRESH_JOB_EVIDENCE/);
+    assert.match(workerMain, /runRefreshJobEvidenceMode/);
+    assert.match(crawlPageLogic, /list_collection_runs/);
+    assert.match(crawlPageLogic, /list_collection_failures/);
+    assert.match(crawlConfigPage, /最近采集结果/);
+    assert.match(crawlConfigPage, /最近失败/);
+    assert.match(jobsPageLogic, /refresh_pending_job_evidence/);
+    assert.match(jobItem, /补证据/);
+    assert.match(jobsPage, /refreshPendingJobEvidence/);
+    assert.doesNotMatch(jobsPageLogic, /apply_job|send_greeting|open_chat/);
   });
 
   it("keeps Boss auto crawl using shared job-list id extraction before filtering and detail fetch", () => {

@@ -10,6 +10,7 @@ use crate::{db, paths};
 #[derive(Debug, Serialize)]
 pub struct RecomputeFilterProfileResult {
     pub updated: u64,
+    pub counts: db::models::BucketCounts,
 }
 
 #[derive(Debug, Default)]
@@ -1857,6 +1858,65 @@ pub(crate) fn recompute_default_filter_profile_on_conn(conn: &Connection) -> Res
     recompute_filter_profile_on_conn(conn)
 }
 
+pub(crate) fn count_filter_buckets_on_conn(
+    conn: &Connection,
+) -> Result<db::models::BucketCounts, String> {
+    let sql = r#"
+        SELECT
+          SUM(CASE
+            WHEN r.eligible = 1
+             AND COALESCE(json_extract(r.reason_json, '$.bucket'), 'recommended') = 'recommended'
+             AND NOT (
+               COALESCE(rs.review_status, 'pending') != 'pending'
+               OR COALESCE(rs.communication_status, 'not_contacted') != 'not_contacted'
+               OR jb.id IS NOT NULL
+               OR cb.id IS NOT NULL
+               OR COALESCE(crs.review_status, 'pending') != 'pending'
+             )
+            THEN 1 ELSE 0 END) AS recommended,
+          SUM(CASE
+            WHEN COALESCE(json_extract(r.reason_json, '$.bucket'), '') = 'pending_confirmation'
+            THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE
+            WHEN (
+              r.eligible = 0
+              OR jb.id IS NOT NULL
+              OR cb.id IS NOT NULL
+              OR COALESCE(crs.review_status, 'pending') = 'manual_not_fit'
+              OR COALESCE(rs.review_status, 'pending') IN ('ignored', 'applied')
+              OR COALESCE(rs.communication_status, 'not_contacted') IN ('read_no_reply', 'rejected', 'manual_not_fit')
+            )
+            AND COALESCE(json_extract(r.reason_json, '$.bucket'), '') != 'pending_confirmation'
+            THEN 1 ELSE 0 END) AS filtered,
+          SUM(CASE
+            WHEN (
+              COALESCE(rs.review_status, 'pending') != 'pending'
+              OR COALESCE(rs.communication_status, 'not_contacted') != 'not_contacted'
+              OR jb.id IS NOT NULL
+              OR cb.id IS NOT NULL
+              OR COALESCE(crs.review_status, 'pending') != 'pending'
+            )
+            THEN 1 ELSE 0 END) AS processed,
+          COUNT(j.encrypt_job_id) AS all_jobs
+        FROM job j
+        LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
+        LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
+        LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
+        LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+        LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+    "#;
+    conn.query_row(sql, [], |row| {
+        Ok(db::models::BucketCounts {
+            recommended: row.get::<_, Option<i64>>(0)?.unwrap_or(0),
+            pending: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+            filtered: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+            processed: row.get::<_, Option<i64>>(3)?.unwrap_or(0),
+            all: row.get::<_, i64>(4)?,
+        })
+    })
+    .map_err(|e| e.to_string())
+}
+
 fn set_default_filter_profile_id_on_conn(
     conn: &Connection,
     profile_id: &str,
@@ -1940,7 +2000,8 @@ pub fn recompute_default_filter_profile(
     let app_data_dir = paths::resolve_data_dir(&app)?;
     let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
     let updated = recompute_default_filter_profile_on_conn(&conn)?;
-    Ok(RecomputeFilterProfileResult { updated })
+    let counts = count_filter_buckets_on_conn(&conn)?;
+    Ok(RecomputeFilterProfileResult { updated, counts })
 }
 
 #[cfg(test)]
@@ -2807,5 +2868,76 @@ mod tests {
         assert!(blocked
             .iter()
             .any(|item| item.get("reason").and_then(Value::as_str) == Some("关键词维度排除")));
+    }
+
+    #[test]
+    fn count_filter_buckets_derives_counts_from_canonical_filter_state() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        conn.execute(
+            r#"
+        INSERT INTO job (
+          encrypt_job_id, source_platform, position_name, brand_name, last_seen_at
+        )
+        VALUES
+          ('bucket_recommended', 'boss', 'Go 平台工程师', 'Bucket Co', '2026-06-13T00:00:00Z'),
+          ('bucket_pending', 'boss', 'Go 平台工程师', 'Bucket Co', '2026-06-13T00:00:00Z'),
+          ('bucket_filtered', 'boss', '外包 Go', 'Bucket Co', '2026-06-13T00:00:00Z'),
+          ('bucket_processed', 'boss', 'Go 平台工程师', 'Bucket Co', '2026-06-13T00:00:00Z')
+        "#,
+            [],
+        )
+        .expect("seed jobs");
+        db::models::upsert_job_filter_result(
+            &conn,
+            "bucket_recommended",
+            db::models::DEFAULT_FILTER_PROFILE_ID,
+            true,
+            &json!({ "bucket": "recommended", "eligible": true }),
+        )
+        .expect("recommended result");
+        db::models::upsert_job_filter_result(
+            &conn,
+            "bucket_pending",
+            db::models::DEFAULT_FILTER_PROFILE_ID,
+            false,
+            &json!({ "bucket": "pending_confirmation", "eligible": false }),
+        )
+        .expect("pending result");
+        db::models::upsert_job_filter_result(
+            &conn,
+            "bucket_filtered",
+            db::models::DEFAULT_FILTER_PROFILE_ID,
+            false,
+            &json!({ "bucket": "filtered", "eligible": false }),
+        )
+        .expect("filtered result");
+        db::models::upsert_job_filter_result(
+            &conn,
+            "bucket_processed",
+            db::models::DEFAULT_FILTER_PROFILE_ID,
+            true,
+            &json!({ "bucket": "recommended", "eligible": true }),
+        )
+        .expect("processed result");
+        db::models::upsert_job_review_state(
+            &conn,
+            "bucket_processed",
+            Some("ready_to_apply"),
+            Some("not_contacted"),
+            None,
+            None,
+        )
+        .expect("mark processed");
+
+        let counts = count_filter_buckets_on_conn(&conn).expect("bucket counts");
+
+        assert_eq!(counts.recommended, 1);
+        assert_eq!(counts.pending, 1);
+        assert_eq!(counts.filtered, 1);
+        assert_eq!(counts.processed, 1);
+        assert_eq!(counts.all, 4);
     }
 }
