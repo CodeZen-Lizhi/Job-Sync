@@ -100,7 +100,7 @@ const bucketOptions: Array<{
   {
     value: "confirm",
     label: "待确认",
-    description: "信息不足或需要人工补证据的岗位；后端 bucket 将在下一步补齐。",
+    description: "信息不足或需要人工补证据的岗位，可对 Boss 岗位补抓详情后重新判断。",
   },
   {
     value: "filtered",
