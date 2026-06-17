@@ -275,7 +275,7 @@ onMounted(() => {
             </div>
             <div class="mt-2 space-y-1 text-content-muted">
               <div v-if="job.source_strategy_trace">{{ job.source_strategy_trace }}</div>
-              <div v-if="job.filter_trace">筛选画像：{{ job.filter_trace }}</div>
+              <div v-if="job.filter_trace">采后规则：{{ job.filter_trace }}</div>
               <div v-if="job.communication_trace">沟通追踪：{{ job.communication_trace }}</div>
               <div v-if="job.source_trace">来源追踪：{{ job.source_trace }}</div>
             </div>

@@ -23,7 +23,7 @@ defineEmits<{
     <div class="ui-crawl-stat p-4"><div class="text-xs font-medium text-content-muted">当前页</div><div class="mt-1 text-2xl font-semibold text-cyan-400">{{ currentPage ?? '-' }}</div></div>
     <div class="ui-crawl-stat p-4"><div class="text-xs font-medium text-content-muted">列表已采</div><div class="mt-1 text-2xl font-semibold text-emerald-400">{{ capturedJobList }}</div></div>
     <div class="ui-crawl-stat p-4"><div class="text-xs font-medium text-content-muted">详情已采</div><div class="mt-1 text-2xl font-semibold text-amber-400">{{ capturedJobDetail }}</div></div>
-    <div class="ui-crawl-stat p-4"><div class="text-xs font-medium text-content-muted">画像过滤</div><div class="mt-1 text-2xl font-semibold text-rose-300">{{ filteredJob }}</div></div>
+    <div class="ui-crawl-stat p-4"><div class="text-xs font-medium text-content-muted">跳过/过滤</div><div class="mt-1 text-2xl font-semibold text-rose-300">{{ filteredJob }}</div></div>
   </div>
 
   <div class="ui-log-panel">

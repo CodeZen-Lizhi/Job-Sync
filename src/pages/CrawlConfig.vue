@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { Check, Plus } from "lucide-vue-next";
+
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
+import type { JobSourcePlatform } from "../lib/crawl";
 import { useCrawlPage } from "../lib/useCrawlPage";
 
 const {
@@ -31,7 +34,7 @@ const {
   degreeText,
   industryText,
   scaleText,
-  selectedCity,
+  selectedCities,
   selectedSalary,
   selectedExperience,
   selectedDegree,
@@ -39,16 +42,12 @@ const {
   selectedScale,
   mustKeywordsText,
   mustNotKeywordsText,
-  preferenceKeywordsText,
   requiredDirectionsText,
   excludedDirectionsText,
-  preferenceDirectionsText,
   requiredTechTagsText,
   excludedTechTagsText,
-  preferenceTechTagsText,
   requiredWorkModesText,
   excludedWorkModesText,
-  preferenceWorkModesText,
   requiredBossActiveStatusesText,
   excludedBossActiveStatusesText,
   targetCitiesText,
@@ -72,37 +71,29 @@ const {
   excludedDegreesText,
   companyMustKeywordsText,
   companyMustNotKeywordsText,
-  companyPreferenceKeywordsText,
   companyRequiredScalesText,
   companyExcludedScalesText,
-  companyPreferenceScalesText,
   companyRequiredFinancingStagesText,
   companyExcludedFinancingStagesText,
-  companyPreferenceFinancingStagesText,
   companyRequiredIndustriesText,
   companyExcludedIndustriesText,
-  companyPreferenceIndustriesText,
-  resumeWeight,
-  preferenceWeight,
-  companyWeight,
   error,
   bossMetaLoading,
   bossMetaSyncing,
   bossMetaError,
   filterRecomputing,
   filterRecomputeMessage,
+  collectionConfigSaving,
+  collectionConfigMessage,
   bossSettingsOpen,
   filterProfileOpen,
   bossSyncMappedFields,
   bossSyncUnmappedFields,
   bossSyncMessage,
-  collectionFailures,
-  collectionSummaryLoading,
-  filterProfiles,
-  activeFilterProfileId,
-  activeFilterProfileName,
-  newFilterProfileName,
-  activeFilterProfileIsDefault,
+  aiPreferredText,
+  aiRejectedText,
+  aiRiskText,
+  aiUncertainStrategy,
   bossMetaSyncedAt,
   bossCityGroups,
   bossHotCities,
@@ -110,45 +101,32 @@ const {
   bossExperienceOptions,
   bossDegreeOptions,
   bossScaleOptions,
+  bossAdditionalFilterGroups,
   bossIndustryGroups,
+  bossFilterConditionCount,
   bossMetaReady,
-  latestCollectionRun,
+  selectedBossFilterConditions,
   sidecarRunning,
-  loadCollectionSummary,
   loadBossMeta,
   syncBossMeta,
-  selectFilterProfile,
   saveActiveFilterProfile,
-  createFilterProfile,
-  setActiveFilterProfileAsDefault,
   recomputeDefaultFilterProfile,
+  saveCollectionConfig,
   syncCollectionIntentToPlatforms,
+  setBossAdditionalFilter,
 } = useCrawlPage();
 
-function parseKeywords(raw?: string | null): string {
-  if (!raw) return "-";
-  try {
-    const values = JSON.parse(raw);
-    if (Array.isArray(values)) return values.join("、") || "-";
-  } catch {
-    return raw;
-  }
-  return "-";
+function isCollectionSourceSelected(value: JobSourcePlatform): boolean {
+  return selectedCollectionSources.value.includes(value);
 }
 
-function runStatusLabel(status?: string | null): string {
-  switch (status) {
-    case "running":
-      return "运行中";
-    case "finished":
-      return "已完成";
-    case "failed":
-      return "失败";
-    case "stopped":
-      return "已停止";
-    default:
-      return status || "-";
+function toggleCollectionSource(value: JobSourcePlatform): void {
+  if (collectableSourceOptions.value.length === 0) return;
+  if (isCollectionSourceSelected(value)) {
+    selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => source !== value);
+    return;
   }
+  selectedCollectionSources.value = [...selectedCollectionSources.value, value];
 }
 </script>
 
@@ -163,14 +141,25 @@ function runStatusLabel(status?: string | null): string {
             先用采集意图扩大来源，再用采后判断规则基于 JD、帖子正文和岗位详情生成候选结果；被过滤岗位仍保留在职位库中。
           </p>
         </div>
-        <button
-          class="ui-btn-primary px-3 py-1.5 text-xs"
-          type="button"
-          :disabled="sidecarRunning"
-          @click="syncCollectionIntentToPlatforms"
-        >
-          {{ collectionIntentSyncLabel }}
-        </button>
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <span v-if="collectionConfigMessage" class="text-xs text-emerald-300">{{ collectionConfigMessage }}</span>
+          <button
+            class="ui-btn-secondary px-3 py-1.5 text-xs"
+            type="button"
+            :disabled="!tauri || collectionConfigSaving || sidecarRunning"
+            @click="saveCollectionConfig"
+          >
+            {{ collectionConfigSaving ? "保存中…" : "保存采集配置" }}
+          </button>
+          <button
+            class="ui-btn-primary px-3 py-1.5 text-xs"
+            type="button"
+            :disabled="sidecarRunning"
+            @click="syncCollectionIntentToPlatforms"
+          >
+            {{ collectionIntentSyncLabel }}
+          </button>
+        </div>
       </div>
     </header>
 
@@ -179,62 +168,6 @@ function runStatusLabel(status?: string | null): string {
     </div>
 
     <div v-if="error" class="ui-status-danger p-3 text-sm">{{ error }}</div>
-
-    <section class="ui-panel overflow-hidden">
-      <div class="ui-section-header">
-        <div>
-          <div class="ui-section-kicker">Latest Run</div>
-          <h2 class="ui-section-title mt-1">最近采集结果</h2>
-        </div>
-        <button
-          class="ui-btn-secondary px-3 py-1.5 text-xs"
-          type="button"
-          :disabled="collectionSummaryLoading"
-          @click="loadCollectionSummary"
-        >
-          刷新
-        </button>
-      </div>
-      <div class="grid gap-3 p-4 lg:grid-cols-[1.2fr_1fr]">
-        <div class="ui-card-soft p-4">
-          <template v-if="latestCollectionRun">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="text-sm font-semibold text-content-primary">{{ runStatusLabel(latestCollectionRun.status) }}</span>
-              <span class="ui-badge">{{ latestCollectionRun.source_platform }}</span>
-              <span class="text-xs text-content-muted">{{ latestCollectionRun.started_at }}</span>
-            </div>
-            <div class="mt-2 text-xs leading-5 text-content-muted">关键词：{{ parseKeywords(latestCollectionRun.keywords_json) }}</div>
-            <div class="mt-3 grid grid-cols-4 gap-2 text-center text-xs md:grid-cols-9">
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.captured }}</div><div class="text-content-muted">采到</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.inserted }}</div><div class="text-content-muted">新增</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.updated }}</div><div class="text-content-muted">更新</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.duplicate }}</div><div class="text-content-muted">重复</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.recommended }}</div><div class="text-content-muted">推荐</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.pending }}</div><div class="text-content-muted">待确认</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.filtered }}</div><div class="text-content-muted">过滤</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.processed }}</div><div class="text-content-muted">已处理</div></div>
-              <div><div class="font-semibold text-content-primary">{{ latestCollectionRun.failed }}</div><div class="text-content-muted">失败</div></div>
-            </div>
-            <div v-if="latestCollectionRun.error_message" class="mt-3 text-xs text-rose-300">{{ latestCollectionRun.error_message }}</div>
-          </template>
-          <div v-else class="text-sm text-content-muted">还没有采集批次记录。</div>
-        </div>
-        <div class="ui-card-soft p-4">
-          <div class="text-xs font-semibold text-content-primary">最近失败</div>
-          <div v-if="collectionFailures.length === 0" class="mt-2 text-xs text-content-muted">暂无失败记录。</div>
-          <div v-else class="mt-2 max-h-40 space-y-2 overflow-auto">
-            <div v-for="failure in collectionFailures" :key="failure.id" class="rounded border border-border/10 bg-card/60 p-2 text-xs">
-              <div class="flex flex-wrap items-center gap-2 text-content-muted">
-                <span class="font-medium text-content-secondary">{{ failure.event_type }}</span>
-                <span v-if="failure.source_platform">{{ failure.source_platform }}</span>
-                <span>{{ failure.created_at }}</span>
-              </div>
-              <div class="mt-1 text-content-primary">{{ failure.reason }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <div class="grid gap-3 md:grid-cols-3">
       <div class="ui-card-soft p-4">
@@ -267,15 +200,43 @@ function runStatusLabel(status?: string | null): string {
             <textarea v-model="collectionKeywordsText" class="ui-textarea h-24 w-full" placeholder="Go&#10;后端&#10;平台工程" />
             <div class="text-[11px] leading-5 text-content-muted">用于扩大采集样本，不是最终职位库过滤条件。</div>
           </label>
-          <label class="space-y-1">
-            <div class="ui-field-label">本次采集来源</div>
-            <UiMultiSelect v-model="selectedCollectionSources" :disabled="collectableSourceOptions.length === 0">
-              <option v-for="option in collectableSourceOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiMultiSelect>
-            <div class="text-[11px] text-content-muted">下拉项来自设置中已启用且支持自动采集的平台；当前选择 {{ selectedCollectionSourceLabel }}。</div>
-          </label>
+          <fieldset class="space-y-2">
+            <legend class="ui-field-label">本次采集来源</legend>
+            <div class="grid gap-2 sm:grid-cols-2">
+              <button
+                v-for="option in collectableSourceOptions"
+                :key="option.value"
+                class="group flex min-h-12 items-center justify-between gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors duration-200 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10"
+                :class="isCollectionSourceSelected(option.value)
+                  ? 'border-border-glow/35 bg-border-glow/10 text-content-primary shadow-inner'
+                  : 'border-border/10 bg-input/75 text-content-secondary hover:border-border/20 hover:bg-card-hover/75 hover:text-content-primary'"
+                type="button"
+                :aria-pressed="isCollectionSourceSelected(option.value)"
+                @click="toggleCollectionSource(option.value)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate text-sm font-semibold">{{ option.label }}</span>
+                  <span class="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.18em]" :class="isCollectionSourceSelected(option.value) ? 'text-cyan-200/80' : 'text-content-muted'">
+                    {{ isCollectionSourceSelected(option.value) ? "已选" : "可用" }}
+                  </span>
+                </span>
+                <span
+                  class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[11px] font-bold transition-colors"
+                  :class="isCollectionSourceSelected(option.value)
+                    ? 'border-cyan-300/40 bg-cyan-300/15 text-cyan-100'
+                    : 'border-border/20 text-content-muted group-hover:border-border/30 group-hover:text-content-secondary'"
+                  aria-hidden="true"
+                >
+                  <Check v-if="isCollectionSourceSelected(option.value)" class="h-3.5 w-3.5" />
+                  <Plus v-else class="h-3.5 w-3.5" />
+                </span>
+              </button>
+              <div v-if="collectableSourceOptions.length === 0" class="rounded-xl border border-border/10 bg-input/60 px-3.5 py-3 text-sm text-content-muted">
+                暂无可自动采集的平台
+              </div>
+            </div>
+            <div class="text-[11px] text-content-muted">来自设置中已启用且支持自动采集的平台；当前选择 {{ selectedCollectionSourceLabel }}。</div>
+          </fieldset>
           <label class="space-y-1">
             <div class="ui-field-label">目标城市（多选意图）</div>
             <textarea v-model="collectionTargetCitiesText" class="ui-textarea h-20 w-full" placeholder="上海&#10;深圳&#10;远程" />
@@ -342,7 +303,7 @@ function runStatusLabel(status?: string | null): string {
           <div class="ui-crawl-toolbar flex flex-wrap items-center justify-between gap-2 px-3 py-3">
             <div class="text-xs text-content-muted">
               Boss 筛选字典：
-              <span class="text-content-secondary">{{ bossMetaReady ? (bossMetaSyncedAt ?? "已加载") : "未同步" }}</span>
+              <span class="text-content-secondary">{{ bossMetaReady ? `${bossMetaSyncedAt ?? "已加载"} · ${bossFilterConditionCount} 类筛选项` : "未同步，请先同步后使用完整 Boss 筛选项" }}</span>
             </div>
             <div class="flex items-center gap-2">
               <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || bossMetaLoading" @click="loadBossMeta">
@@ -363,16 +324,16 @@ function runStatusLabel(status?: string | null): string {
           <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">Boss 城市</div>
-              <UiSelect v-if="bossCityGroups.length > 0" v-model="selectedCity">
-                <option value="">不限（保持当前）</option>
+              <UiMultiSelect v-if="bossCityGroups.length > 0" v-model="selectedCities">
                 <optgroup v-if="bossHotCities.length > 0" label="热门">
                   <option v-for="c in bossHotCities" :key="c.code" :value="String(c.code)">{{ c.name }}</option>
                 </optgroup>
                 <optgroup v-for="g in bossCityGroups" :key="g.firstChar" :label="g.firstChar">
                   <option v-for="c in g.cityList" :key="c.code" :value="String(c.code)">{{ c.name }}</option>
                 </optgroup>
-              </UiSelect>
-              <input v-else v-model="cityText" class="ui-input w-full" placeholder="例如：北京" />
+              </UiMultiSelect>
+              <input v-else v-model="cityText" class="ui-input w-full" placeholder="请先同步 Boss 城市字典后选择" />
+              <div class="text-[11px] text-content-muted">多选城市会按城市拆成多轮 Boss 采集，并用职位 ID 去重；未同步字典时不能用城市名代替 Boss code。</div>
             </label>
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">Boss 薪资</div>
@@ -416,6 +377,19 @@ function runStatusLabel(status?: string | null): string {
               </UiSelect>
               <input v-else v-model="scaleText" class="ui-input w-full" placeholder="例如：20-99 人" />
             </label>
+            <label v-for="group in bossAdditionalFilterGroups" :key="group.field" class="space-y-1">
+              <div class="text-xs font-medium text-content-muted">Boss {{ group.label }}</div>
+              <UiSelect
+                :model-value="selectedBossFilterConditions[group.field] ?? ''"
+                @update:model-value="setBossAdditionalFilter(group.field, String($event))"
+              >
+                <option value="">不限</option>
+                <option v-for="opt in group.options" :key="opt.code" :value="String(opt.code)">{{ opt.name }}</option>
+              </UiSelect>
+            </label>
+          </div>
+          <div v-if="bossMetaReady && bossAdditionalFilterGroups.length === 0" class="rounded-md border border-border/10 bg-surface-secondary/50 p-3 text-xs text-content-muted">
+            当前 Boss 字典没有返回除城市、薪资、经验、学历、行业、规模以外的可用筛选项。
           </div>
         </div>
       </section>
@@ -460,37 +434,61 @@ function runStatusLabel(status?: string | null): string {
         </button>
 
         <div v-if="filterProfileOpen" class="space-y-4 p-4">
-          <div class="space-y-2 border-y border-border/10 py-3">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="border-y border-border/10 py-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div class="ui-section-kicker">Rule Set</div>
-                <div class="mt-1 text-xs text-content-muted">修改后可保存并重算已有职位的候选资格；不会删除已入库岗位。</div>
+                <div class="ui-section-kicker">Default Rules</div>
+                <div class="mt-1 text-sm font-semibold text-content-primary">默认采后规则</div>
+                <div class="mt-1 text-xs text-content-muted">全应用只使用这一套采后判断配置；修改后保存，重算后对已有职位生效。</div>
               </div>
-              <span v-if="activeFilterProfileIsDefault" class="ui-badge">默认策略</span>
-            </div>
-            <div class="grid gap-2 lg:grid-cols-[minmax(10rem,12rem)_minmax(10rem,12rem)_minmax(10rem,12rem)_auto]">
-              <label class="space-y-1">
-                <div class="text-xs font-medium text-content-muted">当前规则集</div>
-                <select v-model="activeFilterProfileId" class="ui-input w-full" :disabled="!tauri || sidecarRunning" @change="selectFilterProfile(activeFilterProfileId)">
-                  <option v-for="profile in filterProfiles" :key="profile.id" :value="profile.id">
-                    {{ profile.name }}{{ profile.is_default ? "（默认）" : "" }}
-                  </option>
-                </select>
-              </label>
-              <label class="space-y-1">
-                <div class="text-xs font-medium text-content-muted">规则集名称</div>
-                <input v-model="activeFilterProfileName" class="ui-input w-full" :disabled="!tauri || sidecarRunning" />
-              </label>
-              <label class="space-y-1">
-                <div class="text-xs font-medium text-content-muted">新建规则集</div>
-                <input v-model="newFilterProfileName" class="ui-input w-full" placeholder="例如：薪资优先" :disabled="!tauri || sidecarRunning" />
-              </label>
-              <div class="flex flex-wrap items-end gap-2">
-                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning || !newFilterProfileName.trim()" @click="createFilterProfile">新建</button>
-                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning" @click="saveActiveFilterProfile">保存规则集</button>
-                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning || activeFilterProfileIsDefault" @click="setActiveFilterProfileAsDefault">设为默认</button>
+              <div class="flex flex-wrap items-center gap-2">
+                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning" @click="saveActiveFilterProfile">保存配置</button>
+                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || filterRecomputing || sidecarRunning" @click="recomputeDefaultFilterProfile">
+                  {{ filterRecomputing ? "重算中…" : "保存并重算已有职位" }}
+                </button>
               </div>
             </div>
+          </div>
+
+          <div class="ui-rule-group">
+            <div class="ui-rule-group-title">AI 判断偏好</div>
+            <p class="ui-rule-group-copy">这里用自然语言告诉 AI 什么值得看、什么应软排除；证据明确时会影响采后分区，证据不足时默认进入待确认。</p>
+          </div>
+
+          <div class="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_minmax(11rem,14rem)]">
+            <label class="space-y-1">
+              <div class="ui-field-label">我想看的岗位</div>
+              <textarea
+                v-model="aiPreferredText"
+                class="ui-textarea h-28 w-full"
+                placeholder="例如：Go / Infra / SRE / 平台工程；JD 有真实工程建设和云原生证据"
+              />
+            </label>
+            <label class="space-y-1">
+              <div class="ui-field-label">AI 软排除</div>
+              <textarea
+                v-model="aiRejectedText"
+                class="ui-textarea h-28 w-full"
+                placeholder="例如：明显外包、驻场、招转培、销售导向、纯实施交付"
+              />
+            </label>
+            <label class="space-y-1">
+              <div class="ui-field-label">风险关注点</div>
+              <textarea
+                v-model="aiRiskText"
+                class="ui-textarea h-28 w-full"
+                placeholder="例如：信息太少、职责含糊、公司业务不清楚时放待确认"
+              />
+            </label>
+            <label class="space-y-1">
+              <div class="ui-field-label">不确定时</div>
+              <select v-model="aiUncertainStrategy" class="ui-input w-full">
+                <option value="pending_confirmation">放入待确认</option>
+                <option value="filtered">倾向过滤</option>
+                <option value="recommended">倾向推荐</option>
+              </select>
+              <div class="text-[11px] leading-5 text-content-muted">低置信度仍会优先待确认，避免把可疑但不确定的岗位误杀。</div>
+            </label>
           </div>
 
           <div class="ui-rule-group">
@@ -498,7 +496,7 @@ function runStatusLabel(status?: string | null): string {
             <p class="ui-rule-group-copy">这些规则会参与采后判断；现有筛选器会合并列表字段、详情文本和 JD 文本进行匹配。关键词只是其中一种信号。</p>
           </div>
 
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="ui-field-label">必须命中的正文信号</div>
               <textarea v-model="mustKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Kubernetes&#10;SRE" />
@@ -507,16 +505,12 @@ function runStatusLabel(status?: string | null): string {
               <div class="ui-field-label">正文排除信号</div>
               <textarea v-model="mustNotKeywordsText" class="ui-textarea h-20 w-full" placeholder="外包&#10;驻场&#10;培训" />
             </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">正文偏好信号</div>
-              <textarea v-model="preferenceKeywordsText" class="ui-textarea h-20 w-full" placeholder="远程&#10;云原生&#10;AI Infra" />
-            </label>
           </div>
           <div class="ui-rule-group">
             <div class="ui-rule-group-title">岗位方向与技术证据</div>
             <p class="ui-rule-group-copy">用于判断 JD 是否真的描述了你要做的方向，而不只是平台搜索标题里出现过某个词。</p>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="ui-field-label">必须岗位方向</div>
               <textarea v-model="requiredDirectionsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Infra&#10;云原生" />
@@ -525,16 +519,12 @@ function runStatusLabel(status?: string | null): string {
               <div class="ui-field-label">排除岗位方向</div>
               <textarea v-model="excludedDirectionsText" class="ui-textarea h-20 w-full" placeholder="前端&#10;销售型售前" />
             </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">偏好岗位方向</div>
-              <textarea v-model="preferenceDirectionsText" class="ui-textarea h-20 w-full" placeholder="AI Infra&#10;平台工程" />
-            </label>
           </div>
           <div class="ui-rule-group">
             <div class="ui-rule-group-title">工作方式与状态门槛</div>
             <p class="ui-rule-group-copy">这些规则决定岗位能否成为候选，但被挡掉的记录仍在已过滤/全部入库视图中可追溯。</p>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">必须技术标签</div>
               <textarea v-model="requiredTechTagsText" class="ui-textarea h-20 w-full" placeholder="Kubernetes&#10;Docker" />
@@ -543,12 +533,8 @@ function runStatusLabel(status?: string | null): string {
               <div class="text-xs font-medium text-content-muted">排除技术标签</div>
               <textarea v-model="excludedTechTagsText" class="ui-textarea h-20 w-full" placeholder="Java&#10;PHP&#10;Windows 运维" />
             </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好技术标签</div>
-              <textarea v-model="preferenceTechTagsText" class="ui-textarea h-20 w-full" placeholder="Prometheus&#10;Terraform&#10;CI/CD" />
-            </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">必须工作方式</div>
               <textarea v-model="requiredWorkModesText" class="ui-textarea h-20 w-full" placeholder="remote&#10;hybrid" />
@@ -556,10 +542,6 @@ function runStatusLabel(status?: string | null): string {
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">排除工作方式</div>
               <textarea v-model="excludedWorkModesText" class="ui-textarea h-20 w-full" placeholder="on_site&#10;office" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好工作方式</div>
-              <textarea v-model="preferenceWorkModesText" class="ui-textarea h-20 w-full" placeholder="remote&#10;long_remote" />
             </label>
           </div>
           <div class="grid gap-3 md:grid-cols-2">
@@ -636,7 +618,7 @@ function runStatusLabel(status?: string | null): string {
               接受未知经验
             </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-4">
+          <div class="grid gap-3 md:grid-cols-3">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">排除学历要求</div>
               <textarea v-model="excludedDegreesText" class="ui-textarea h-20 w-full" placeholder="硕士&#10;博士" />
@@ -649,12 +631,8 @@ function runStatusLabel(status?: string | null): string {
               <div class="text-xs font-medium text-content-muted">公司排除条件</div>
               <textarea v-model="companyMustNotKeywordsText" class="ui-textarea h-20 w-full" placeholder="外包&#10;培训机构" />
             </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">公司偏好条件</div>
-              <textarea v-model="companyPreferenceKeywordsText" class="ui-textarea h-20 w-full" placeholder="上市&#10;1000人以上" />
-            </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">必须公司规模</div>
               <textarea v-model="companyRequiredScalesText" class="ui-textarea h-20 w-full" placeholder="1000人以上&#10;500-999人" />
@@ -663,12 +641,8 @@ function runStatusLabel(status?: string | null): string {
               <div class="text-xs font-medium text-content-muted">排除公司规模</div>
               <textarea v-model="companyExcludedScalesText" class="ui-textarea h-20 w-full" placeholder="20人以下" />
             </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好公司规模</div>
-              <textarea v-model="companyPreferenceScalesText" class="ui-textarea h-20 w-full" placeholder="1000人以上" />
-            </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">必须融资阶段</div>
               <textarea v-model="companyRequiredFinancingStagesText" class="ui-textarea h-20 w-full" placeholder="B轮&#10;上市" />
@@ -677,12 +651,8 @@ function runStatusLabel(status?: string | null): string {
               <div class="text-xs font-medium text-content-muted">排除融资阶段</div>
               <textarea v-model="companyExcludedFinancingStagesText" class="ui-textarea h-20 w-full" placeholder="未融资" />
             </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好融资阶段</div>
-              <textarea v-model="companyPreferenceFinancingStagesText" class="ui-textarea h-20 w-full" placeholder="C轮&#10;上市" />
-            </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="grid gap-3 md:grid-cols-2">
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">必须行业</div>
               <textarea v-model="companyRequiredIndustriesText" class="ui-textarea h-20 w-full" placeholder="云计算&#10;企业服务" />
@@ -691,31 +661,8 @@ function runStatusLabel(status?: string | null): string {
               <div class="text-xs font-medium text-content-muted">排除行业</div>
               <textarea v-model="companyExcludedIndustriesText" class="ui-textarea h-20 w-full" placeholder="培训&#10;外包服务" />
             </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">偏好行业</div>
-              <textarea v-model="companyPreferenceIndustriesText" class="ui-textarea h-20 w-full" placeholder="AI Infra&#10;SaaS" />
-            </label>
           </div>
-          <div class="grid gap-3 md:grid-cols-3">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">Resume 权重</div>
-              <input v-model.number="resumeWeight" type="number" min="0" step="0.05" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">Preference 权重</div>
-              <input v-model.number="preferenceWeight" type="number" min="0" step="0.05" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">Company 权重</div>
-              <input v-model.number="companyWeight" type="number" min="0" step="0.05" class="ui-input w-full" />
-            </label>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || filterRecomputing || sidecarRunning" @click="recomputeDefaultFilterProfile">
-              {{ filterRecomputing ? "重算中…" : "保存规则集并重算已有职位" }}
-            </button>
-            <span v-if="filterRecomputeMessage" class="text-xs text-emerald-300">{{ filterRecomputeMessage }}</span>
-          </div>
+          <div v-if="filterRecomputeMessage" class="text-xs text-emerald-300">{{ filterRecomputeMessage }}</div>
         </div>
       </section>
     </div>

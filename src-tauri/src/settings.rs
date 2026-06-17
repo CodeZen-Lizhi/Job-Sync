@@ -47,6 +47,9 @@ pub struct AppSettings {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_url: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collection_config: Option<serde_json::Value>,
 
     #[serde(default)]
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -84,6 +87,7 @@ impl AppSettings {
             openai_schema_extra: String::new(),
             wecom_webhook_url: None,
             proxy_url: None,
+            collection_config: None,
             ai_resume_text: String::new(),
             ai_context_text: String::new(),
             ai_resume_files: String::new(),

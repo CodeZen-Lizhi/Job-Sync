@@ -5,7 +5,7 @@ import { delayWithJitter } from "../../utils/delay.js";
 
 import type { ModeContext } from "./types.js";
 
-type ApiFilters = {
+export type ApiFilters = {
   city: string;
   salary: string;
   experience: string;
@@ -77,6 +77,20 @@ function pickFirstScalar(v: unknown): string | undefined {
   return undefined;
 }
 
+function pickScalarList(v: unknown): string[] {
+  if (typeof v === "string" || typeof v === "number") {
+    const first = pickFirstScalar(v);
+    return first ? [first] : [];
+  }
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const item of v) {
+    const value = pickFirstScalar(item);
+    if (value) out.push(value);
+  }
+  return Array.from(new Set(out));
+}
+
 function pickCodeOrEmpty(raw: unknown, key: string, warn: (msg: string) => void): string {
   const v = pickFirstScalar(raw);
   if (!v) return "";
@@ -86,6 +100,18 @@ function pickCodeOrEmpty(raw: unknown, key: string, warn: (msg: string) => void)
   }
   if (v === "0") return "";
   return v;
+}
+
+function pickCodes(raw: unknown, key: string, warn: (msg: string) => void): string[] {
+  const out: string[] = [];
+  for (const value of pickScalarList(raw)) {
+    if (!/^\d+$/.test(value)) {
+      warn(`筛选项 ${key}=${value} 不是数字 code，将被忽略。`);
+      continue;
+    }
+    if (value !== "0") out.push(value);
+  }
+  return Array.from(new Set(out));
 }
 
 export function normalizeFilters(raw: unknown, warn: (msg: string) => void): ApiFilters {
@@ -98,6 +124,14 @@ export function normalizeFilters(raw: unknown, warn: (msg: string) => void): Api
     industry: pickCodeOrEmpty(obj.industry, "industry", warn),
     scale: pickCodeOrEmpty(obj.scale, "scale", warn),
   };
+}
+
+export function normalizeFilterVariants(raw: unknown, warn: (msg: string) => void): ApiFilters[] {
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const base = normalizeFilters(raw, warn);
+  const cities = pickCodes(obj.city, "city", warn);
+  if (cities.length === 0) return [base];
+  return cities.map((city) => ({ ...base, city }));
 }
 
 export function buildJobListBody(keyword: string, page: number, pageSize: number, filters: ApiFilters): string {
@@ -274,4 +308,3 @@ export function extractJobList(raw: any): { jobs: any[]; hasMore: boolean } {
   const hasMore = zpData?.hasMore === true;
   return { jobs, hasMore };
 }
-

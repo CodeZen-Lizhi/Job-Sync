@@ -107,8 +107,8 @@ describe("review workflow contract", () => {
     assert.match(jobItem, /偏好命中/);
     assert.match(jobItem, /filterProfilePassed/);
     assert.match(jobItem, /filterProfileTraceText/);
-    assert.match(jobItem, /画像通过/);
-    assert.match(jobItem, /筛选画像: \{\{ filterProfileTraceText \}\}/);
+    assert.match(jobItem, /规则通过/);
+    assert.match(jobItem, /采后规则: \{\{ filterProfileTraceText \}\}/);
     assert.match(jobItem, /公司风险依据/);
     assert.match(jobItem, /scoreCompanyRiskFlags/);
     assert.match(jobItem, /companyRiskFlagLabel/);
@@ -312,20 +312,23 @@ describe("review workflow contract", () => {
     assert.match(crawlTypes, /"Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI\/CD", "Terraform"/);
     assert.match(filterProfile, /DEFAULT_PREFERENCE_DIRECTIONS\.join\("\\n"\)/);
     assert.match(filterProfile, /DEFAULT_PREFERENCE_TECH_TAGS\.join\("\\n"\)/);
-    assert.match(dbDefaults, /"preferenceDirections": \["Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"\]/);
-    assert.match(dbDefaults, /"preferenceTechTags": \["Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI\/CD", "Terraform"\]/);
-    assert.match(dbDefaults, /"requiredDirections": \[\]/);
-    assert.match(dbDefaults, /"requiredTechTags": \[\]/);
+    assert.match(dbDefaults, /"preferenceDirections"/);
+    assert.match(dbDefaults, /"Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"/);
+    assert.match(dbDefaults, /"preferenceTechTags"/);
+    assert.match(dbDefaults, /"Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI\/CD", "Terraform"/);
+    assert.match(dbDefaults, /"requiredDirections"\.to_string\(\), Value::Array\(vec!\[\]\)/);
+    assert.match(dbDefaults, /"requiredTechTags"\.to_string\(\), Value::Array\(vec!\[\]\)/);
     assert.match(dbTests, /default preference direction/);
     assert.match(dbTests, /default preference tech tag/);
   });
 
-  it("keeps multi filter profile management wired across Tauri, shared state and pages", () => {
+  it("keeps a single default post-collection rule config in the user-facing pages", () => {
     const tauriLib = readProjectFile("src-tauri/src/lib.rs");
     const dbModels = readProjectFile("src-tauri/src/db/models/filter_results.rs");
     const filterProfileCommand = readProjectFile("src-tauri/src/commands/filter_profile.rs");
     const filterProfile = readProjectFile("src/lib/filterProfile.ts");
-    const jobsPageLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const crawlPage = readProjectFile("src/pages/Crawl.vue");
+    const crawlPageLogic = readProjectFile("src/lib/useCrawlPage.ts");
     const crawlConfigPage = readProjectFile("src/pages/CrawlConfig.vue");
 
     for (const command of ["list_filter_profiles", "save_filter_profile", "set_default_filter_profile_id"]) {
@@ -342,7 +345,7 @@ describe("review workflow contract", () => {
     assert.match(filterProfileCommand, /profile_id/);
     assert.match(filterProfile, /filterProfiles = ref<FilterProfileRecord\[\]>\(\[\]\)/);
     assert.match(filterProfile, /activeFilterProfileId = ref\("default"\)/);
-    assert.match(filterProfile, /activeFilterProfileName = ref\("默认筛选画像"\)/);
+    assert.match(filterProfile, /activeFilterProfileName = ref\("默认采后规则"\)/);
     assert.match(filterProfile, /function applyFilterProfileRecord/);
     assert.match(filterProfile, /function selectFilterProfile/);
     assert.match(filterProfile, /function saveActiveFilterProfile/);
@@ -350,21 +353,21 @@ describe("review workflow contract", () => {
     assert.match(filterProfile, /function setActiveFilterProfileAsDefault/);
     assert.match(filterProfileCommand, /fn set_default_filter_profile_id_on_conn/);
     assert.match(filterProfileCommand, /recompute_default_filter_profile_on_conn\(conn\)\?/);
-    assert.match(jobsPageLogic, /async function setActiveFilterProfileAsDefault/);
-    assert.match(jobsPageLogic, /invoke<RecomputeFilterProfileResult>\("recompute_default_filter_profile"\)/);
-    assert.match(jobsPageLogic, /result\.counts\.recommended/);
-    assert.match(jobsPageLogic, /result\.counts\.pending/);
-    assert.match(jobsPageLogic, /已设为默认画像，并重算/);
-    assert.match(jobsPageLogic, /await refreshAfterJobStateChange\(false\)/);
 
-    assert.match(crawlConfigPage, /当前规则集/);
-    assert.match(crawlConfigPage, /activeFilterProfileId/);
-    assert.match(crawlConfigPage, /selectFilterProfile\(activeFilterProfileId\)/);
-    assert.match(crawlConfigPage, /新建规则集/);
-    assert.match(crawlConfigPage, /保存规则集/);
-    assert.match(crawlConfigPage, /设为默认/);
-    assert.match(crawlConfigPage, /默认策略/);
-    assert.match(crawlConfigPage, /保存规则集并重算已有职位/);
+    assert.doesNotMatch(crawlPage, /采后规则集/);
+    assert.doesNotMatch(crawlPage, /activeFilterProfileId/);
+    assert.doesNotMatch(crawlPage, /selectFilterProfile/);
+    assert.match(crawlConfigPage, /默认采后规则/);
+    assert.match(crawlConfigPage, /保存配置/);
+    assert.match(crawlConfigPage, /保存并重算已有职位/);
+    for (const removedCopy of ["当前规则集", "规则集名称", "新建规则集", "保存规则集", "设为默认", "默认策略"]) {
+      assert.doesNotMatch(crawlConfigPage, new RegExp(removedCopy));
+    }
+    assert.doesNotMatch(crawlConfigPage, /activeFilterProfileId/);
+    assert.doesNotMatch(crawlConfigPage, /selectFilterProfile/);
+    assert.doesNotMatch(crawlConfigPage, /createFilterProfile/);
+    assert.doesNotMatch(crawlConfigPage, /setActiveFilterProfileAsDefault/);
+    assert.match(crawlPageLogic, /filterRecomputeMessage\.value = "已保存采后规则"/);
   });
 
   it("keeps company scale, financing stage and industry wired as filter-profile dimensions", () => {
@@ -389,7 +392,7 @@ describe("review workflow contract", () => {
       assert.match(crawlTypes, new RegExp(`${field}: string\\[\\]`));
       assert.match(filterProfile, new RegExp(`${field}: parseList`));
       assert.match(filterProfile, new RegExp(`formatList\\(json\\.${field}\\)`));
-      assert.match(dbDefaults, new RegExp(`"${field}": \\[\\]`));
+      assert.match(dbDefaults, new RegExp(`"${field}"\\.to_string\\(\\), Value::Array\\(vec!\\[\\]\\)`));
     }
 
     for (const rule of [
@@ -406,8 +409,11 @@ describe("review workflow contract", () => {
       assert.match(filterProfileCommand, new RegExp(rule));
     }
 
-    for (const label of ["必须公司规模", "排除公司规模", "偏好公司规模", "必须融资阶段", "排除融资阶段", "偏好融资阶段", "必须行业", "排除行业", "偏好行业"]) {
+    for (const label of ["必须公司规模", "排除公司规模", "必须融资阶段", "排除融资阶段", "必须行业", "排除行业"]) {
       assert.match(crawlConfigPage, new RegExp(label));
+    }
+    for (const legacySoftLabel of ["偏好公司规模", "偏好融资阶段", "偏好行业"]) {
+      assert.doesNotMatch(crawlConfigPage, new RegExp(legacySoftLabel));
     }
   });
 
@@ -579,6 +585,27 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(jobsPage, /<h2[^>]*>黑名单管理/);
   });
 
+  it("exposes AI preference fields in the crawl config and filter profile state", () => {
+    const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
+    const filterProfile = readProjectFile("src/lib/filterProfile.ts");
+    const crawlTypes = readProjectFile("src/lib/crawl.ts");
+
+    assert.match(crawlConfig, /AI 判断偏好/);
+    assert.match(crawlConfig, /AI 软排除/);
+    assert.match(crawlConfig, /不确定时/);
+    for (const legacySoftLabel of ["正文偏好信号", "偏好岗位方向", "偏好技术标签", "偏好工作方式", "公司偏好条件", "Preference 权重"]) {
+      assert.doesNotMatch(crawlConfig, new RegExp(legacySoftLabel));
+    }
+    assert.match(filterProfile, /aiPreferredText/);
+    assert.match(filterProfile, /aiRejectedText/);
+    assert.match(filterProfile, /aiRiskText/);
+    assert.match(filterProfile, /aiUncertainStrategy/);
+    assert.match(crawlTypes, /DEFAULT_AI_PREFERRED_TEXT/);
+    assert.match(crawlTypes, /DEFAULT_AI_REJECTED_TEXT/);
+    assert.match(crawlTypes, /DEFAULT_AI_RISK_TEXT/);
+    assert.match(crawlTypes, /DEFAULT_AI_UNCERTAIN_STRATEGY/);
+  });
+
   it("recomputes filter explanations when blacklist rules change", () => {
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsMutations = readProjectFile("src-tauri/src/commands/jobs/mutations.rs");
@@ -648,7 +675,7 @@ describe("review workflow contract", () => {
     assert.match(rustProtocol, /pub struct JobFilteredPayload[\s\S]*pub filters: Option<Value>/);
   });
 
-  it("keeps collection run summaries, failures and pending evidence refresh wired without adding apply or chat actions", () => {
+  it("keeps collection run summaries, failures and pending evidence refresh wired outside collection config without adding apply or chat actions", () => {
     const schema = readProjectFile("src-tauri/src/db/schema.sql");
     const crawlCommand = readProjectFile("src-tauri/src/commands/crawl.rs");
     const tauriLib = readProjectFile("src-tauri/src/lib.rs");
@@ -656,7 +683,6 @@ describe("review workflow contract", () => {
     const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
     const workerMain = readProjectFile("packages/boss-crawler-worker/src/main.ts");
     const crawlPageLogic = readProjectFile("src/lib/useCrawlPage.ts");
-    const crawlConfigPage = readProjectFile("src/pages/CrawlConfig.vue");
     const jobsPageLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
     const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
@@ -676,8 +702,6 @@ describe("review workflow contract", () => {
     assert.match(workerMain, /runRefreshJobEvidenceMode/);
     assert.match(crawlPageLogic, /list_collection_runs/);
     assert.match(crawlPageLogic, /list_collection_failures/);
-    assert.match(crawlConfigPage, /最近采集结果/);
-    assert.match(crawlConfigPage, /最近失败/);
     assert.match(jobsPageLogic, /refresh_pending_job_evidence/);
     assert.match(jobItem, /补证据/);
     assert.match(jobsPage, /refreshPendingJobEvidence/);
@@ -771,7 +795,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /showConfirm\(\s*"恢复候选"/);
     assert.match(jobsLogic, /确认恢复/);
     assert.match(jobsLogic, /该操作只恢复人工审核状态/);
-    assert.match(jobsLogic, /仍会继续受筛选画像、黑名单和公司状态过滤/);
+    assert.match(jobsLogic, /仍会继续受采后规则、黑名单和公司状态过滤/);
     assert.match(jobsLogic, /reviewStatus: "pending"/);
     assert.match(jobsLogic, /communicationStatus: "not_contacted"/);
   });
@@ -909,7 +933,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /编辑提示：\$\{greeting\.editNotes\.join\("；"\)\}/);
     assert.match(jobsLogic, /function formatApplicationFilterTrace/);
     assert.match(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
-    assert.match(jobsLogic, /通过筛选画像/);
+    assert.match(jobsLogic, /通过筛选规则/);
     assert.match(jobsLogic, /【Job Sync 投递材料包】/);
     assert.match(jobsLogic, /简历工作区：\/resume-workspace\?jobId=/);
     assert.match(jobsLogic, /getResumeWorkspaceStatusForJob/);
@@ -929,7 +953,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /打招呼草稿：尚未生成或粘贴可编辑草稿/);
     assert.match(jobsLogic, /尚未生成或粘贴，请先点击“定制打招呼”或手动填写。/);
     assert.match(jobsLogic, /人工确认：/);
-    assert.match(jobsLogic, /筛选画像：\$\{formatApplicationFilterTrace\(job\)\}/);
+    assert.match(jobsLogic, /采后规则：\$\{formatApplicationFilterTrace\(job\)\}/);
     assert.match(jobsLogic, /筛选依据：\$\{formatApplicationFilterTrace\(job\)\}/);
     assert.match(jobsLogic, /简历匹配报告：/);
     assert.match(jobsLogic, /function buildResumeMatchEvidenceTrace/);
@@ -979,7 +1003,7 @@ describe("review workflow contract", () => {
     assert.match(jobItem, /triggerApplicationNextAction/);
     assert.match(jobItem, /投递准备下一步/);
     assert.match(jobItem, /最终简历 \/ PDF/);
-    assert.match(jobItem, /label: "筛选画像"/);
+    assert.match(jobItem, /label: "采后规则"/);
     assert.match(jobItem, /detail: filterProfileTraceText\.value/);
     assert.match(jobItem, /展开岗位后检查最终稿和 PDF/);
     assert.match(jobItem, /最终稿已生成/);
@@ -1214,7 +1238,7 @@ describe("review workflow contract", () => {
     assert.match(filterProfile, /sourcePlatformModeHint/);
     assert.match(filterProfile, /只允许 Boss 岗位进入筛选和 Top 20/);
     assert.match(filterProfile, /外部保留来源/);
-    assert.match(filterProfile, /保存画像并重算后对已有岗位生效/);
+    assert.match(filterProfile, /保存并重算后对已有岗位生效/);
     assert.match(filterProfile, /function setBossOnlySourcePlatforms/);
     assert.match(filterProfile, /function setManualImportSourcePlatforms/);
     assert.match(filterProfile, /function setAllSourcePlatforms/);

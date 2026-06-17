@@ -28,6 +28,8 @@ pub fn run() {
         .setup(|app| {
             let data_dir = paths::resolve_data_dir(app.handle())
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            db::init_db_for_app_start(&data_dir)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             app.manage(sidecar::SidecarManager::new(app.handle().clone(), data_dir));
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(err) = window.center() {
@@ -88,6 +90,7 @@ pub fn run() {
             commands::ai::analyze_profile_for_jobs,
             commands::ai::generate_greeting_message,
             commands::ai::generate_ai_company_scores,
+            commands::ai::recompute_ai_post_collection_judgement,
             commands::ai::list_ai_reports,
             commands::ai::clear_ai_reports,
             commands::ai::get_ai_report,
@@ -97,6 +100,7 @@ pub fn run() {
             commands::settings::set_browser_executable_path,
             commands::settings::set_ai_settings,
             commands::settings::save_settings,
+            commands::settings::save_collection_config,
             commands::resume_workspace::get_resume_workspace_state,
             commands::resume_workspace::get_resume_workspace_status_for_job,
             commands::resume_workspace::create_resume_workspace,

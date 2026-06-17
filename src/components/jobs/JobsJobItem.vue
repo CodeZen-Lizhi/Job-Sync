@@ -5,7 +5,10 @@ import {
   companyReviewStatusLabel,
   COLLECTION_METHOD_LABELS,
   communicationStatusLabel,
+  filterBucketLabel,
+  formatAiPostCollectionJudgement,
   formatFilterReasonSummary,
+  formatPreferenceSignals,
   formatScoreReasonSummary,
   parseFilterReasonJson,
   parseScoreReasonJson,
@@ -120,16 +123,18 @@ function formatScore(score?: number | null): string {
 }
 
 const filterReason = computed(() => parseFilterReasonJson(props.job.filter_reason_json));
+const aiPostCollectionJudgement = computed(() => filterReason.value?.ai_judgement);
+const aiPostCollectionJudgementText = computed(() => formatAiPostCollectionJudgement(aiPostCollectionJudgement.value));
 const isPendingConfirmation = computed(() => filterReason.value?.bucket === "pending_confirmation");
 const canRefreshPendingEvidence = computed(() => isPendingConfirmation.value && props.job.source_platform === "boss");
 const scoreReason = computed(() => parseScoreReasonJson(props.job.score_reason_json));
 const filterReasonText = computed(() => formatFilterReasonSummary(filterReason.value));
 const filterProfilePassed = computed(() => filterReason.value?.eligible === true || props.job.filter_eligible === true);
 const filterProfileTraceText = computed(() => {
-  if (!filterReason.value) return filterProfilePassed.value ? "通过筛选画像" : "暂无筛选画像结果";
+  if (!filterReason.value) return filterProfilePassed.value ? "通过筛选规则" : "暂无筛选规则结果";
   const summary = formatFilterReasonSummary(filterReason.value);
-  if (filterReason.value.eligible === true && summary === "不满足筛选画像") return "通过筛选画像";
-  if (filterReason.value.eligible === true) return `通过筛选画像；${summary}`;
+  if (filterReason.value.eligible === true && (summary === "不满足筛选画像" || summary === "不满足筛选规则")) return "通过筛选规则";
+  if (filterReason.value.eligible === true) return `通过筛选规则；${summary}`;
   return summary;
 });
 const scoreReasonText = computed(() => formatScoreReasonSummary(scoreReason.value));
@@ -137,6 +142,8 @@ const filterBlockedReasons = computed(() => filterReason.value?.blocked_by ?? []
 const filterMatchedPreferences = computed(() => filterReason.value?.matched_preferences ?? []);
 const filterMissingPreferences = computed(() => filterReason.value?.missing_preferences ?? []);
 const filterDimensions = computed(() => filterReason.value?.dimensions);
+const filterPreferenceSummary = computed(() => formatPreferenceSignals(filterMatchedPreferences.value, 4));
+const filterMissingSummary = computed(() => formatPreferenceSignals(filterMissingPreferences.value, 4));
 const scoreWeights = computed(() => scoreReason.value?.weights);
 const scoreResumeMatchedStack = computed(() => scoreReason.value?.resume?.matched_stack ?? []);
 const scoreResumeMatchedDirection = computed(() => scoreReason.value?.resume?.matched_direction ?? []);
@@ -148,8 +155,13 @@ const scoreResumeStrengths = computed(() => scoreReason.value?.resume?.strengths
 const scoreResumeGaps = computed(() => scoreReason.value?.resume?.gaps ?? []);
 const scoreResumeKeywords = computed(() => scoreReason.value?.resume?.keywordSuggestions ?? []);
 const scoreResumeRiskNotes = computed(() => scoreReason.value?.resume?.riskNotes ?? []);
-const scorePreferenceMatched = computed(() => scoreReason.value?.preference?.matched ?? []);
-const scorePreferenceMissing = computed(() => scoreReason.value?.preference?.missing ?? []);
+const scoreDimensionSummary = computed(() => {
+  const parts: string[] = [];
+  if (scoreResumeMatchedDirection.value.length > 0) parts.push(`方向：${scoreResumeMatchedDirection.value.slice(0, 3).join("、")}`);
+  if (scoreResumeMatchedStack.value.length > 0) parts.push(`技术栈：${scoreResumeMatchedStack.value.slice(0, 3).join("、")}`);
+  if (scoreResumeExperienceFit.value) parts.push(`经验：${scoreResumeExperienceFit.value}`);
+  return parts.join("；");
+});
 const scoreCompanyRiskFlags = computed(() => scoreReason.value?.company?.risk_flags ?? []);
 const scoreCompanyEvidence = computed(() => scoreReason.value?.company?.evidence ?? []);
 const scoreCompanyConfidence = computed(() => scoreReason.value?.company?.confidence);
@@ -227,7 +239,7 @@ const filterNextActions = computed<FilterNextAction[]>(() => {
     actions.push({
       key: "filter-profile",
       label: "去采集配置",
-      title: "跳到采集配置，统一调整筛选画像后重新计算",
+      title: "跳到采集配置，统一调整采后规则后重新计算",
     });
   }
   if (hasBlacklistFilter.value) {
@@ -248,7 +260,7 @@ const filterNextActions = computed<FilterNextAction[]>(() => {
     actions.push({
       key: "candidate",
       label: "恢复候选",
-      title: "恢复为待审核和未打招呼；仍会继续受画像、黑名单和公司状态过滤",
+      title: "恢复为待审核和未打招呼；仍会继续受采后规则、黑名单和公司状态过滤",
     });
   }
   return actions;
@@ -260,7 +272,7 @@ const applicationChecklist = computed(() => [
     detail: isApplicationReady.value ? reviewStatusLabel(props.job.review_status) : "待标记准备投递",
   },
   {
-    label: "筛选画像",
+    label: "采后规则",
     ready: filterProfilePassed.value && filterBlockedReasons.value.length === 0,
     detail: filterProfileTraceText.value,
   },
@@ -449,14 +461,21 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
           class="ui-badge bg-rose-500/10 text-rose-300 ring-rose-400/20"
           :title="filterReasonText"
         >
-          画像过滤
+          规则过滤
+        </span>
+        <span
+          v-if="aiPostCollectionJudgement"
+          class="ui-badge bg-violet-400/10 text-violet-200 ring-violet-400/20"
+          :title="aiPostCollectionJudgementText"
+        >
+          AI {{ filterBucketLabel(aiPostCollectionJudgement.bucket) }}
         </span>
         <span
           v-else-if="filterProfilePassed"
           class="ui-badge bg-emerald-400/10 text-emerald-300 ring-emerald-400/20"
           :title="filterProfileTraceText"
         >
-          画像通过
+          规则通过
         </span>
         <span
           v-if="job.review_status && job.review_status !== 'pending'"
@@ -584,13 +603,16 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
               </div>
             </div>
           </div>
-          <div v-if="filterMatchedPreferences.length" class="space-y-1">
-            <div class="font-medium text-content-secondary">偏好命中</div>
-            <div>{{ filterMatchedPreferences.join("、") }}</div>
+          <div v-if="filterPreferenceSummary || filterMissingSummary" class="space-y-1">
+            <div class="font-medium text-content-secondary">偏好摘要</div>
+            <div v-if="filterPreferenceSummary">偏好命中：{{ filterPreferenceSummary }}</div>
+            <div v-if="filterMissingSummary">偏好缺失：{{ filterMissingSummary }}</div>
           </div>
-          <div v-if="filterMissingPreferences.length" class="space-y-1">
-            <div class="font-medium text-content-secondary">偏好缺失</div>
-            <div>{{ filterMissingPreferences.join("、") }}</div>
+          <div v-if="aiPostCollectionJudgement" class="space-y-1">
+            <div class="font-medium text-content-secondary">AI 采后判断</div>
+            <div>{{ aiPostCollectionJudgementText }}</div>
+            <div v-if="aiPostCollectionJudgement.evidence?.length">证据：{{ aiPostCollectionJudgement.evidence.join("；") }}</div>
+            <div v-if="aiPostCollectionJudgement.risks?.length">风险：{{ aiPostCollectionJudgement.risks.join("；") }}</div>
           </div>
           <div v-if="filterDimensions" class="space-y-1">
             <div class="font-medium text-content-secondary">维度摘要</div>
@@ -646,13 +668,9 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
             <div v-if="scoreResumeKeywords.length">关键词：{{ scoreResumeKeywords.join("、") }}</div>
             <div v-if="scoreResumeRiskNotes.length">风险：{{ scoreResumeRiskNotes.join("；") }}</div>
           </div>
-          <div v-if="scorePreferenceMatched.length" class="space-y-1">
-            <div class="font-medium text-content-secondary">评分偏好命中</div>
-            <div>{{ scorePreferenceMatched.join("、") }}</div>
-          </div>
-          <div v-if="scorePreferenceMissing.length" class="space-y-1">
-            <div class="font-medium text-content-secondary">评分偏好缺失</div>
-            <div>{{ scorePreferenceMissing.join("、") }}</div>
+          <div v-if="scoreDimensionSummary" class="space-y-1">
+            <div class="font-medium text-content-secondary">评分摘要</div>
+            <div>{{ scoreDimensionSummary }}</div>
           </div>
           <div v-if="scoreCompanyRiskFlags.length || scoreCompanyEvidence.length" class="space-y-1">
             <div class="font-medium text-content-secondary">公司风险依据</div>
@@ -683,7 +701,7 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
           <button
             v-if="canRestoreReviewCandidate"
             class="ui-btn-secondary px-2.5 py-1 text-xs"
-            title="恢复为待审核和未打招呼；仍会继续受画像、黑名单和公司状态过滤"
+            title="恢复为待审核和未打招呼；仍会继续受采后规则、黑名单和公司状态过滤"
             @click="$emit('restore-review-candidate', job)"
           >
             恢复候选
@@ -906,7 +924,7 @@ function triggerApplicationNextAction(action: ApplicationNextAction): void {
             同公司负面沟通: {{ job.company_negative_communication_count }} 次
           </span>
           <span v-if="filterProfilePassed" class="text-emerald-300">
-            筛选画像: {{ filterProfileTraceText }}
+            采后规则: {{ filterProfileTraceText }}
           </span>
           <span v-if="job.filter_eligible === false" class="text-rose-300">
             过滤原因: {{ filterReasonText }}

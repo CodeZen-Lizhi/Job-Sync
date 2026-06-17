@@ -16,10 +16,7 @@ const {
   delayMs,
   actionBusy,
   error,
-  filterProfiles,
-  activeFilterProfileId,
   sidecarRunning,
-  selectFilterProfile,
   start,
   stop,
 } = useCrawlPage();
@@ -61,20 +58,7 @@ const {
         </div>
       </div>
 
-      <div v-if="mode === 'auto'" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(15rem,1.4fr)_repeat(3,minmax(8rem,1fr))]">
-        <label class="space-y-1.5">
-          <div class="text-xs font-medium text-content-muted">采后规则集</div>
-          <select
-            v-model="activeFilterProfileId"
-            class="ui-input w-full"
-            :disabled="!tauri || sidecarRunning"
-            @change="selectFilterProfile(activeFilterProfileId)"
-          >
-            <option v-for="profile in filterProfiles" :key="profile.id" :value="profile.id">
-              {{ profile.name }}{{ profile.is_default ? "（默认）" : "" }}
-            </option>
-          </select>
-        </label>
+      <div v-if="mode === 'auto'" class="grid gap-3 sm:grid-cols-3">
         <label class="space-y-1.5">
           <div class="text-xs font-medium text-content-muted">最大页数</div>
           <input v-model.number="maxPages" type="number" min="1" class="ui-input w-full" />

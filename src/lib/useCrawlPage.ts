@@ -4,6 +4,7 @@ import {
   asBossOptions,
   BOSS_META_SYNC_TIMEOUT_MS,
   buildBossCityGroups,
+  buildBossFilterConditionGroups,
   buildBossIndustryGroups,
   BOSS_SOURCE_PLATFORM,
   COLLECTABLE_SOURCE_PLATFORMS,
@@ -20,6 +21,7 @@ import {
   parseList,
   V2EX_SOURCE_PLATFORM,
   type BossCityGroup,
+  type BossFilterConditionGroup,
   type BossOption,
   type BossIndustryGroup,
   type CollectionFailure,
@@ -28,10 +30,49 @@ import {
   type CrawlMode,
 } from "./crawl";
 import { useFilterProfile } from "./filterProfile";
-import { clearLogs, runtime } from "./runtime";
+import { appendRuntimeLog, clearLogs, resetCrawlProgress, runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
 
 export type CrawlPageState = ReturnType<typeof createCrawlPageState>;
+
+type AppSettings = {
+  collection_config?: CollectionConfigPayload | null;
+};
+
+type CollectionConfigPayload = {
+  version?: number;
+  collectionKeywordsText?: string;
+  collectionTargetCitiesText?: string;
+  collectionWorkModesText?: string;
+  collectionTechStackText?: string;
+  collectionExcludedKeywordsText?: string;
+  collectionDegreesText?: string;
+  collectionMinimumSalaryK?: number | null;
+  collectionMaximumSalaryK?: number | null;
+  collectionMinimumExperienceYears?: number | null;
+  collectionMaximumExperienceYears?: number | null;
+  selectedCollectionSources?: string[];
+  v2exFeedUrl?: string;
+  v2exKeywordsText?: string;
+  bossKeywordsText?: string;
+  cityText?: string;
+  salaryText?: string;
+  experienceText?: string;
+  degreeText?: string;
+  industryText?: string;
+  scaleText?: string;
+  selectedCity?: string;
+  selectedCities?: string[];
+  selectedSalary?: string;
+  selectedExperience?: string;
+  selectedDegree?: string;
+  selectedIndustry?: string;
+  selectedScale?: string;
+  selectedBossFilterConditions?: Record<string, string>;
+  maxPages?: number;
+  maxJobs?: number;
+  delayMs?: number;
+};
 
 let crawlPageState: CrawlPageState | null = null;
 
@@ -81,21 +122,26 @@ function createCrawlPageState() {
   const industryText = ref("");
   const scaleText = ref("");
   const selectedCity = ref("");
+  const selectedCities = ref<string[]>([]);
   const selectedSalary = ref("");
   const selectedExperience = ref("");
   const selectedDegree = ref("");
   const selectedIndustry = ref("");
   const selectedScale = ref("");
+  const selectedBossFilterConditions = ref<Record<string, string>>({});
   const maxPages = ref(DEFAULT_MAX_PAGES);
   const maxJobs = ref(DEFAULT_MAX_JOBS);
   const delayMs = ref(DEFAULT_DELAY_MS);
   const actionBusy = ref(false);
+  const stopRequested = ref(false);
   const error = ref<string | null>(null);
   const bossMetaLoading = ref(false);
   const bossMetaSyncing = ref(false);
   const bossMetaError = ref<string | null>(null);
   const filterRecomputing = ref(false);
   const filterRecomputeMessage = ref<string | null>(null);
+  const collectionConfigSaving = ref(false);
+  const collectionConfigMessage = ref<string | null>(null);
   const bossSettingsOpen = ref(true);
   const filterProfileOpen = ref(false);
   const bossSyncMappedFields = ref<string[]>([]);
@@ -111,8 +157,12 @@ function createCrawlPageState() {
   const bossExperienceOptions = computed<BossOption[]>(() => filterBossOptions((runtime.bossMeta as any)?.filter_conditions?.experienceList));
   const bossDegreeOptions = computed<BossOption[]>(() => filterBossOptions((runtime.bossMeta as any)?.filter_conditions?.degreeList));
   const bossScaleOptions = computed<BossOption[]>(() => filterBossOptions((runtime.bossMeta as any)?.filter_conditions?.scaleList));
+  const bossAdditionalFilterGroups = computed<BossFilterConditionGroup[]>(() => buildBossFilterConditionGroups(runtime.bossMeta));
   const bossIndustryGroups = computed<BossIndustryGroup[]>(() => buildBossIndustryGroups(runtime.bossMeta));
   const bossMetaReady = computed(() => bossCityGroups.value.length > 0 && bossSalaryOptions.value.length > 0);
+  const bossFilterConditionCount = computed(
+    () => 4 + (bossIndustryGroups.value.length > 0 ? 1 : 0) + bossAdditionalFilterGroups.value.length,
+  );
   const collectableSourceOptions = computed(() => {
     const sources = collectionSourceRegistry.value.length > 0
       ? collectionSourceRegistry.value
@@ -143,12 +193,17 @@ function createCrawlPageState() {
   const collectionDegrees = computed(() => parseList(collectionDegreesText.value));
   const bossKeywords = computed(() => parseList(bossKeywordsText.value));
   const filters = computed(() => ({
-    city: selectedCity.value ? [selectedCity.value] : parseList(cityText.value),
+    city: selectedCities.value.length > 0 ? selectedCities.value : selectedCity.value ? [selectedCity.value] : parseList(cityText.value),
     salary: selectedSalary.value ? [selectedSalary.value] : parseList(salaryText.value),
     experience: selectedExperience.value ? [selectedExperience.value] : parseList(experienceText.value),
     degree: selectedDegree.value ? [selectedDegree.value] : parseList(degreeText.value),
     industry: selectedIndustry.value ? [selectedIndustry.value] : parseList(industryText.value),
     scale: selectedScale.value ? [selectedScale.value] : parseList(scaleText.value),
+    ...Object.fromEntries(
+      Object.entries(selectedBossFilterConditions.value)
+        .map(([field, value]) => [field, String(value).trim()])
+        .filter(([, value]) => value),
+    ),
     profile: filterProfileState.filterProfile.value,
   }));
   const selectedCollectionSourceLabel = computed(() => {
@@ -207,6 +262,17 @@ function createCrawlPageState() {
   }
   const sidecarRunning = computed(() => runtime.sidecarTask.running);
 
+  function collectionSourceLabel(source: JobSourcePlatform): string {
+    return collectableSourceOptions.value.find((option) => option.value === source)?.label ?? source;
+  }
+
+  function validateCollectionSource(source: JobSourcePlatform): string | null {
+    if (source === BOSS_SOURCE_PLATFORM && bossKeywords.value.length === 0) {
+      return "Boss 搜索关键词为空。请填写采集意图并同步到 Boss，或在 Boss 配置中输入至少 1 个关键词。";
+    }
+    return null;
+  }
+
   function normalizeToken(value: string): string {
     return value.trim().toLowerCase();
   }
@@ -225,6 +291,113 @@ function createCrawlPageState() {
     return out;
   }
 
+  function optionalNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  function positiveInteger(value: unknown, fallback: number): number {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+    return Math.floor(parsed);
+  }
+
+  function nonNegativeInteger(value: unknown, fallback: number): number {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+    return Math.floor(parsed);
+  }
+
+  function textValue(value: unknown): string {
+    return typeof value === "string" ? value : "";
+  }
+
+  function sanitizeStringList(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)));
+  }
+
+  function buildCollectionConfigPayload(): CollectionConfigPayload {
+    return {
+      version: 1,
+      collectionKeywordsText: collectionKeywordsText.value,
+      collectionTargetCitiesText: collectionTargetCitiesText.value,
+      collectionWorkModesText: collectionWorkModesText.value,
+      collectionTechStackText: collectionTechStackText.value,
+      collectionExcludedKeywordsText: collectionExcludedKeywordsText.value,
+      collectionDegreesText: collectionDegreesText.value,
+      collectionMinimumSalaryK: optionalNumber(collectionMinimumSalaryK.value),
+      collectionMaximumSalaryK: optionalNumber(collectionMaximumSalaryK.value),
+      collectionMinimumExperienceYears: optionalNumber(collectionMinimumExperienceYears.value),
+      collectionMaximumExperienceYears: optionalNumber(collectionMaximumExperienceYears.value),
+      selectedCollectionSources: selectedCollectionSources.value,
+      v2exFeedUrl: v2exFeedUrl.value,
+      v2exKeywordsText: v2exKeywordsText.value,
+      bossKeywordsText: bossKeywordsText.value,
+      cityText: cityText.value,
+      salaryText: salaryText.value,
+      experienceText: experienceText.value,
+      degreeText: degreeText.value,
+      industryText: industryText.value,
+      scaleText: scaleText.value,
+      selectedCity: selectedCity.value,
+      selectedCities: selectedCities.value,
+      selectedSalary: selectedSalary.value,
+      selectedExperience: selectedExperience.value,
+      selectedDegree: selectedDegree.value,
+      selectedIndustry: selectedIndustry.value,
+      selectedScale: selectedScale.value,
+      selectedBossFilterConditions: selectedBossFilterConditions.value,
+      maxPages: positiveInteger(maxPages.value, DEFAULT_MAX_PAGES),
+      maxJobs: positiveInteger(maxJobs.value, DEFAULT_MAX_JOBS),
+      delayMs: nonNegativeInteger(delayMs.value, DEFAULT_DELAY_MS),
+    };
+  }
+
+  function applyCollectionConfigPayload(config: CollectionConfigPayload | null | undefined): void {
+    if (!config || typeof config !== "object") return;
+    collectionKeywordsText.value = textValue(config.collectionKeywordsText);
+    collectionTargetCitiesText.value = textValue(config.collectionTargetCitiesText);
+    collectionWorkModesText.value = textValue(config.collectionWorkModesText);
+    collectionTechStackText.value = textValue(config.collectionTechStackText);
+    collectionExcludedKeywordsText.value = textValue(config.collectionExcludedKeywordsText);
+    collectionDegreesText.value = textValue(config.collectionDegreesText);
+    collectionMinimumSalaryK.value = optionalNumber(config.collectionMinimumSalaryK);
+    collectionMaximumSalaryK.value = optionalNumber(config.collectionMaximumSalaryK);
+    collectionMinimumExperienceYears.value = optionalNumber(config.collectionMinimumExperienceYears);
+    collectionMaximumExperienceYears.value = optionalNumber(config.collectionMaximumExperienceYears);
+    if (Array.isArray(config.selectedCollectionSources)) {
+      const selected = config.selectedCollectionSources.filter((source): source is JobSourcePlatform =>
+        (COLLECTABLE_SOURCE_PLATFORMS as readonly string[]).includes(source),
+      );
+      selectedCollectionSources.value = selected.length > 0 ? Array.from(new Set(selected)) : selectedCollectionSources.value;
+    }
+    v2exFeedUrl.value = textValue(config.v2exFeedUrl) || DEFAULT_V2EX_FEED_URL;
+    v2exKeywordsText.value = textValue(config.v2exKeywordsText);
+    bossKeywordsText.value = textValue(config.bossKeywordsText);
+    cityText.value = textValue(config.cityText);
+    salaryText.value = textValue(config.salaryText);
+    experienceText.value = textValue(config.experienceText);
+    degreeText.value = textValue(config.degreeText);
+    industryText.value = textValue(config.industryText);
+    scaleText.value = textValue(config.scaleText);
+    selectedCities.value = sanitizeStringList(config.selectedCities);
+    selectedCity.value = selectedCities.value[0] ?? textValue(config.selectedCity);
+    if (selectedCities.value.length === 0 && selectedCity.value) {
+      selectedCities.value = [selectedCity.value];
+    }
+    selectedSalary.value = textValue(config.selectedSalary);
+    selectedExperience.value = textValue(config.selectedExperience);
+    selectedDegree.value = textValue(config.selectedDegree);
+    selectedIndustry.value = textValue(config.selectedIndustry);
+    selectedScale.value = textValue(config.selectedScale);
+    selectedBossFilterConditions.value = sanitizeBossFilterConditionSelection(config.selectedBossFilterConditions);
+    maxPages.value = positiveInteger(config.maxPages, DEFAULT_MAX_PAGES);
+    maxJobs.value = positiveInteger(config.maxJobs, DEFAULT_MAX_JOBS);
+    delayMs.value = nonNegativeInteger(config.delayMs, DEFAULT_DELAY_MS);
+  }
+
   function allBossCities(): BossOption[] {
     const grouped = bossCityGroups.value.flatMap((group) => group.cityList);
     return [...bossHotCities.value, ...grouped];
@@ -239,6 +412,45 @@ function createCrawlPageState() {
     return null;
   }
 
+  function findBossOptions(values: readonly string[], options: readonly BossOption[]): BossOption[] {
+    const out: BossOption[] = [];
+    const seen = new Set<string>();
+    for (const value of values) {
+      const key = normalizeToken(value);
+      const found = options.find((option) => normalizeToken(option.name) === key || String(option.code) === value.trim());
+      if (!found) continue;
+      const code = String(found.code);
+      if (seen.has(code)) continue;
+      seen.add(code);
+      out.push(found);
+    }
+    return out;
+  }
+
+  function sanitizeBossFilterConditionSelection(value: unknown): Record<string, string> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const out: Record<string, string> = {};
+    for (const [field, rawValue] of Object.entries(value as Record<string, unknown>)) {
+      const cleanField = field.trim();
+      const cleanValue = typeof rawValue === "string" ? rawValue.trim() : "";
+      if (cleanField && cleanValue) out[cleanField] = cleanValue;
+    }
+    return out;
+  }
+
+  function setBossAdditionalFilter(field: string, value: string): void {
+    const cleanField = field.trim();
+    if (!cleanField) return;
+    const next = { ...selectedBossFilterConditions.value };
+    const cleanValue = value.trim();
+    if (cleanValue) {
+      next[cleanField] = cleanValue;
+    } else {
+      delete next[cleanField];
+    }
+    selectedBossFilterConditions.value = next;
+  }
+
   function syncCollectionIntentToPlatforms(): void {
     const mapped: string[] = [];
     const unmapped: string[] = [];
@@ -250,13 +462,15 @@ function createCrawlPageState() {
     }
 
     if (bossSelected.value) {
-      const city = findBossOption(collectionTargetCities.value, allBossCities());
-      if (city) {
-        selectedCity.value = String(city.code);
+      const cities = findBossOptions(collectionTargetCities.value, allBossCities());
+      if (cities.length > 0) {
+        selectedCities.value = cities.map((city) => String(city.code));
+        selectedCity.value = selectedCities.value[0] ?? "";
         cityText.value = "";
-        mapped.push(`Boss 城市：${city.name}`);
+        mapped.push(`Boss 城市：${cities.map((city) => city.name).join("、")}`);
       } else if (collectionTargetCities.value.length > 0) {
         selectedCity.value = "";
+        selectedCities.value = [];
         cityText.value = "";
         unmapped.push(`目标城市：${collectionTargetCities.value.join("、")}（Boss 字典未匹配）`);
       }
@@ -276,7 +490,7 @@ function createCrawlPageState() {
         unmapped.push(`工作方式：${collectionWorkModes.value.join("、")}（Boss 站内筛选暂不支持稳定映射）`);
       }
       if (collectionExcludedKeywords.value.length > 0) {
-        unmapped.push(`排除关键词：${collectionExcludedKeywords.value.join("、")}（交给 Boss 筛选画像做采后排除）`);
+        unmapped.push(`排除关键词：${collectionExcludedKeywords.value.join("、")}（交给采后规则做排除）`);
       }
       if (collectionMinimumSalaryK.value !== null || collectionMaximumSalaryK.value !== null) {
         unmapped.push("薪资范围（暂不自动映射 Boss 薪资枚举，可在 Boss 设置手动选择）");
@@ -301,7 +515,7 @@ function createCrawlPageState() {
         collectionMinimumExperienceYears.value !== null ||
         collectionMaximumExperienceYears.value !== null
       ) {
-        unmapped.push("V2EX 城市、工作方式、学历、薪资和经验继续交给采后筛选画像");
+        unmapped.push("V2EX 城市、工作方式、学历、薪资和经验继续交给采后规则");
       }
     }
 
@@ -382,13 +596,36 @@ function createCrawlPageState() {
     }
   }
 
-  async function selectFilterProfile(profileId: string): Promise<void> {
+  async function loadCollectionConfig(): Promise<void> {
     if (!tauri) return;
     try {
-      await filterProfileState.selectFilterProfile(profileId);
+      const settings = await invoke<AppSettings>("get_settings");
+      applyCollectionConfigPayload(settings.collection_config);
     } catch (cause) {
-      bossMetaError.value = cause instanceof Error ? cause.message : String(cause);
+      error.value = cause instanceof Error ? cause.message : String(cause);
     }
+  }
+
+  async function saveCollectionConfig(): Promise<void> {
+    if (!tauri) return;
+    collectionConfigSaving.value = true;
+    collectionConfigMessage.value = null;
+    error.value = null;
+    try {
+      await persistCollectionConfig();
+      collectionConfigMessage.value = "已保存采集配置";
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+      throw cause;
+    } finally {
+      collectionConfigSaving.value = false;
+    }
+  }
+
+  async function persistCollectionConfig(): Promise<void> {
+    await invoke<AppSettings>("save_collection_config", {
+      collectionConfig: buildCollectionConfigPayload(),
+    });
   }
 
   async function saveActiveFilterProfile(): Promise<void> {
@@ -396,29 +633,7 @@ function createCrawlPageState() {
     filterRecomputeMessage.value = null;
     try {
       await filterProfileState.saveActiveFilterProfile();
-      filterRecomputeMessage.value = "已保存当前筛选画像";
-    } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause);
-    }
-  }
-
-  async function createFilterProfile(): Promise<void> {
-    if (!tauri) return;
-    filterRecomputeMessage.value = null;
-    try {
-      await filterProfileState.createFilterProfile();
-      filterRecomputeMessage.value = "已新建筛选画像";
-    } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : String(cause);
-    }
-  }
-
-  async function setActiveFilterProfileAsDefault(): Promise<void> {
-    if (!tauri) return;
-    filterRecomputeMessage.value = null;
-    try {
-      await filterProfileState.setActiveFilterProfileAsDefault();
-      filterRecomputeMessage.value = "已设为默认画像，重算后更新候选队列";
+      filterRecomputeMessage.value = "已保存采后规则";
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
     }
@@ -447,30 +662,68 @@ function createCrawlPageState() {
     error.value = null;
     if (!tauri) return;
     actionBusy.value = true;
+    stopRequested.value = false;
     try {
+      resetCrawlProgress();
       if (mode.value === "manual") {
         runtime.sidecarTask.running = true;
         runtime.sidecarTask.type = CRAWL_TASK_TYPE_MANUAL;
         await invoke<void>("crawl_manual_start");
         return;
       }
+      await persistCollectionConfig();
       const selectedSources = selectedCollectionSources.value.filter((source) =>
         collectableSourceOptions.value.some((option) => option.value === source),
       );
       if (selectedSources.length === 0) {
-        throw new Error("请先到采集配置里选择一个已启用的自动采集平台。");
-      }
-      if (selectedSources.includes(BOSS_SOURCE_PLATFORM) && bossKeywords.value.length === 0) {
-        throw new Error("请先填写采集意图并同步到 Boss，或在 Boss 配置中输入至少 1 个关键词。");
+        appendRuntimeLog("warn", "没有可执行的自动采集平台，任务已结束。");
+        return;
       }
       await filterProfileState.saveDefaultFilterProfile();
+      let completedSources = 0;
+      let skippedSources = 0;
       for (const source of selectedSources) {
+        if (stopRequested.value) break;
+        const label = collectionSourceLabel(source);
+        const invalidReason = validateCollectionSource(source);
+        if (invalidReason) {
+          skippedSources += 1;
+          appendRuntimeLog("warn", `跳过 ${label}：${invalidReason}`);
+          continue;
+        }
         const beforeFinished = runtime.finishedCounter;
-        runtime.sidecarTask.running = true;
-        runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
-        await invoke<void>("crawl_auto_start", { task: buildTaskForSource(source) });
-        await waitForFinishedCounterToAdvance(beforeFinished);
-        await loadCollectionSummary();
+        const beforeError = runtime.errorCounter;
+        try {
+          runtime.sidecarTask.running = true;
+          runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
+          appendRuntimeLog("info", `准备启动 ${label} 自动采集。`);
+          await invoke<void>("crawl_auto_start", { task: buildTaskForSource(source) });
+          await waitForFinishedCounterToAdvance(beforeFinished);
+          if (runtime.errorCounter > beforeError) {
+            skippedSources += 1;
+            appendRuntimeLog("warn", `${label} 自动采集失败，已跳过该平台。`);
+          } else {
+            completedSources += 1;
+          }
+        } catch (cause) {
+          skippedSources += 1;
+          const message = cause instanceof Error ? cause.message : String(cause);
+          appendRuntimeLog("warn", `跳过 ${label}：${message}`);
+          if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_AUTO) {
+            runtime.sidecarTask.running = false;
+            runtime.sidecarTask.type = undefined;
+          }
+        } finally {
+          await loadCollectionSummary();
+        }
+        if (stopRequested.value) break;
+      }
+      if (stopRequested.value) {
+        appendRuntimeLog("warn", "已停止自动采集，后续平台不再执行。");
+      } else if (completedSources === 0) {
+        appendRuntimeLog("warn", skippedSources > 0 ? "所有自动采集平台都不可用，任务已结束。" : "没有可执行的自动采集平台，任务已结束。");
+      } else if (skippedSources > 0) {
+        appendRuntimeLog("info", `自动采集已结束：完成 ${completedSources} 个平台，跳过 ${skippedSources} 个平台。`);
       }
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -486,6 +739,8 @@ function createCrawlPageState() {
   async function stop(): Promise<void> {
     error.value = null;
     if (!tauri) return;
+    stopRequested.value = true;
+    if (!sidecarRunning.value) return;
     actionBusy.value = true;
     try {
       await invoke<void>("crawl_stop");
@@ -499,7 +754,10 @@ function createCrawlPageState() {
   async function initialize(): Promise<void> {
     if (initialized.value) return;
     initialized.value = true;
-    void loadCollectionSources();
+    void (async () => {
+      await loadCollectionConfig();
+      await loadCollectionSources();
+    })();
     void loadCollectionSummary();
     void loadBossMeta();
     void loadDefaultFilterProfile();
@@ -569,11 +827,13 @@ function createCrawlPageState() {
     scaleText,
     ...filterProfileState,
     selectedCity,
+    selectedCities,
     selectedSalary,
     selectedExperience,
     selectedDegree,
     selectedIndustry,
     selectedScale,
+    selectedBossFilterConditions,
     maxPages,
     maxJobs,
     delayMs,
@@ -584,6 +844,8 @@ function createCrawlPageState() {
     bossMetaError,
     filterRecomputing,
     filterRecomputeMessage,
+    collectionConfigSaving,
+    collectionConfigMessage,
     bossSettingsOpen,
     filterProfileOpen,
     bossSyncMappedFields,
@@ -596,18 +858,19 @@ function createCrawlPageState() {
     bossExperienceOptions,
     bossDegreeOptions,
     bossScaleOptions,
+    bossAdditionalFilterGroups,
     bossIndustryGroups,
+    bossFilterConditionCount,
     bossMetaReady,
     sidecarRunning,
     loadBossMeta,
     syncBossMeta,
     loadDefaultFilterProfile,
-    selectFilterProfile,
     saveActiveFilterProfile,
-    createFilterProfile,
-    setActiveFilterProfileAsDefault,
     recomputeDefaultFilterProfile,
     syncCollectionIntentToPlatforms,
+    setBossAdditionalFilter,
+    saveCollectionConfig,
     loadCollectionSummary,
     initialize,
     clearBossMetaSyncTimeout,

@@ -2,6 +2,7 @@ mod company_score;
 mod config;
 mod greeting;
 mod models;
+mod post_collection_judge;
 mod profile_analysis;
 mod report_meta;
 mod reports;
@@ -124,6 +125,23 @@ pub async fn generate_ai_company_scores(
 ) -> Result<Value, String> {
     company_score::generate_ai_company_scores(app, limit, api_key, base_url, model, api_mode, debug)
         .await
+}
+
+#[tauri::command]
+pub async fn recompute_ai_post_collection_judgement(
+    app: tauri::AppHandle,
+    job_ids: Option<Vec<String>>,
+    limit: Option<u32>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+    api_mode: Option<String>,
+    debug: Option<bool>,
+) -> Result<Value, String> {
+    post_collection_judge::recompute_ai_post_collection_judgement(
+        app, job_ids, limit, api_key, base_url, model, api_mode, debug,
+    )
+    .await
 }
 
 #[tauri::command]

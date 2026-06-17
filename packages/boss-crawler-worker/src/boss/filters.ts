@@ -7,7 +7,30 @@ export type BossFilters = {
   degree?: string | string[];
   industry?: string | string[];
   scale?: string | string[];
+  [key: string]: unknown;
 };
+
+const FILTER_LABELS: Record<string, string> = {
+  city: "城市",
+  salary: "薪资",
+  experience: "经验",
+  degree: "学历",
+  industry: "行业",
+  scale: "规模",
+  stage: "融资阶段",
+  financing: "融资阶段",
+  jobType: "职位类型",
+  jobStatus: "职位状态",
+  brandStage: "融资阶段",
+  brandScale: "规模",
+};
+
+const RESERVED_FILTER_KEYS = new Set([
+  "profile",
+  "collection_intent",
+  "feed_url",
+  "excluded_keywords",
+]);
 
 function asArray(v: unknown): string[] {
   if (typeof v === "string" && v.trim()) return [v.trim()];
@@ -62,52 +85,15 @@ async function applyTextOrKa(page: Page, value: string): Promise<boolean> {
 export async function applyFilters(page: Page, rawFilters: unknown): Promise<void> {
   const filters = (rawFilters ?? {}) as BossFilters;
 
-  const city = asArray(filters.city);
-  if (city.length > 0) {
-    await openFilterPanel(page, "城市").catch(() => undefined);
-    for (const v of city) {
-      await applyTextOrKa(page, v).catch(() => undefined);
-    }
-  }
+  for (const [field, rawValue] of Object.entries(filters)) {
+    if (RESERVED_FILTER_KEYS.has(field)) continue;
+    const values = asArray(rawValue);
+    if (values.length === 0) continue;
 
-  const salary = asArray(filters.salary);
-  if (salary.length > 0) {
-    await openFilterPanel(page, "薪资").catch(() => undefined);
-    for (const v of salary) {
-      await applyTextOrKa(page, v).catch(() => undefined);
-    }
-  }
-
-  const experience = asArray(filters.experience);
-  if (experience.length > 0) {
-    await openFilterPanel(page, "经验").catch(() => undefined);
-    for (const v of experience) {
-      await applyTextOrKa(page, v).catch(() => undefined);
-    }
-  }
-
-  const degree = asArray(filters.degree);
-  if (degree.length > 0) {
-    await openFilterPanel(page, "学历").catch(() => undefined);
-    for (const v of degree) {
-      await applyTextOrKa(page, v).catch(() => undefined);
-    }
-  }
-
-  const industry = asArray(filters.industry);
-  if (industry.length > 0) {
-    await openFilterPanel(page, "行业").catch(() => undefined);
-    for (const v of industry) {
-      await applyTextOrKa(page, v).catch(() => undefined);
-    }
-  }
-
-  const scale = asArray(filters.scale);
-  if (scale.length > 0) {
-    await openFilterPanel(page, "规模").catch(() => undefined);
-    for (const v of scale) {
-      await applyTextOrKa(page, v).catch(() => undefined);
+    const label = FILTER_LABELS[field] ?? field;
+    await openFilterPanel(page, label).catch(() => undefined);
+    for (const value of values) {
+      await applyTextOrKa(page, value).catch(() => undefined);
     }
   }
 }
-

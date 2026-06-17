@@ -44,7 +44,8 @@
   - emits `JOB_NORMALIZED_CAPTURED`
   - stores `encrypt_job_id = "v2ex:<topicId>"`
   - stores `dedup_key = <topicId>`
-  - skips `discussion` or `unknown` feed entries before writing to `job`
+  - only uses positive hiring signals before writing to `job`; default discussion/exclusion keywords must not pre-filter V2EX entries
+  - post-collection profile and AI judgement own soft exclusion decisions after V2EX entries are written
 - Source registry:
   - Boss adapter kind is `boss`
   - V2EX adapter kind is `feed`
@@ -52,11 +53,17 @@
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`
+  - the default filter profile must include currently supported automatic collection sources (`boss`, `v2ex`) so a platform that can be collected is not hidden by source gating immediately after ingestion
+  - Boss-only filtering remains an explicit user-selected narrowing mode, not the default
 - Multi-source run:
   - UI stores all selected collectable sources, not a single `selectedCollectionSource`
   - starting automatic collection invokes `crawl_auto_start` once per selected source, sequentially
   - each invocation keeps its platform-specific payload and session requirement
   - the user action is still one button click; worker modes remain one source per command
+- Boss multi-city run:
+  - Boss city selection may be multi-select in the UI
+  - if Boss API/browser search only accepts one city at a time, the worker must expand the selected city list into sequential job-list variants
+  - variant runs share the same keyword set and dedup key space so repeated job ids across cities are skipped
 
 ### 4. Validation & Error Matrix
 
@@ -66,7 +73,8 @@
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
 - V2EX feed entry lacks stable topic id or title -> skip that entry.
-- V2EX entry is classified as discussion/unknown or matches excluded keywords -> log skip; do not insert `job`.
+- V2EX entry lacks positive hiring signals -> emit `JOB_FILTERED` with `缺少招聘信号词`; do not insert `job`.
+- V2EX entry matches default discussion words, collection excluded keywords, or profile `mustNotKeywords` -> do not pre-filter at feed stage; let post-collection rules and AI judgement decide after ingest.
 - Worker emits malformed normalized payload -> Rust IPC deserialization rejects it before DB write.
 
 ### 5. Good/Base/Bad Cases
@@ -78,18 +86,24 @@
 - Bad: frontend collapses selected sources into one payload and loses platform-specific filters/session behavior.
 - Bad: Feed entries are written as Boss jobs or without a topic-based dedup key.
 - Bad: filter profile allowed candidate sources are used as a pre-ingest collection gate.
+- Bad: default filter profile allows only Boss while V2EX is an enabled automatic source; users see collected V2EX jobs blocked by "source not allowed".
 
 ### 6. Tests Required
 
 - Worker unit tests:
   - Atom parser extracts title, normalized topic URL, topic id, author, and text content.
   - HTML entity decoding handles `&nbsp;`.
-  - classifier accepts clear hiring posts and blocks discussions or explicit excluded terms.
+  - classifier accepts clear hiring posts from positive signals only.
+  - classifier does not let search keywords alone make a feed entry a job posting.
+  - classifier ignores excluded keywords at feed stage so post-collection rules and AI judgement can handle soft exclusion.
+  - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
 - Rust tests:
   - `job_sources` seeds Boss as `boss`, V2EX as `feed`, and reserved platforms as `manual_import`.
   - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, and `jd_text`.
+  - default filter profile includes V2EX and legacy Boss-only default profile upgrades to Boss + V2EX.
 - Frontend/browser smoke:
   - collection config source selector can select Boss and V2EX together.
+  - Boss city selector supports multiple selected dictionary cities and explains that collection runs city variants sequentially.
   - V2EX Feed section appears when V2EX is selected among selected sources.
   - execution page labels V2EX as the automatic source.
   - settings page shows V2EX automatic collection and no-login capability.
@@ -242,6 +256,74 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 }
 ```
 
+## Scenario: Single User-Facing Post-Collection Rule Config
+
+### 1. Scope / Trigger
+
+- Trigger: changing collection config, collection execution controls, Jobs-page filter explanations, or post-collection rule UI.
+- The database and commands may retain `filter_profile` compatibility, but user-facing flows must present one default post-collection rule config.
+
+### 2. Signatures
+
+- Frontend execution page:
+  - automatic collection controls must not expose `activeFilterProfileId`, profile selection, or rule-set switching.
+- Frontend config page:
+  - exposes default post-collection rules only.
+  - allowed actions: save config, save and recompute existing jobs.
+- Backend compatibility:
+  - default profile remains `DEFAULT_FILTER_PROFILE_ID = "default"`.
+  - existing `filter_profile` commands can remain for migration and internal compatibility.
+
+### 3. Contracts
+
+- Collection always uses the current default post-collection rule config.
+- Users must not choose, create, rename, or set a default profile from the main UI.
+- UI copy should say "采后规则" or "筛选规则", not "画像" or "规则集".
+- AI soft preferences live in the default post-collection rule config; deterministic hard rules remain in the same config.
+- Saved historical profile fields may continue to round-trip so old data does not break.
+
+### 4. Validation & Error Matrix
+
+- User opens collection execution page -> no rule/profile select is rendered.
+- User opens collection config -> default post-collection rule header and save/recompute actions render.
+- Old database contains multiple profiles -> UI still edits the active default config only.
+- Recompute fails -> surface the existing recompute error; do not fall back to another profile.
+
+### 5. Good/Base/Bad Cases
+
+- Good: automatic collection page shows max pages, max jobs, and delay, with no post-collection rule chooser.
+- Good: config page shows "默认采后规则", "保存配置", and "保存并重算已有职位".
+- Base: existing profile commands still compile and old default profile records load.
+- Bad: UI restores "当前规则集", "新建规则集", or "设为默认".
+- Bad: collection asks users to choose a profile before running.
+
+### 6. Tests Required
+
+- Frontend contract test:
+  - `src/pages/Crawl.vue` does not contain `采后规则集`, `activeFilterProfileId`, or `selectFilterProfile`.
+  - `src/pages/CrawlConfig.vue` contains `默认采后规则`, `保存配置`, and `保存并重算已有职位`.
+  - `src/pages/CrawlConfig.vue` does not contain profile/rule-set management labels.
+- Browser smoke:
+  - switch collection page to automatic mode and verify no select is shown for post-collection rules.
+  - expand post-collection rules in config and verify only the default config controls are present.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```vue
+<select v-model="activeFilterProfileId" @change="selectFilterProfile(activeFilterProfileId)">
+  <option v-for="profile in filterProfiles" :value="profile.id">{{ profile.name }}</option>
+</select>
+```
+
+#### Correct
+
+```vue
+<button @click="saveActiveFilterProfile">保存配置</button>
+<button @click="recomputeDefaultFilterProfile">保存并重算已有职位</button>
+```
+
 ## Scenario: Collection Run Summary and Pending Evidence Refresh
 
 ### 1. Scope / Trigger
@@ -270,6 +352,9 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - SQLite tables:
   - `collection_run(id, source_platform, keywords_json, filters_json, limits_json, status, started_at, finished_at, error_message, captured, inserted, updated, duplicate, recommended, pending, filtered, failed, processed, all_jobs)`
   - `collection_failure(id, run_id, source_platform, event_type, keyword, encrypt_job_id, reason, raw_payload_json, created_at)`
+- SQLite init entry points:
+  - `init_db(app_data_dir)` opens/migrates the database for normal commands and must not mutate active `collection_run` rows.
+  - `init_db_for_app_start(app_data_dir)` is the only startup recovery entry point that may mark stale `status='running'` collection runs failed.
 
 ### 3. Contracts
 
@@ -278,6 +363,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - `recommended`, `pending`, `filtered`, `processed`, and `all_jobs` are refreshed from canonical DB/filter state after recompute/finish. They are not limited to only rows captured in that run.
 - Upsert outcome is based on persisted DB fields before/after write. `last_seen_at` alone must not turn an unchanged row into `updated`.
 - Sidecar records durable failures for missing stable job id, upsert failure, recompute failure, worker error, unsupported pending refresh, and missing Boss session.
+- Running-run recovery is a startup-only concern. Query commands such as `list_collection_runs`, job queries, filter recompute commands, or sidecar event handling may open the DB while a collection is active; those paths must preserve `status='running'`.
 - Pending evidence refresh reuses the worker `JOB_DETAIL_CAPTURED` event after fetching Boss detail. Rust sidecar performs the same upsert and filter recompute path as normal collection detail events.
 - Non-Boss pending jobs or Boss jobs without usable session/path return a clear error and remain in the job library.
 - No collection summary or evidence refresh path may add automatic apply, chat open, greeting send, or resume send behavior.
@@ -286,6 +372,8 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 
 - Boss selected without session -> run is marked `failed`, a `collection_failure` row is written, command returns the session error.
 - Worker emits `ERROR` during active run -> failure row is written and run status becomes `failed`; later `FINISHED` may still refresh bucket counts but must not overwrite failed status.
+- App process starts with stale `status='running'` rows from a previous crash -> `init_db_for_app_start` marks them `failed` with `error_message='app restarted before collection finished'`.
+- Normal command opens DB while sidecar is running -> active `status='running'` rows remain running.
 - List item lacks stable ID -> write `collection_failure(event_type='JOB_LIST_CAPTURED', reason='missing stable job id')`.
 - Upsert or recompute fails for one item -> write item-level failure and continue processing other items where possible.
 - `refresh_pending_job_evidence` for non-pending job -> return clear error; do not start worker.
@@ -298,8 +386,10 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - Good: a V2EX run writes normalized jobs through the same run summary and failure table as Boss.
 - Good: a pending Boss job triggers `REFRESH_JOB_EVIDENCE`, receives a detail payload, and leaves pending if evidence is still insufficient.
 - Base: old databases have no run history but can still query jobs and bucket counts after additive migration.
+- Base: the collection page polls run history during an active run; polling must not mark the active run failed.
 - Bad: using worker profile-filter eligibility as the final recommended/pending/filtered count.
 - Bad: silently skipping malformed list rows without a durable failure record.
+- Bad: calling stale-run cleanup from generic DB initialization used by normal commands.
 - Bad: making pending refresh look successful when the source is unsupported or Boss session is missing.
 
 ### 6. Tests Required
@@ -308,6 +398,8 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
   - migration creates `collection_run` and `collection_failure`.
   - run/failure helpers persist counters and raw failure payloads.
   - upsert outcome classifies inserted/updated/duplicate without counting `last_seen_at` only changes.
+  - normal `init_db` preserves active `status='running'` rows.
+  - `init_db_for_app_start` marks stale `status='running'` rows failed.
 - Rust filter tests:
   - bucket counts are derived from `job_filter_result.reason_json.bucket`, review/communication/company state, and blacklist state.
 - Worker tests:
@@ -337,6 +429,32 @@ let after = load_job_persistence_snapshot(conn, encrypt_job_id)?;
 ```
 
 Compare persisted evidence fields and ignore `last_seen_at` for duplicate vs updated classification.
+
+#### Wrong
+
+```rust
+pub fn init_db(app_data_dir: &Path) -> Result<Connection> {
+    let conn = open_db(app_data_dir)?;
+    fail_stale_running_collection_runs(&conn, "app restarted before collection finished")?;
+    Ok(conn)
+}
+```
+
+Normal commands call `init_db` while the sidecar is actively collecting, so this turns a live run into a fake restart failure.
+
+#### Correct
+
+```rust
+pub fn init_db(app_data_dir: &Path) -> Result<Connection> {
+    open_db(app_data_dir)
+}
+
+pub fn init_db_for_app_start(app_data_dir: &Path) -> Result<Connection> {
+    let conn = open_db(app_data_dir)?;
+    fail_stale_running_collection_runs(&conn, "app restarted before collection finished")?;
+    Ok(conn)
+}
+```
 
 #### Wrong
 

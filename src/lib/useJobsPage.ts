@@ -54,6 +54,13 @@ import {
 import { runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
 
+interface AiPostCollectionJudgeResult {
+  updated: number;
+  ai_judged: number;
+  hard_skipped: number;
+  failed: number;
+}
+
 interface ConfirmDialogState {
   visible: boolean;
   title: string;
@@ -260,7 +267,7 @@ function describeAiCompanyScoreFailure(message: string): AiCompanyScoreErrorStat
   if (message.includes("暂无可生成 AI 公司评分")) {
     return {
       title: "暂无可评分公司",
-      hint: "请先采集岗位、保存筛选画像并重算候选队列，再重试 AI 公司评分。",
+      hint: "请先采集岗位、保存采后规则并重算候选队列，再重试 AI 公司评分。",
       message,
     };
   }
@@ -301,13 +308,13 @@ function formatCommunicationTrace(job: JobRow): string {
 
 function formatApplicationFilterTrace(job: JobRow): string {
   const reason = parseFilterReasonJson(job.filter_reason_json);
-  if (!reason) return "暂无筛选画像结果";
+  if (!reason) return "暂无筛选规则结果";
   const summary = formatFilterReasonSummary(reason);
-  if (reason.eligible === true && summary === "不满足筛选画像") {
-    return "通过筛选画像";
+  if (reason.eligible === true && (summary === "不满足筛选画像" || summary === "不满足筛选规则")) {
+    return "通过筛选规则";
   }
   if (reason.eligible === true) {
-    return `通过筛选画像；${summary}`;
+    return `通过筛选规则；${summary}`;
   }
   return summary;
 }
@@ -351,7 +358,7 @@ function buildApplicationChecklist(
   const hasExportedPdf = !!resumeWorkspaceStatus?.last_exported_pdf_path?.trim();
   return [
     `人工确认：${job.review_status === "ready_to_apply" || job.review_status === "applied" ? reviewStatusLabel(job.review_status) : "待标记准备投递"}`,
-    `筛选画像：${formatApplicationFilterTrace(job)}`,
+    `采后规则：${formatApplicationFilterTrace(job)}`,
     `简历工作区：${buildResumeWorkspaceTrace(resumeWorkspaceStatus)}`,
     `最终简历：${hasFinalResume ? "已生成" : "待在简历工作区生成"}`,
     `PDF：${hasExportedPdf ? resumeWorkspaceStatus?.last_exported_pdf_path : "待导出"}`,
@@ -378,7 +385,7 @@ function buildApplicationReadinessGaps(
     gaps.push("人工确认：尚未标记准备投递");
   }
   if (job.filter_eligible === false || filterReason?.eligible === false) {
-    gaps.push(`筛选画像：${formatApplicationFilterTrace(job)}`);
+    gaps.push(`采后规则：${formatApplicationFilterTrace(job)}`);
   }
   if (!hasLinkedWorkspace) {
     gaps.push("简历工作区：未找到与当前岗位联动的工作区");
@@ -476,7 +483,7 @@ function buildReadyToApplyConfirmationMessage(
     `确认将「${job.position_name ?? job.encrypt_job_id}」标记为准备投递？`,
     `简历匹配报告：${resumeTrace}`,
     `Resume Match 证据：\n${resumeMatchEvidence}`,
-    `筛选画像：${formatApplicationFilterTrace(job)}`,
+    `采后规则：${formatApplicationFilterTrace(job)}`,
     `评分：Final ${formatPacketScore(job.final_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `投递准备预检：\n${readinessPreflight}`,
     `投递准备清单：\n${checklist}`,
@@ -535,7 +542,7 @@ function buildReviewCandidateSummary(job: JobRow): string {
     `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `评分依据：${scoreSummary}`,
     `Resume Match 证据：\n${buildResumeMatchEvidenceTrace(job.score_reason_json)}`,
-    `筛选画像：${formatApplicationFilterTrace(job)}`,
+    `采后规则：${formatApplicationFilterTrace(job)}`,
     `来源追踪：${formatSourceTrace(job)}`,
     `来源链接：${jobSourceUrl(job)}`,
     `下一步：人工查看岗位详情，必要时生成 AI 匹配报告、定制简历或标记准备投递。`,
@@ -550,7 +557,7 @@ function buildReviewCandidatesSummary(jobs: JobRow[]): string {
     .join("\n\n");
   return [
     "【Job Sync Top 20 人工审核摘要】",
-    "这些岗位已通过当前筛选画像、黑名单和沟通状态过滤，并按综合评分排序；仅供人工研究和确认。",
+    "这些岗位已通过当前采后规则、黑名单和沟通状态过滤，并按综合评分排序；仅供人工研究和确认。",
     items,
     "使用边界：复制后人工查看、编辑和决定，不会自动发送、开聊或投递。",
   ].join("\n\n");
@@ -590,7 +597,7 @@ function buildFilteredJobsSummary(jobs: JobRow[]): string {
     .join("\n\n");
   return [
     "【Job Sync 最近过滤解释】",
-    "这些岗位当前不会进入 Top 20；可调整筛选画像、沟通状态或黑名单后重新计算。",
+    "这些岗位当前不会进入 Top 20；可调整采后规则、沟通状态或黑名单后重新计算。",
     items,
     "使用边界：仅用于人工复盘筛选结果；不会自动发送或投递。",
   ].join("\n\n");
@@ -612,7 +619,7 @@ function buildCommunicationFollowupJobSummary(job: JobRow): string {
     job.company_blacklisted || job.job_blacklisted || job.keyword_blacklisted
       ? `黑名单：${job.blacklist_reason ?? "已命中黑名单"}`
       : null,
-    `筛选画像：${formatApplicationFilterTrace(job)}`,
+    `采后规则：${formatApplicationFilterTrace(job)}`,
     `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `来源追踪：${formatSourceTrace(job)}`,
     `来源链接：${jobSourceUrl(job)}`,
@@ -693,6 +700,8 @@ export function useJobsPage() {
   const aiCompanyScoreGenerating = ref(false);
   const aiCompanyScoreMessage = ref<string | null>(null);
   const aiCompanyScoreError = ref<AiCompanyScoreErrorState | null>(null);
+  const aiPostCollectionJudging = ref(false);
+  const aiPostCollectionJudgeMessage = ref<string | null>(null);
   const blacklistLoading = ref(false);
   const expandedKeyword = ref<string | null>(null);
   const expandedJobId = ref<string | null>(null);
@@ -1089,7 +1098,7 @@ export function useJobsPage() {
     try {
       const profile = await filterProfileState.saveActiveFilterProfile();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
-      filterRecomputeMessage.value = "已保存当前筛选画像";
+      filterRecomputeMessage.value = "已保存采后规则";
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -1103,7 +1112,7 @@ export function useJobsPage() {
     try {
       const profile = await filterProfileState.createFilterProfile();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
-      filterRecomputeMessage.value = "已新建筛选画像";
+      filterRecomputeMessage.value = "已新建采后规则";
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -1119,7 +1128,7 @@ export function useJobsPage() {
       const profile = await filterProfileState.setActiveFilterProfileAsDefault();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
       const result = await invoke<RecomputeFilterProfileResult>("recompute_default_filter_profile");
-      filterRecomputeMessage.value = `已设为默认画像，并重算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}`;
+      filterRecomputeMessage.value = `已设为默认规则，并重算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}`;
       await refreshAfterJobStateChange(false);
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -1183,6 +1192,31 @@ export function useJobsPage() {
       error.value = message;
     } finally {
       aiCompanyScoreGenerating.value = false;
+    }
+  }
+  async function recomputeAiPostCollectionJudgement(jobIds?: string[]): Promise<void> {
+    error.value = null;
+    aiPostCollectionJudgeMessage.value = null;
+    if (!tauri) return;
+    const ids = (jobIds?.length ? jobIds : jobCandidates.value.map((job) => job.encrypt_job_id)).filter(Boolean);
+    if (ids.length === 0) {
+      aiPostCollectionJudgeMessage.value = "当前视图没有可重算的岗位";
+      return;
+    }
+    aiPostCollectionJudging.value = true;
+    try {
+      const result = await invoke<AiPostCollectionJudgeResult>("recompute_ai_post_collection_judgement", {
+        jobIds: ids,
+        limit: ids.length,
+      });
+      aiPostCollectionJudgeMessage.value = `AI 采后判断已更新 ${result.updated} 个岗位，其中 ${result.ai_judged} 个由 AI 判断${
+        result.hard_skipped > 0 ? `，${result.hard_skipped} 个保留硬规则结果` : ""
+      }${result.failed > 0 ? `，${result.failed} 个转入待确认` : ""}`;
+      await refreshAfterJobStateChange(false);
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      aiPostCollectionJudging.value = false;
     }
   }
   async function refreshAfterJobStateChange(refreshBlacklist = false): Promise<void> {
@@ -1732,7 +1766,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
   async function restoreReviewCandidate(job: JobRow): Promise<void> {
     showConfirm(
       "恢复候选",
-      `确认将「${job.position_name ?? job.encrypt_job_id}」恢复为待审核和未打招呼？该操作只恢复人工审核状态，岗位仍会继续受筛选画像、黑名单和公司状态过滤。`,
+      `确认将「${job.position_name ?? job.encrypt_job_id}」恢复为待审核和未打招呼？该操作只恢复人工审核状态，岗位仍会继续受采后规则、黑名单和公司状态过滤。`,
       async () => {
         try {
           await invoke<void>("set_job_review_state", {
@@ -2007,6 +2041,8 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     aiCompanyScoreGenerating,
     aiCompanyScoreMessage,
     aiCompanyScoreError,
+    aiPostCollectionJudging,
+    aiPostCollectionJudgeMessage,
     blacklistLoading,
     expandedKeyword,
     expandedJobId,
@@ -2054,6 +2090,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     refreshPendingJobEvidence,
     rebuildCompanyScores,
     generateAiCompanyScores,
+    recomputeAiPostCollectionJudgement,
     toggleKeyword,
     toggleDetail,
     copy,

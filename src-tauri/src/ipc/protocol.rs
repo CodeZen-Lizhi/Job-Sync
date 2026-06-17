@@ -145,6 +145,17 @@ pub struct AiCompanyScoreBatchPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiPostCollectionJudgePayload {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Value>,
+    pub job: Value,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter_reason: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResumeDiagnosePayload {
     pub resume_text: String,
     #[serde(default)]
@@ -203,6 +214,8 @@ pub enum CommandIn {
     AiGreeting(AiGreetingPayload),
     #[serde(rename = "AI_COMPANY_SCORE_BATCH")]
     AiCompanyScoreBatch(AiCompanyScoreBatchPayload),
+    #[serde(rename = "AI_POST_COLLECTION_JUDGE")]
+    AiPostCollectionJudge(AiPostCollectionJudgePayload),
     #[serde(rename = "RESUME_DIAGNOSE")]
     ResumeDiagnose(ResumeDiagnosePayload),
     #[serde(rename = "RESUME_REWRITE_MODULE")]

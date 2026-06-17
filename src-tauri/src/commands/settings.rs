@@ -17,6 +17,7 @@ pub struct PublicAppSettings {
     pub wecom_webhook_url: Option<String>,
     pub has_wecom_webhook_url: bool,
     pub proxy_url: Option<String>,
+    pub collection_config: Option<serde_json::Value>,
     pub ai_resume_text: String,
     pub ai_context_text: String,
     pub ai_resume_files: String,
@@ -90,6 +91,7 @@ impl From<settings::AppSettings> for PublicAppSettings {
             wecom_webhook_url: None,
             has_wecom_webhook_url,
             proxy_url: settings.proxy_url,
+            collection_config: settings.collection_config,
             ai_resume_text: settings.ai_resume_text,
             ai_context_text: settings.ai_context_text,
             ai_resume_files: settings.ai_resume_files,
@@ -168,6 +170,25 @@ pub fn set_ai_settings(
             .format(&time::format_description::well_known::Rfc3339)
             .unwrap(),
     );
+
+    settings::write_settings(&app_data_dir, &current).map_err(|e| e.to_string())?;
+    Ok(PublicAppSettings::from(current))
+}
+
+#[tauri::command]
+pub fn save_collection_config(
+    app: tauri::AppHandle,
+    collection_config: serde_json::Value,
+) -> Result<PublicAppSettings, String> {
+    let app_data_dir = paths::resolve_data_dir(&app)?;
+
+    let mut current = settings::read_settings(&app_data_dir)
+        .unwrap_or_else(|_| settings::AppSettings::platform_default());
+    current.collection_config = if collection_config.is_null() {
+        None
+    } else {
+        Some(collection_config)
+    };
 
     settings::write_settings(&app_data_dir, &current).map_err(|e| e.to_string())?;
     Ok(PublicAppSettings::from(current))
@@ -381,6 +402,26 @@ mod tests {
         let public = PublicAppSettings::from(settings);
 
         assert_eq!(public.proxy_url.as_deref(), Some("http://127.0.0.1:7890"));
+    }
+
+    #[test]
+    fn public_settings_exposes_collection_config() {
+        let mut settings = settings::AppSettings::platform_default();
+        settings.collection_config = Some(serde_json::json!({
+            "version": 1,
+            "selectedCollectionSources": ["boss", "v2ex"]
+        }));
+
+        let public = PublicAppSettings::from(settings);
+
+        assert_eq!(
+            public
+                .collection_config
+                .as_ref()
+                .and_then(|value| value.get("version"))
+                .and_then(|value| value.as_i64()),
+            Some(1)
+        );
     }
 
     #[test]

@@ -111,17 +111,12 @@ pub(crate) struct NewCollectionFailure<'a> {
 }
 
 pub(crate) fn new_collection_run_id() -> String {
-    format!(
-        "run_{}",
-        OffsetDateTime::now_utc().unix_timestamp_nanos()
-    )
+    format!("run_{}", OffsetDateTime::now_utc().unix_timestamp_nanos())
 }
 
 pub(crate) fn create_collection_run(conn: &Connection, input: &NewCollectionRun<'_>) -> Result<()> {
-    let keywords_json =
-        serde_json::to_string(input.keywords).unwrap_or_else(|_| "[]".to_string());
-    let filters_json =
-        serde_json::to_string(input.filters).unwrap_or_else(|_| "{}".to_string());
+    let keywords_json = serde_json::to_string(input.keywords).unwrap_or_else(|_| "[]".to_string());
+    let filters_json = serde_json::to_string(input.filters).unwrap_or_else(|_| "{}".to_string());
     let limits_json = serde_json::to_string(input.limits).unwrap_or_else(|_| "{}".to_string());
     conn.execute(
         r#"
@@ -140,6 +135,20 @@ pub(crate) fn create_collection_run(conn: &Connection, input: &NewCollectionRun<
         ],
     )?;
     Ok(())
+}
+
+pub(crate) fn fail_stale_running_collection_runs(conn: &Connection, reason: &str) -> Result<usize> {
+    let changed = conn.execute(
+        r#"
+        UPDATE collection_run
+        SET status = 'failed',
+            finished_at = COALESCE(finished_at, ?1),
+            error_message = COALESCE(error_message, ?2)
+        WHERE status = 'running'
+        "#,
+        params![now_rfc3339(), reason],
+    )?;
+    Ok(changed)
 }
 
 pub(crate) fn increment_collection_counter(

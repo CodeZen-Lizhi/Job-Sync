@@ -389,11 +389,11 @@ impl SidecarManager {
                                             Some(&payload.zp_data),
                                         );
                                         let _ = ipc::emit_event_all(
-                                        &app_handle,
-                                        &EventOut::Error(crate::ipc::protocol::ErrorPayload {
-                                            message: format!("db upsert job failed: {err}"),
-                                            stack: None,
-                                        }),
+                                            &app_handle,
+                                            &EventOut::Error(crate::ipc::protocol::ErrorPayload {
+                                                message: format!("db upsert job failed: {err}"),
+                                                stack: None,
+                                            }),
                                         );
                                     }
                                 }
@@ -449,19 +449,23 @@ impl SidecarManager {
                                         Some(&payload.raw_payload),
                                     );
                                     let _ = ipc::emit_event_all(
-                                    &app_handle,
-                                    &EventOut::Error(crate::ipc::protocol::ErrorPayload {
-                                        message: format!("db upsert normalized job failed: {err}"),
-                                        stack: None,
-                                    }),
+                                        &app_handle,
+                                        &EventOut::Error(crate::ipc::protocol::ErrorPayload {
+                                            message: format!(
+                                                "db upsert normalized job failed: {err}"
+                                            ),
+                                            stack: None,
+                                        }),
                                     );
                                     continue;
                                 }
                             }
-                            if let Err(err) = filter_profile::recompute_default_filter_profile_for_job_on_conn(
-                                conn,
-                                &payload.encrypt_job_id,
-                            ) {
+                            if let Err(err) =
+                                filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                    conn,
+                                    &payload.encrypt_job_id,
+                                )
+                            {
                                 record_collection_failure(
                                     conn,
                                     active_run.as_ref(),
@@ -506,7 +510,9 @@ impl SidecarManager {
                                     );
                                     continue;
                                 };
-                                match models::upsert_job_from_list_item_with_outcome(conn, id, &item.raw) {
+                                match models::upsert_job_from_list_item_with_outcome(
+                                    conn, id, &item.raw,
+                                ) {
                                     Ok(outcome) => {
                                         if let Some(active_run) = active_run.as_ref() {
                                             let _ = models::increment_collection_counter(
@@ -688,13 +694,18 @@ impl SidecarManager {
                                         raw_payload: None,
                                     },
                                 );
-                                let _ =
-                                    models::fail_collection_run(conn, &active_run.id, &payload.message);
+                                let _ = models::fail_collection_run(
+                                    conn,
+                                    &active_run.id,
+                                    &payload.message,
+                                );
                             }
                         }
                         EventOut::Finished => {
                             if let Some(active_run) = active_run.as_ref() {
-                                if let Ok(counts) = filter_profile::count_filter_buckets_on_conn(conn) {
+                                if let Ok(counts) =
+                                    filter_profile::count_filter_buckets_on_conn(conn)
+                                {
                                     let _ = models::refresh_collection_run_bucket_counts(
                                         conn,
                                         &active_run.id,
@@ -703,9 +714,7 @@ impl SidecarManager {
                                 }
                                 let _ = models::finish_collection_run(conn, &active_run.id, None);
                                 if let Ok(mut guard) = active_collection_run.lock() {
-                                    if guard
-                                        .as_ref()
-                                        .map(|run| run.id.as_str())
+                                    if guard.as_ref().map(|run| run.id.as_str())
                                         == Some(active_run.id.as_str())
                                     {
                                         *guard = None;
@@ -716,6 +725,37 @@ impl SidecarManager {
                         _ => {}
                     }
                 }
+            }
+
+            let orphan_run = active_collection_run
+                .lock()
+                .ok()
+                .and_then(|mut guard| guard.take());
+            if let Some(active_run) = orphan_run {
+                let message = "worker exited before FINISHED";
+                if let Some(conn) = conn.as_ref() {
+                    let _ = models::record_collection_failure(
+                        conn,
+                        &models::NewCollectionFailure {
+                            run_id: Some(&active_run.id),
+                            source_platform: Some(&active_run.source_platform),
+                            event_type: "WORKER_EXIT",
+                            keyword: None,
+                            encrypt_job_id: None,
+                            reason: message,
+                            raw_payload: None,
+                        },
+                    );
+                    let _ = models::fail_collection_run(conn, &active_run.id, message);
+                }
+                let _ = ipc::emit_event_all(
+                    &app_handle,
+                    &EventOut::Error(crate::ipc::protocol::ErrorPayload {
+                        message: format!("{}: {}", message, active_run.source_platform),
+                        stack: None,
+                    }),
+                );
+                let _ = ipc::emit_event_all(&app_handle, &EventOut::Finished);
             }
 
             if let Ok(mut guard) = inner.lock() {
@@ -751,16 +791,16 @@ impl SidecarManager {
         }
 
         let next_run = match cmd {
-            CommandIn::CrawlAutoStart(payload) => payload.run_id.as_ref().map(|run_id| {
-                ActiveCollectionRun {
+            CommandIn::CrawlAutoStart(payload) => {
+                payload.run_id.as_ref().map(|run_id| ActiveCollectionRun {
                     id: run_id.clone(),
                     source_platform: payload
                         .task
                         .source_platform
                         .clone()
                         .unwrap_or_else(|| "boss".to_string()),
-                }
-            }),
+                })
+            }
             _ => None,
         };
         let line = serde_json::to_string(cmd)?;

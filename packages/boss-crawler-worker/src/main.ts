@@ -1,6 +1,6 @@
 import type { CommandIn, EventOut } from "./protocol.js";
 import { emitEvent, readCommands } from "./stdio.js";
-import { runAiMode, runAiGroupMode, runAiGreetingMode, runAiCompanyScoreBatchMode } from "./modes/ai.js";
+import { runAiMode, runAiGroupMode, runAiGreetingMode, runAiCompanyScoreBatchMode, runAiPostCollectionJudgeMode } from "./modes/ai.js";
 import { runResumeDiagnoseMode, runResumeRewriteModuleMode } from "./modes/resumeWorkspace.js";
 import { runAutoMode } from "./modes/auto.js";
 import { runRefreshJobEvidenceMode } from "./modes/evidenceRefresh.js";
@@ -80,6 +80,9 @@ readCommands((cmd: CommandIn) => {
         return;
       case "AI_COMPANY_SCORE_BATCH":
         await startMode(runAiCompanyScoreBatchMode, cmd.payload);
+        return;
+      case "AI_POST_COLLECTION_JUDGE":
+        await startMode(runAiPostCollectionJudgeMode, cmd.payload);
         return;
       case "RESUME_DIAGNOSE":
         await startMode(runResumeDiagnoseMode, cmd.payload);

@@ -1,5 +1,5 @@
-mod common;
 mod collection;
+mod common;
 mod company_score;
 mod filter_results;
 mod job_fields;
@@ -8,14 +8,17 @@ mod jobs;
 mod source_adapter;
 mod source_links;
 
-pub(crate) use collection::{
-    create_collection_run, fail_collection_run, finish_collection_run, increment_collection_counter,
-    new_collection_run_id, record_collection_failure, refresh_collection_run_bucket_counts,
-    BucketCounts, CollectionCounter, NewCollectionFailure, NewCollectionRun,
-};
-pub use collection::{list_collection_failures, list_collection_runs, CollectionFailure, CollectionRun};
 #[cfg(test)]
 pub(crate) use collection::JobUpsertOutcome;
+pub(crate) use collection::{
+    create_collection_run, fail_collection_run, fail_stale_running_collection_runs,
+    finish_collection_run, increment_collection_counter, new_collection_run_id,
+    record_collection_failure, refresh_collection_run_bucket_counts, BucketCounts,
+    CollectionCounter, NewCollectionFailure, NewCollectionRun,
+};
+pub use collection::{
+    list_collection_failures, list_collection_runs, CollectionFailure, CollectionRun,
+};
 pub(crate) use company_score::{
     compute_company_score, rebuild_company_scores, upsert_company_score,
     upsert_company_score_from_source,

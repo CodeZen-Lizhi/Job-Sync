@@ -2205,6 +2205,29 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_filter_profile_allows_default_collectable_sources() {
+        let profile = normalize_filter_profile(&json!({
+          "sourcePlatforms": ["boss", "v2ex"],
+          "communicationStatuses": ["not_contacted"]
+        }));
+        let v2ex_job = json!({
+          "source_platform": "v2ex",
+          "position_name": "Go AI Agent 工程师",
+          "communication_status": "not_contacted"
+        });
+
+        let (eligible, reason) = evaluate_filter_profile(&v2ex_job, None, &profile);
+
+        assert!(eligible);
+        assert!(!reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .iter()
+            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")));
+        assert_eq!(reason["dimensions"]["source_platform"], json!("v2ex"));
+    }
+
+    #[test]
     fn evaluate_filter_profile_blocks_disallowed_communication_status() {
         let profile = normalize_filter_profile(&json!({
           "sourcePlatforms": ["boss"],

@@ -18,6 +18,6 @@ defineEmits<{
       <span class="text-xs text-content-muted">{{ sidecarRunning ? '运行中' : '空闲' }}</span>
     </div>
     <button class="ui-btn-primary" :disabled="!tauri || actionBusy || sidecarRunning" @click="$emit('start')">{{ actionBusy ? '执行中…' : sidecarRunning ? '运行中' : '开始' }}</button>
-    <button class="ui-btn-secondary" :disabled="!tauri || actionBusy || !sidecarRunning" @click="$emit('stop')">停止</button>
+    <button class="ui-btn-secondary" :disabled="!tauri || (!actionBusy && !sidecarRunning)" @click="$emit('stop')">停止</button>
   </div>
 </template>

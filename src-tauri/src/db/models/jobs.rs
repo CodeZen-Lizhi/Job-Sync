@@ -4,8 +4,8 @@ use serde_json::Value;
 use crate::db::Result;
 
 use super::{
-    common::now_rfc3339,
     collection::JobUpsertOutcome,
+    common::now_rfc3339,
     company_score::upsert_company_score_from_source,
     job_fields::{extract_job_fields_from_detail, extract_job_fields_from_list_item, JobFields},
     source_adapter::{normalize_boss_detail, normalize_boss_list_item, NormalizedJobSource},

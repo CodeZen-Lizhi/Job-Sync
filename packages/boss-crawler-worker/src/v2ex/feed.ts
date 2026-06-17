@@ -23,13 +23,13 @@ export type V2exFeedEntry = {
 
 type Classification = {
   isJobPosting: boolean;
+  hasHiringSignal: boolean;
   matched: string[];
-  blocked: string[];
 };
 
 const DEFAULT_FEED_URL = "https://www.v2ex.com/feed/tab/jobs.xml";
 const FEED_REQUEST_TIMEOUT_MS = 30_000;
-const POSITIVE_TERMS = [
+const STRONG_HIRING_TERMS = [
   "招聘",
   "招人",
   "内推",
@@ -37,6 +37,11 @@ const POSITIVE_TERMS = [
   "远程",
   "全职",
   "兼职",
+  "急招",
+  "hc",
+  "hiring",
+];
+const SUPPORTING_HIRING_TERMS = [
   "岗位",
   "职位",
   "jd",
@@ -48,24 +53,8 @@ const POSITIVE_TERMS = [
   "微信",
   "wechat",
   "remote",
-  "hiring",
   "offer",
 ];
-const NEGATIVE_TERMS = [
-  "面试",
-  "求职",
-  "失业",
-  "职业规划",
-  "请教",
-  "吐槽",
-  "老板",
-  "简历怎么",
-  "有没有",
-  "是不是",
-  "怎么通俗",
-  "想做",
-];
-
 const feedProxyAgent = new ProxyAgent();
 
 type FeedHttpResponse = {
@@ -163,14 +152,17 @@ function includesAny(text: string, terms: readonly string[]): string[] {
   return terms.filter((term) => haystack.includes(normalizeText(term)));
 }
 
-export function classifyV2exJobEntry(entry: V2exFeedEntry, keywords: readonly string[], excludedKeywords: readonly string[]): Classification {
+export function classifyV2exJobEntry(entry: V2exFeedEntry, keywords: readonly string[], _excludedKeywords: readonly string[] = []): Classification {
   const text = `${entry.title}\n${entry.contentText}`;
-  const matched = includesAny(text, [...POSITIVE_TERMS, ...keywords]);
-  const blocked = includesAny(text, [...NEGATIVE_TERMS, ...excludedKeywords]);
+  const strongHiring = includesAny(text, STRONG_HIRING_TERMS);
+  const supportingHiring = includesAny(text, SUPPORTING_HIRING_TERMS);
+  const keywordMatches = includesAny(text, keywords);
+  const matched = [...strongHiring, ...supportingHiring, ...keywordMatches];
+  const hasHiringSignal = strongHiring.length > 0 || supportingHiring.length >= 2;
   return {
-    isJobPosting: matched.length > 0 && blocked.length === 0,
+    isJobPosting: hasHiringSignal,
+    hasHiringSignal,
     matched,
-    blocked,
   };
 }
 
@@ -267,40 +259,77 @@ function inferPositionName(title: string): string {
     .trim() || title;
 }
 
+function buildSkipReason(_entry: V2exFeedEntry, classification: Classification): string {
+  if (!classification.hasHiringSignal) {
+    return "缺少招聘信号词";
+  }
+  return "未满足 V2EX 招聘帖判定";
+}
+
 export async function runV2exFeedMode(payload: any, ctx: ModeContext): Promise<void> {
   const task = payload.task ?? {};
   const limits = task.limits ?? {};
   const filters = task.filters ?? {};
   const keywords = asStringList(task.keywords);
-  const profile = filters.profile && typeof filters.profile === "object" ? filters.profile : {};
-  const excludedKeywords = asStringList([
-    ...asStringList(filters.excluded_keywords),
-    ...asStringList(profile.mustNotKeywords ?? profile.must_not_keywords),
-  ]);
   const feedUrl = typeof filters.feed_url === "string" && filters.feed_url.trim() ? filters.feed_url.trim() : DEFAULT_FEED_URL;
   const maxEntries = typeof limits.maxEntries === "number" ? limits.maxEntries : 40;
   const maxJobs = typeof limits.maxJobs === "number" ? limits.maxJobs : 50;
 
   ctx.emit({ type: "LOG", payload: { level: "info", message: `开始 V2EX Feed 自动采集：${feedUrl}` } });
+  ctx.emit({ type: "LOG", payload: { level: "info", message: "正在请求 V2EX Feed..." } });
   const response = await fetchV2exFeedXml(feedUrl, ctx.signal);
+  ctx.emit({
+    type: "LOG",
+    payload: { level: "info", message: `V2EX Feed 响应：HTTP ${response.status}，${response.body.length} 字符。` },
+  });
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`V2EX feed 返回异常：HTTP ${response.status}`);
   }
   const xml = response.body;
   const entries = parseV2exAtomFeed(xml).slice(0, Math.max(1, maxEntries));
+  ctx.emit({
+    type: "PROGRESS",
+    payload: { keyword: keywords[0] ?? "V2EX", captured_job_detail: 0, filtered_job: 0 },
+  });
+  ctx.emit({
+    type: "LOG",
+    payload: { level: "info", message: `V2EX Feed 解析完成：候选 ${entries.length} 条，最多入库 ${maxJobs} 条。` },
+  });
   let captured = 0;
   let filtered = 0;
 
   for (const entry of entries) {
     if (ctx.signal.aborted || captured >= maxJobs) break;
-    const classification = classifyV2exJobEntry(entry, keywords, excludedKeywords);
+    const classification = classifyV2exJobEntry(entry, keywords);
     if (!classification.isJobPosting) {
       filtered += 1;
+      const reason = buildSkipReason(entry, classification);
+      ctx.emit({
+        type: "JOB_FILTERED",
+        payload: {
+          encrypt_job_id: `v2ex:${entry.topicId}`,
+          keyword: keywords[0] ?? "V2EX",
+          filters,
+          reason: {
+            eligible: false,
+            blocked_by: [
+              {
+                rule_type: "v2ex_feed_classification",
+                field: "positive_terms",
+                value: "",
+                reason,
+              },
+            ],
+            matched_preferences: classification.matched,
+            missing_preferences: [],
+          },
+        },
+      });
       ctx.emit({
         type: "LOG",
         payload: {
           level: "info",
-          message: `跳过 V2EX 非招聘帖：${entry.title}`,
+          message: `跳过 V2EX：${entry.title}（${reason}）`,
         },
       });
       continue;

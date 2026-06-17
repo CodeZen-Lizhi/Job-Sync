@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Activity, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
+import { Activity, BrainCircuit, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
 import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
@@ -44,6 +44,8 @@ const {
   greetingLoading,
   pendingEvidenceRefreshingJobId,
   pendingEvidenceRefreshMessage,
+  aiPostCollectionJudging,
+  aiPostCollectionJudgeMessage,
   resumeWorkspaceStatuses,
   confirmDialog,
   JOB_TIME_RANGE_OPTIONS,
@@ -79,6 +81,7 @@ const {
   copyGreeting,
   copyApplicationPacket,
   refreshPendingJobEvidence,
+  recomputeAiPostCollectionJudgement,
   closeConfirm,
   executeConfirm,
 } = useJobsPage();
@@ -349,6 +352,19 @@ onMounted(() => {
             {{ bucket.label }}
           </button>
         </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 border-t border-border/10 px-4 py-3">
+        <button
+          type="button"
+          class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+          :disabled="!tauri || aiPostCollectionJudging || displayedJobs.length === 0"
+          title="用 AI 重算当前页岗位的采后判断；硬规则命中的岗位会保留原结果"
+          @click="recomputeAiPostCollectionJudgement(displayedJobs.map((job) => job.encrypt_job_id))"
+        >
+          <BrainCircuit class="h-3.5 w-3.5" aria-hidden="true" />
+          {{ aiPostCollectionJudging ? "AI 判断中" : "AI 重算当前页" }}
+        </button>
+        <span v-if="aiPostCollectionJudgeMessage" class="text-xs text-content-muted">{{ aiPostCollectionJudgeMessage }}</span>
       </div>
 
       <div class="grid gap-3 p-4 md:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))]">

@@ -60,6 +60,7 @@ export type SidecarEvent =
           blocked_by: Array<{ rule_type: string; field: string; value: string; reason: string }>;
           matched_preferences: string[];
           missing_preferences: string[];
+          pending_by?: Array<{ rule_type: string; field: string; value: string; reason: string }>;
         };
         raw?: unknown;
       };

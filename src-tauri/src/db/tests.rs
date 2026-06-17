@@ -1,4 +1,4 @@
-use super::{init_db, models};
+use super::{init_db, init_db_for_app_start, models};
 use serde_json::{json, Value};
 
 fn json_string_list(value: &Value, key: &str) -> Vec<String> {
@@ -45,6 +45,9 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
     assert!(source_platforms
         .iter()
         .any(|item| item.as_str() == Some("boss")));
+    assert!(source_platforms
+        .iter()
+        .any(|item| item.as_str() == Some("v2ex")));
     assert_eq!(
         profile
             .profile_json
@@ -189,6 +192,38 @@ fn existing_default_filter_profile_with_missing_or_empty_preferences_is_upgraded
     assert_eq!(
         json_string_list(&persisted_json, "preferenceTechTags"),
         preference_tech_tags
+    );
+}
+
+#[test]
+fn existing_default_filter_profile_with_legacy_boss_only_source_adds_v2ex() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    let old_profile = json!({
+      "sourcePlatforms": ["boss"],
+      "preferenceDirections": ["Go"],
+      "preferenceTechTags": ["Kubernetes"]
+    });
+    conn.execute(
+        r#"
+      INSERT INTO filter_profile (id, name, profile_json, is_default, updated_at)
+      VALUES (?1, ?2, ?3, 1, ?4)
+      "#,
+        rusqlite::params![
+            models::DEFAULT_FILTER_PROFILE_ID,
+            "默认筛选画像",
+            old_profile.to_string(),
+            "2026-06-14T00:00:00Z"
+        ],
+    )
+    .expect("seed old profile");
+
+    let profile = models::load_default_filter_profile(&conn).expect("load upgraded profile");
+    assert_eq!(
+        json_string_list(&profile.profile_json, "sourcePlatforms"),
+        vec!["boss".to_string(), "v2ex".to_string()]
     );
 }
 
@@ -524,6 +559,69 @@ fn collection_run_and_failure_helpers_persist_summary_records() {
     assert_eq!(failures[0].run_id.as_deref(), Some(run_id.as_str()));
     assert_eq!(failures[0].event_type, "JOB_LIST_CAPTURED");
     assert_eq!(failures[0].reason, "missing stable job id");
+}
+
+#[test]
+fn init_db_preserves_active_collection_runs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let run_id = models::new_collection_run_id();
+
+    models::create_collection_run(
+        &conn,
+        &models::NewCollectionRun {
+            id: &run_id,
+            source_platform: "v2ex",
+            keywords: &["V2EX".to_string()],
+            filters: &json!({}),
+            limits: &json!({ "maxJobs": 10 }),
+        },
+    )
+    .expect("create running run");
+    drop(conn);
+
+    let conn = init_db(&app_data_dir).expect("re-init db");
+    let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, run_id);
+    assert_eq!(runs[0].status, "running");
+    assert_eq!(runs[0].error_message, None);
+    assert!(runs[0].finished_at.is_none());
+}
+
+#[test]
+fn init_db_for_app_start_marks_stale_running_collection_runs_failed() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let run_id = models::new_collection_run_id();
+
+    models::create_collection_run(
+        &conn,
+        &models::NewCollectionRun {
+            id: &run_id,
+            source_platform: "v2ex",
+            keywords: &["V2EX".to_string()],
+            filters: &json!({}),
+            limits: &json!({ "maxJobs": 10 }),
+        },
+    )
+    .expect("create running run");
+    drop(conn);
+
+    let conn = init_db_for_app_start(&app_data_dir).expect("app-start init db");
+    let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, run_id);
+    assert_eq!(runs[0].status, "failed");
+    assert_eq!(
+        runs[0].error_message.as_deref(),
+        Some("app restarted before collection finished")
+    );
+    assert!(runs[0].finished_at.is_some());
 }
 
 #[test]

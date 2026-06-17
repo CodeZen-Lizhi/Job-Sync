@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildAiGroupPrompts, buildAiPrompts, buildCompanyScoreBatchPrompts, buildGreetingPrompts } from "../src/ai/prompt.js";
+import {
+  buildAiGroupPrompts,
+  buildAiPrompts,
+  buildCompanyScoreBatchPrompts,
+  buildGreetingPrompts,
+  buildPostCollectionJudgePrompts,
+} from "../src/ai/prompt.js";
 import { normalizeAiResult } from "../src/modes/ai/normalizeResume.js";
 import { normalizeAiGroupResult } from "../src/modes/ai/normalizeGroup.js";
 import { normalizeAiCompanyScoreBatchResult } from "../src/modes/ai/normalizeCompanyScore.js";
@@ -120,6 +126,29 @@ describe("AI fixture contract", () => {
     assert.match(prompts.user, /review_context/);
     assert.match(prompts.user, /greeted_unread/);
     assert.match(prompts.user, /sec-001/);
+  });
+
+  it("builds post-collection judge prompts with AI preference and soft rejection guidance", () => {
+    const prompts = buildPostCollectionJudgePrompts({
+      profile: {
+        aiPreferredText: "优先 Go / Infra / SRE，有 Kubernetes 和平台工程证据。",
+        aiRejectedText: "软排除：外包、驻场、招转培、销售导向、纯实施交付。",
+        aiRiskText: "信息太少或软排除证据暧昧时，放入待确认。",
+        aiUncertainStrategy: "pending_confirmation",
+      },
+      job: fixtureJob,
+      filterReason: fixtureJobContext.filterReason,
+    });
+
+    assert.match(prompts.system, /AI 软排除是判断偏好/);
+    assert.match(prompts.user, /AI 想看的岗位/);
+    assert.match(prompts.user, /AI 软排除/);
+    assert.match(prompts.user, /AI 风险关注点/);
+    assert.match(prompts.user, /不确定策略/);
+    assert.match(prompts.user, /招转培/);
+    assert.match(prompts.user, /证据不足、软排除只是隐约迹象/);
+    assert.match(prompts.user, /pending_confirmation/);
+    assert.match(prompts.user, /Go SRE 工程师/);
   });
 
   it("normalizes compatible resume-match model output into the strict schema", () => {

@@ -1,8 +1,13 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 
 import {
+  DEFAULT_AI_PREFERRED_TEXT,
+  DEFAULT_AI_REJECTED_TEXT,
+  DEFAULT_AI_RISK_TEXT,
+  DEFAULT_AI_UNCERTAIN_STRATEGY,
   DEFAULT_ACCEPT_NEGOTIABLE_SALARY,
   DEFAULT_ACCEPT_UNKNOWN_EXPERIENCE,
+  BOSS_ONLY_SOURCE_PLATFORMS,
   DEFAULT_COMMUNICATION_STATUSES,
   JOB_SOURCE_PLATFORM_OPTIONS,
   MANUAL_IMPORT_SOURCE_PLATFORMS,
@@ -17,6 +22,7 @@ import {
   parseList,
   type FilterProfilePayload,
   type FilterProfileRecord,
+  type AiUncertainStrategy,
   type JobSourcePlatformOption,
   type RecomputeFilterProfileResult,
 } from "./crawl";
@@ -32,12 +38,25 @@ function normalizeSourcePlatforms(platforms: readonly string[]): string[] {
   return Array.from(new Set(platforms.map((item) => item.trim().toLowerCase()).filter(Boolean)));
 }
 
+function normalizeProfileText(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function normalizeAiUncertainStrategy(value: unknown): AiUncertainStrategy {
+  if (value === "filtered" || value === "recommended" || value === "pending_confirmation") return value;
+  return DEFAULT_AI_UNCERTAIN_STRATEGY;
+}
+
 export type FilterProfileState = {
   filterProfiles: Ref<FilterProfileRecord[]>;
   activeFilterProfileId: Ref<string>;
   activeFilterProfileName: Ref<string>;
   newFilterProfileName: Ref<string>;
   activeFilterProfileIsDefault: ComputedRef<boolean>;
+  aiPreferredText: Ref<string>;
+  aiRejectedText: Ref<string>;
+  aiRiskText: Ref<string>;
+  aiUncertainStrategy: Ref<AiUncertainStrategy>;
   mustKeywordsText: Ref<string>;
   mustNotKeywordsText: Ref<string>;
   preferenceKeywordsText: Ref<string>;
@@ -101,6 +120,10 @@ export type FilterProfileState = {
 
 export function useFilterProfile() {
   const tauri = isTauri();
+  const aiPreferredText = ref(DEFAULT_AI_PREFERRED_TEXT);
+  const aiRejectedText = ref(DEFAULT_AI_REJECTED_TEXT);
+  const aiRiskText = ref(DEFAULT_AI_RISK_TEXT);
+  const aiUncertainStrategy = ref<AiUncertainStrategy>(DEFAULT_AI_UNCERTAIN_STRATEGY);
   const mustKeywordsText = ref("");
   const mustNotKeywordsText = ref(DEFAULT_MUST_NOT_KEYWORDS.join("\n"));
   const preferenceKeywordsText = ref("");
@@ -145,7 +168,7 @@ export function useFilterProfile() {
   const companyWeight = ref(DEFAULT_SCORE_WEIGHTS.company);
   const filterProfiles = ref<FilterProfileRecord[]>([]);
   const activeFilterProfileId = ref("default");
-  const activeFilterProfileName = ref("默认筛选画像");
+  const activeFilterProfileName = ref("默认采后规则");
   const newFilterProfileName = ref("");
   const activeFilterProfile = computed(() => filterProfiles.value.find((profile) => profile.id === activeFilterProfileId.value) ?? null);
   const activeFilterProfileIsDefault = computed(() => activeFilterProfile.value?.is_default === true);
@@ -153,21 +176,27 @@ export function useFilterProfile() {
   const normalizedSourcePlatforms = computed(() => normalizeSourcePlatforms(selectedSourcePlatforms.value));
   const sourcePlatformModeLabel = computed(() => {
     const selected = normalizedSourcePlatforms.value;
-    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "Boss-only";
+    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "自动采集来源";
+    if (sameSet(selected, BOSS_ONLY_SOURCE_PLATFORMS)) return "Boss-only";
     if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "外部保留来源";
     if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "全来源";
     return selected.length > 0 ? "自定义来源" : "未限制来源";
   });
   const sourcePlatformModeHint = computed(() => {
     const selected = normalizedSourcePlatforms.value;
-    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "只允许 Boss 岗位进入筛选和 Top 20；保存画像并重算后对已有岗位生效。";
-    if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "只允许非 Boss 保留来源岗位进入筛选和 Top 20；保存画像并重算后对已有岗位生效。";
-    if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许 Boss 和所有外部保留来源岗位进入筛选和 Top 20；保存画像并重算后生效。";
-    if (selected.length > 0) return `当前允许来源：${selected.join("、")}；保存画像并重算后生效。`;
-    return "来源为空时不会按来源限制岗位；保存画像并重算后生效。";
+    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "允许 Boss 和 V2EX 等已支持自动采集来源进入筛选和 Top 20；保存并重算后对已有岗位生效。";
+    if (sameSet(selected, BOSS_ONLY_SOURCE_PLATFORMS)) return "只允许 Boss 岗位进入筛选和 Top 20；保存并重算后对已有岗位生效。";
+    if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "只允许非 Boss 保留来源岗位进入筛选和 Top 20；保存并重算后对已有岗位生效。";
+    if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许 Boss 和所有外部保留来源岗位进入筛选和 Top 20；保存并重算后生效。";
+    if (selected.length > 0) return `当前允许来源：${selected.join("、")}；保存并重算后生效。`;
+    return "来源为空时不会按来源限制岗位；保存并重算后生效。";
   });
 
   const filterProfile = computed<FilterProfilePayload>(() => ({
+    aiPreferredText: aiPreferredText.value.trim(),
+    aiRejectedText: aiRejectedText.value.trim(),
+    aiRiskText: aiRiskText.value.trim(),
+    aiUncertainStrategy: aiUncertainStrategy.value,
     mustKeywords: parseList(mustKeywordsText.value),
     mustNotKeywords: parseList(mustNotKeywordsText.value),
     preferenceKeywords: parseList(preferenceKeywordsText.value),
@@ -218,6 +247,10 @@ export function useFilterProfile() {
     activeFilterProfileId.value = profile.id;
     activeFilterProfileName.value = profile.name;
     const json = profile.profile_json;
+    aiPreferredText.value = normalizeProfileText(json.aiPreferredText, DEFAULT_AI_PREFERRED_TEXT);
+    aiRejectedText.value = normalizeProfileText(json.aiRejectedText, DEFAULT_AI_REJECTED_TEXT);
+    aiRiskText.value = normalizeProfileText(json.aiRiskText, DEFAULT_AI_RISK_TEXT);
+    aiUncertainStrategy.value = normalizeAiUncertainStrategy(json.aiUncertainStrategy);
     mustKeywordsText.value = Array.isArray(json.mustKeywords) ? json.mustKeywords.join("\n") : "";
     mustNotKeywordsText.value = Array.isArray(json.mustNotKeywords)
       ? json.mustNotKeywords.join("\n")
@@ -279,7 +312,7 @@ export function useFilterProfile() {
   }
 
   function setBossOnlySourcePlatforms(): void {
-    setSourcePlatforms(DEFAULT_SOURCE_PLATFORMS);
+    setSourcePlatforms(BOSS_ONLY_SOURCE_PLATFORMS);
   }
 
   function setManualImportSourcePlatforms(): void {
@@ -329,7 +362,7 @@ export function useFilterProfile() {
 
   async function saveActiveFilterProfile(options: { makeDefault?: boolean } = {}): Promise<FilterProfileRecord | null> {
     if (!tauri) return null;
-    const name = activeFilterProfileName.value.trim() || "未命名筛选画像";
+    const name = activeFilterProfileName.value.trim() || "默认采后规则";
     const shouldMakeDefault =
       options.makeDefault ?? activeFilterProfile.value?.is_default ?? activeFilterProfileId.value === "default";
     const saved = await invoke<FilterProfileRecord>("save_filter_profile", {
@@ -347,7 +380,7 @@ export function useFilterProfile() {
     if (!tauri) return null;
     const profileName = (name ?? newFilterProfileName.value).trim();
     if (!profileName) {
-      throw new Error("请输入新画像名称。");
+      throw new Error("请输入新规则名称。");
     }
     const saved = await invoke<FilterProfileRecord>("save_filter_profile", {
       id: null,
@@ -397,6 +430,10 @@ export function useFilterProfile() {
     activeFilterProfileName,
     newFilterProfileName,
     activeFilterProfileIsDefault,
+    aiPreferredText,
+    aiRejectedText,
+    aiRiskText,
+    aiUncertainStrategy,
     mustKeywordsText,
     mustNotKeywordsText,
     preferenceKeywordsText,

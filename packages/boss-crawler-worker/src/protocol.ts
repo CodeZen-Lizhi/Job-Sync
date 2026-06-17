@@ -85,6 +85,12 @@ export const AiCompanyScoreBatchPayloadSchema = z.object({
     .min(1),
 });
 
+export const AiPostCollectionJudgePayloadSchema = z.object({
+  profile: z.any().optional(),
+  job: z.any(),
+  filter_reason: z.any().optional(),
+});
+
 export const ResumeDiagnosePayloadSchema = z.object({
   resume_text: z.string().min(1),
   context_text: z.string().optional(),
@@ -129,6 +135,7 @@ export const CommandInSchema = z.union([
   z.object({ type: z.literal("AI_ANALYZE_GROUP"), payload: AiAnalyzeGroupPayloadSchema }),
   z.object({ type: z.literal("AI_GREETING"), payload: AiGreetingPayloadSchema }),
   z.object({ type: z.literal("AI_COMPANY_SCORE_BATCH"), payload: AiCompanyScoreBatchPayloadSchema }),
+  z.object({ type: z.literal("AI_POST_COLLECTION_JUDGE"), payload: AiPostCollectionJudgePayloadSchema }),
   z.object({ type: z.literal("RESUME_DIAGNOSE"), payload: ResumeDiagnosePayloadSchema }),
   z.object({ type: z.literal("RESUME_REWRITE_MODULE"), payload: ResumeRewriteModulePayloadSchema }),
   z.object({ type: z.literal("STOP") }),

@@ -148,6 +148,14 @@ export interface FilterReasonDimensions {
   last_seen_at?: string | null;
 }
 
+export interface AiPostCollectionJudgement {
+  bucket?: "recommended" | "pending_confirmation" | "filtered" | string;
+  confidence?: number;
+  summary?: string;
+  evidence?: string[];
+  risks?: string[];
+}
+
 export interface FilterReasonJson {
   eligible?: boolean;
   bucket?: "recommended" | "pending_confirmation" | "filtered" | string;
@@ -155,6 +163,7 @@ export interface FilterReasonJson {
   matched_preferences?: string[];
   missing_preferences?: string[];
   dimensions?: FilterReasonDimensions;
+  ai_judgement?: AiPostCollectionJudgement;
 }
 
 export interface ScoreReasonJson {
@@ -261,6 +270,41 @@ export function companyRiskFlagLabel(flag: string): string {
   return COMPANY_RISK_FLAG_LABELS[flag] ?? flag;
 }
 
+function uniqStrings(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+export function preferenceSignalLabel(value: string): string {
+  const trimmed = value.trim();
+  const parts = trimmed.split(":");
+  if (parts.length < 2) return trimmed;
+  const prefix = parts[0].trim().toLowerCase();
+  const label = parts.slice(1).join(":").trim();
+  if (!label) return trimmed;
+  if (prefix === "direction") return `方向：${label}`;
+  if (prefix === "tech") return `技术：${label}`;
+  if (prefix === "work_mode") return `工作方式：${label}`;
+  if (prefix === "company") return `公司：${label}`;
+  if (prefix === "keyword") return `关键词：${label}`;
+  return label;
+}
+
+export function formatPreferenceSignals(values: readonly string[], limit = 5): string {
+  const labels = uniqStrings(values).map(preferenceSignalLabel);
+  if (labels.length === 0) return "";
+  return `${labels.slice(0, limit).join("、")}${labels.length > limit ? ` 等${labels.length}项` : ""}`;
+}
+
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter((item) => item.length > 0);
@@ -308,6 +352,15 @@ export function parseFilterReasonJson(json: string | null | undefined): FilterRe
       : undefined,
     matched_preferences: asStringArray(parsed.matched_preferences),
     missing_preferences: asStringArray(parsed.missing_preferences),
+    ai_judgement: parsed.ai_judgement
+      ? {
+          bucket: asString(parsed.ai_judgement.bucket) ?? undefined,
+          confidence: asFiniteNumber(parsed.ai_judgement.confidence) ?? undefined,
+          summary: asString(parsed.ai_judgement.summary) ?? undefined,
+          evidence: asStringArray(parsed.ai_judgement.evidence),
+          risks: asStringArray(parsed.ai_judgement.risks),
+        }
+      : undefined,
     dimensions: parsed.dimensions
       ? {
           detected_work_modes: asStringArray(parsed.dimensions.detected_work_modes),
@@ -339,6 +392,25 @@ export function parseFilterReasonJson(json: string | null | undefined): FilterRe
         }
       : undefined,
   };
+}
+
+export function filterBucketLabel(bucket?: string | null): string {
+  if (bucket === "recommended") return "推荐";
+  if (bucket === "pending_confirmation") return "待确认";
+  if (bucket === "filtered") return "过滤";
+  return bucket || "未判断";
+}
+
+export function formatAiPostCollectionJudgement(judgement: AiPostCollectionJudgement | null | undefined): string {
+  if (!judgement) return "暂无 AI 采后判断";
+  const parts: string[] = [`AI：${filterBucketLabel(judgement.bucket)}`];
+  if (typeof judgement.confidence === "number") {
+    parts.push(`置信度 ${Math.round(judgement.confidence * 100)}%`);
+  }
+  if (judgement.summary) {
+    parts.push(judgement.summary);
+  }
+  return parts.join("；");
 }
 
 export function parseScoreReasonJson(json: string | null | undefined): ScoreReasonJson | null {
@@ -385,7 +457,7 @@ export function parseScoreReasonJson(json: string | null | undefined): ScoreReas
 }
 
 export function formatFilterReasonSummary(reason: FilterReasonJson | null | undefined): string {
-  if (!reason) return "不满足筛选画像";
+  if (!reason) return "不满足筛选规则";
 
   const parts: string[] = [];
   const blockedBy = reason.blocked_by ?? [];
@@ -405,16 +477,16 @@ export function formatFilterReasonSummary(reason: FilterReasonJson | null | unde
   }
 
   if (matched.length > 0) {
-    const matchedSummary = matched.slice(0, 3).join("、");
+    const matchedSummary = matched.slice(0, 3).map(preferenceSignalLabel).join("、");
     parts.push(`偏好命中：${matchedSummary}${matched.length > 3 ? ` 等${matched.length}项` : ""}`);
   }
 
   if (missing.length > 0) {
-    const missingSummary = missing.slice(0, 3).join("、");
+    const missingSummary = missing.slice(0, 3).map(preferenceSignalLabel).join("、");
     parts.push(`偏好缺失：${missingSummary}${missing.length > 3 ? ` 等${missing.length}项` : ""}`);
   }
 
-  return parts.join("；") || "不满足筛选画像";
+  return parts.join("；") || "不满足筛选规则";
 }
 
 export function formatScoreReasonSummary(reason: ScoreReasonJson | null | undefined): string {
@@ -447,11 +519,11 @@ export function formatScoreReasonSummary(reason: ScoreReasonJson | null | undefi
   }
 
   if (matched.length > 0) {
-    parts.push(`偏好命中：${matched.slice(0, 3).join("、")}${matched.length > 3 ? ` 等${matched.length}项` : ""}`);
+    parts.push(`加分项：${matched.slice(0, 3).map(preferenceSignalLabel).join("、")}${matched.length > 3 ? ` 等${matched.length}项` : ""}`);
   }
 
   if (missing.length > 0) {
-    parts.push(`偏好缺失：${missing.slice(0, 3).join("、")}${missing.length > 3 ? ` 等${missing.length}项` : ""}`);
+    parts.push(`缺少加分项：${missing.slice(0, 3).map(preferenceSignalLabel).join("、")}${missing.length > 3 ? ` 等${missing.length}项` : ""}`);
   }
 
   if (riskFlags.length > 0) {

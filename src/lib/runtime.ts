@@ -37,6 +37,8 @@ export const runtime = reactive({
   bossChatStatusSyncedCount: 0,
   /** Incremented each time a FINISHED event arrives — watchers can react to this. */
   finishedCounter: 0,
+  /** Incremented each time an ERROR event arrives — batch runners can detect per-platform failures. */
+  errorCounter: 0,
   /** Set to the encrypt_job_id of the most recently captured detail. */
   lastDetailCapturedId: undefined as string | undefined,
 });
@@ -50,8 +52,21 @@ function pushLog(line: LogLine): void {
   if (runtime.logs.length > 500) runtime.logs.splice(0, runtime.logs.length - 500);
 }
 
+export function appendRuntimeLog(level: string, message: string): void {
+  pushLog({ ts: nowIso(), level, message });
+}
+
 export function clearLogs(): void {
   runtime.logs.splice(0, runtime.logs.length);
+}
+
+export function resetCrawlProgress(): void {
+  runtime.progress.keyword = undefined;
+  runtime.progress.current_page = undefined;
+  runtime.progress.captured_job_list = 0;
+  runtime.progress.captured_job_detail = 0;
+  runtime.progress.filtered_job = 0;
+  runtime.lastDetailCapturedId = undefined;
 }
 
 export function applySidecarEvent(evt: SidecarEvent): void {
@@ -64,6 +79,7 @@ export function applySidecarEvent(evt: SidecarEvent): void {
       });
       return;
     case "ERROR":
+      runtime.errorCounter += 1;
       pushLog({
         ts: nowIso(),
         level: "error",
@@ -97,8 +113,10 @@ export function applySidecarEvent(evt: SidecarEvent): void {
     case "JOB_FILTERED": {
       runtime.progress.filtered_job += 1;
       const job = evt.payload.encrypt_job_id ? ` ${evt.payload.encrypt_job_id}` : "";
-      const reasons = evt.payload.reason.blocked_by.map((item) => item.reason).join("；");
-      pushLog({ ts: nowIso(), level: "warn", message: `已过滤岗位${job}：${reasons || "不满足筛选画像"}` });
+      const blockedReasons = evt.payload.reason.blocked_by.map((item) => item.reason).filter(Boolean);
+      const pendingReasons = evt.payload.reason.pending_by?.map((item) => item.reason).filter(Boolean) ?? [];
+      const reasons = [...blockedReasons, ...pendingReasons].join("；");
+      pushLog({ ts: nowIso(), level: "warn", message: `已跳过/过滤岗位${job}：${reasons || "未满足采集或筛选规则"}` });
       return;
     }
     case "COOKIE_COLLECTED":

@@ -140,3 +140,13 @@ export const AiCompanyScoreBatchResultSchema = z.object({
     )
     .min(1),
 }).passthrough();
+
+export const AiPostCollectionJudgeResultSchema = z
+  .object({
+    bucket: z.enum(["recommended", "pending_confirmation", "filtered"]),
+    confidence: z.number().min(0).max(1),
+    summary: z.string().trim().min(1),
+    evidence: nonEmptyEvidenceArray,
+    risks: z.array(z.string().trim().min(1)).optional().default([]),
+  })
+  .passthrough();
