@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 
 import UiSelect from "../components/ui/UiSelect.vue";
+import AiProfileInputs from "../components/ai/AiProfileInputs.vue";
 import { CRAWL_TASK_TYPE_LOGIN, JOB_SOURCE_PLATFORM_OPTIONS } from "../lib/crawl";
 import { runtime } from "../lib/runtime";
 import { invoke, isTauri } from "../lib/tauri";
@@ -24,6 +25,10 @@ interface AppSettings {
   telegram_chat_id?: string | null;
   has_telegram_chat_id?: boolean | null;
   proxy_url?: string | null;
+  ai_resume_text?: string | null;
+  ai_context_text?: string | null;
+  ai_resume_files?: string | null;
+  ai_profile_updated_at?: string | null;
 }
 
 interface ModelInfo {
@@ -97,6 +102,10 @@ const hasSavedTelegramBotToken = ref(false);
 const telegramChatId = ref("");
 const hasSavedTelegramChatId = ref(false);
 const proxyUrl = ref("");
+const resumeMode = ref<"text" | "file">("text");
+const resumeText = ref("");
+const resumeFilePath = ref("");
+const contextText = ref("");
 
 const models = ref<ModelInfo[]>([]);
 const jobSources = ref<JobSourceEntry[]>([]);
@@ -189,6 +198,12 @@ async function loadSettings(): Promise<void> {
       ? settings.has_telegram_chat_id
       : !!settings.telegram_chat_id;
     proxyUrl.value = settings.proxy_url ?? "";
+    if (!resumeText.value.trim() && settings.ai_resume_text) resumeText.value = settings.ai_resume_text;
+    if (!contextText.value.trim() && settings.ai_context_text) contextText.value = settings.ai_context_text;
+    if (!resumeFilePath.value.trim() && settings.ai_resume_files) {
+      resumeFilePath.value = settings.ai_resume_files;
+      resumeMode.value = "file";
+    }
     if (settings.openai_api_mode) {
       const m = settings.openai_api_mode.trim().toLowerCase();
       if (m === "responses") apiMode.value = "responses";
@@ -415,6 +430,9 @@ async function save(): Promise<void> {
       telegramBotToken: telegramBotToken.value.trim() || (hasSavedTelegramBotToken.value ? null : ""),
       telegramChatId: telegramChatId.value.trim() || (hasSavedTelegramChatId.value ? null : ""),
       proxyUrl: proxyUrl.value.trim() || null,
+      aiResumeText: resumeMode.value === "text" ? resumeText.value : "",
+      aiContextText: contextText.value.trim() || null,
+      aiResumeFiles: resumeMode.value === "file" ? resumeFilePath.value : null,
     });
     hasSavedApiKey.value = typeof saved.has_openai_api_key === "boolean"
       ? saved.has_openai_api_key
@@ -746,12 +764,23 @@ watch(
             placeholder="例如：语气更自然；优先突出项目成果和技术栈交集；不要写成群发模板。"
           />
           <div class="text-xs text-content-muted">
-            只会影响“打招呼”生成，不会影响简历分析、职位分析或公司评分。
+            只会影响“打招呼”生成，不会影响公司评分。
           </div>
         </label>
       </div>
     </div>
 
+    <!-- AI Resume Config -->
+    <div class="space-y-3">
+      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">简历</div>
+      <AiProfileInputs
+        :tauri="tauri"
+        v-model:resumeMode="resumeMode"
+        v-model:resumeText="resumeText"
+        v-model:resumeFilePath="resumeFilePath"
+        v-model:contextText="contextText"
+      />
+    </div>
     <!-- External Notification Config -->
     <div class="space-y-3">
       <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">外部通知</div>

@@ -41,7 +41,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::auth::start_login,
             commands::auth::get_login_status,
-            commands::crawl::crawl_manual_start,
             commands::crawl::crawl_auto_start,
             commands::crawl::crawl_stop,
             commands::crawl::get_boss_meta,
@@ -85,8 +84,6 @@ pub fn run() {
             commands::filter_profile::recompute_default_filter_profile,
             commands::export::export_jobs_csv,
             commands::export::export_jobs_json,
-            commands::ai::analyze_resume_for_job,
-            commands::ai::analyze_profile_for_jobs,
             commands::ai::generate_greeting_message,
             commands::ai::generate_ai_company_scores,
             commands::ai::recompute_ai_post_collection_judgement,

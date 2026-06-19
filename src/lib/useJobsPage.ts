@@ -3,7 +3,6 @@ import { isPermissionGranted, requestPermission, sendNotification } from "@tauri
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRoute, useRouter } from "vue-router";
 
-import { clearAiSelectedJobs, upsertAiSelectedJob } from "./aiSelection";
 import { CRAWL_TASK_TYPE_CHAT_SYNC, type RecomputeFilterProfileResult } from "./crawl";
 import { useFilterProfile } from "./filterProfile";
 import {
@@ -756,36 +755,6 @@ export function useJobsPage() {
   });
   const currentPageProcessedCount = computed(() => jobCandidates.value.filter(isProcessedJob).length);
   const currentPageUnprocessedCount = computed(() => jobCandidates.value.length - currentPageProcessedCount.value);
-  function goAi(jobId: string): void {
-    void router.push({ path: "/ai", query: { jobId } });
-  }
-  function analyzeReviewCandidates(): void {
-    if (reviewCandidates.value.length === 0) {
-      error.value = "暂无 Top 20 候选岗位可进入 AI 分析。";
-      return;
-    }
-    clearAiSelectedJobs();
-    for (const job of reviewCandidates.value) {
-      upsertAiSelectedJob({
-        encrypt_job_id: job.encrypt_job_id,
-        position_name: job.position_name,
-        boss_name: job.boss_name,
-        brand_name: job.brand_name,
-        city_name: job.city_name,
-        salary_desc: job.salary_desc,
-        experience_name: job.experience_name,
-        degree_name: job.degree_name,
-        source_platform: job.source_platform,
-        source_trace: formatSourceTrace(job),
-        source_strategy_trace: sourcePlatformModeTrace(),
-        filter_trace: formatApplicationFilterTrace(job),
-        score_trace: `Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
-        communication_trace: formatCommunicationTrace(job),
-        review_trace: reviewStatusLabel(job.review_status),
-      });
-    }
-    void router.push({ path: "/ai", query: { source: "top20" } });
-  }
   async function goResumeWorkspace(jobId: string): Promise<void> {
     if (!tauri) {
       void router.push({ path: "/resume-workspace", query: { jobId } });
@@ -2081,8 +2050,6 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     expandedDetail,
     groupKey,
     jobSourceUrl,
-    goAi,
-    analyzeReviewCandidates,
     goResumeWorkspace,
     syncBossChatStatus,
     loadKeywords,

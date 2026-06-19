@@ -444,6 +444,9 @@ pub fn save_settings(
     telegram_bot_token: Option<String>,
     telegram_chat_id: Option<String>,
     proxy_url: Option<String>,
+    ai_resume_text: Option<String>,
+    ai_context_text: Option<String>,
+    ai_resume_files: Option<String>,
 ) -> Result<PublicAppSettings, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
 
@@ -469,6 +472,24 @@ pub fn save_settings(
         current.telegram_chat_id = opt_trimmed(Some(chat_id));
     }
     current.proxy_url = opt_trimmed(proxy_url);
+    if let Some(value) = ai_resume_text {
+        current.ai_resume_text = value;
+    }
+    if let Some(value) = ai_context_text {
+        current.ai_context_text = value;
+    }
+    if let Some(value) = ai_resume_files {
+        current.ai_resume_files = value;
+    }
+    if current.ai_resume_text.trim().is_empty() {
+        current.ai_resume_text.clear();
+    }
+    if current.ai_context_text.trim().is_empty() {
+        current.ai_context_text.clear();
+    }
+    if current.ai_resume_files.trim().is_empty() {
+        current.ai_resume_files.clear();
+    }
 
     settings::write_settings(&app_data_dir, &current).map_err(|e| e.to_string())?;
     Ok(PublicAppSettings::from(current))

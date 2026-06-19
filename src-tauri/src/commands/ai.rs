@@ -3,10 +3,8 @@ mod config;
 mod greeting;
 mod models;
 mod post_collection_judge;
-mod profile_analysis;
 mod report_meta;
 mod reports;
-mod resume_analysis;
 mod shared;
 mod worker;
 
@@ -27,62 +25,6 @@ pub(in crate::commands) fn resolve_effective_openai_base_url(
         },
     )
     .effective_base_url
-}
-
-#[tauri::command]
-pub async fn analyze_resume_for_job(
-    app: tauri::AppHandle,
-    encrypt_job_id: String,
-    resume_text: String,
-    context_text: Option<String>,
-    resume_files: Option<String>,
-    api_key: Option<String>,
-    base_url: Option<String>,
-    model: Option<String>,
-    api_mode: Option<String>,
-    force: Option<bool>,
-    debug: Option<bool>,
-) -> Result<Value, String> {
-    resume_analysis::analyze_resume_for_job(
-        app,
-        encrypt_job_id,
-        resume_text,
-        context_text,
-        resume_files,
-        api_key,
-        base_url,
-        model,
-        api_mode,
-        force,
-        debug,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn analyze_profile_for_jobs(
-    app: tauri::AppHandle,
-    job_ids: Vec<String>,
-    context_text: Option<String>,
-    api_key: Option<String>,
-    base_url: Option<String>,
-    model: Option<String>,
-    api_mode: Option<String>,
-    force: Option<bool>,
-    debug: Option<bool>,
-) -> Result<Value, String> {
-    profile_analysis::analyze_profile_for_jobs(
-        app,
-        job_ids,
-        context_text,
-        api_key,
-        base_url,
-        model,
-        api_mode,
-        force,
-        debug,
-    )
-    .await
 }
 
 #[tauri::command]

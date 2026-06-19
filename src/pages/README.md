@@ -4,7 +4,6 @@ This directory contains the top-level Vue route pages for the desktop applicatio
 
 ## Files
 
-- `Ai.vue` — runs single-job AI matching analysis with resume input and optional context.
 - `AiReports.vue` — lists cached AI reports, supports filtering, paging, and report inspection.
 - `Crawl.vue` — manages browser-assisted crawling, runtime controls, and crawl logs.
 - `Export.vue` — exports stored job data in supported formats.

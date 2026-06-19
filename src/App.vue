@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import type { Component } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
-import { Bot, Database, FileSliders, FileText, Scan, Settings } from "lucide-vue-next";
+import { Database, FileSliders, FileText, Scan, Settings } from "lucide-vue-next";
 
 import TitleBar from "./components/layout/TitleBar.vue";
 
@@ -29,7 +29,6 @@ const navGroups: NavGroup[] = [
   {
     label: "AI",
     items: [
-      { to: "/ai", label: "职位分析", icon: Bot },
       { to: "/resume-workspace", label: "简历优化", icon: FileText },
       { to: "/ai-reports", label: "分析结果", icon: FileText },
     ],
@@ -55,19 +54,19 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
     <TitleBar />
 
     <div class="relative flex-1 overflow-hidden">
-      <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent" />
+      <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/70 via-transparent to-sky-100/50" />
 
       <!-- Ambient orbs -->
       <div
-        class="ambient-orb left-[-12%] top-[-18%] h-[460px] w-[460px] animate-orb-1 opacity-[0.08]"
+        class="ambient-orb left-[-12%] top-[-18%] h-[460px] w-[460px] animate-orb-1 opacity-[0.16]"
         style="background: radial-gradient(circle, rgb(var(--color-orb-indigo)) 0%, transparent 70%)"
       />
       <div
-        class="ambient-orb bottom-[-14%] right-[-8%] h-[420px] w-[420px] animate-orb-2 opacity-[0.07]"
+        class="ambient-orb bottom-[-14%] right-[-8%] h-[420px] w-[420px] animate-orb-2 opacity-[0.14]"
         style="background: radial-gradient(circle, rgb(var(--color-orb-cyan)) 0%, transparent 70%)"
       />
       <div
-        class="ambient-orb right-[12%] top-[42%] h-[320px] w-[320px] animate-orb-3 opacity-[0.05]"
+        class="ambient-orb right-[12%] top-[42%] h-[320px] w-[320px] animate-orb-3 opacity-[0.08]"
         style="background: radial-gradient(circle, rgb(var(--color-orb-amber)) 0%, transparent 70%)"
       />
 
@@ -75,19 +74,16 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
       <div class="relative z-10 flex h-full flex-col gap-0 lg:flex-row">
         <!-- Sidebar -->
         <aside
-          class="flex shrink-0 flex-col border-b border-border/10 bg-surface/90 backdrop-blur-xl lg:w-64 lg:border-b-0 lg:border-r"
+          class="flex shrink-0 flex-col border-b border-border/20 bg-surface/92 backdrop-blur-xl lg:w-64 lg:border-b-0 lg:border-r"
         >
           <header class="px-4 pb-3 pt-4 lg:pb-4 lg:pt-5">
             <div class="ui-panel-muted flex items-center gap-3 px-3 py-3">
-              <div
-                class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-border-glow/10 text-cyan-300 ring-1 ring-border-glow/15"
-                aria-hidden="true"
-              >
+              <div class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-600 ring-1 ring-sky-200" aria-hidden="true">
                 <Bot class="h-5 w-5" />
               </div>
               <div class="min-w-0">
                 <div class="truncate text-sm font-semibold tracking-wide text-content-primary">Job Sync</div>
-                <div class="mt-1 truncate text-xs text-content-muted">精准求职岗位研究台</div>
+                <div class="mt-1 truncate text-xs text-content-muted">精准求职工作台</div>
               </div>
             </div>
           </header>
@@ -115,7 +111,7 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
 
         <!-- Main content -->
         <main
-          class="min-w-0 flex-1 overflow-y-auto bg-surface/40 px-3 py-4 sm:px-6 sm:py-6"
+          class="min-w-0 flex-1 overflow-y-auto bg-sky-50/70 px-3 py-4 sm:px-6 sm:py-6"
         >
           <div :class="['ui-panel mx-auto w-full p-4 sm:p-6', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
