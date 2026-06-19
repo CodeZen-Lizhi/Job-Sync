@@ -514,3 +514,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: AI 采后审核与职位库筛选收口
+
+**Date**: 2026-06-19
+**Task**: AI 采后审核与职位库筛选收口
+**Package**: boss-crawler-worker
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+将职位库卡片收敛为平台、岗位状态和 AI 审核结果；新增 AI 审核筛选并贯通前端、Tauri 查询和测试；同步采集配置与 AI 判断偏好相关契约。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4e3d237` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
