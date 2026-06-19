@@ -35,7 +35,17 @@ describe("Boss auto collection contract", () => {
   it("builds one Boss job-list request body per selected city code", () => {
     const warnings: string[] = [];
     const variants = normalizeFilterVariants(
-      { city: ["101010100", "101020100"], salary: "405", experience: "104", degree: "203" },
+      {
+        city: ["101010100", "101020100"],
+        salary: "405",
+        experience: "104",
+        degree: "203",
+        jobType: "1901",
+        stage: "801",
+        position: "100101",
+        multiSubway: ["1001", "1002"],
+        multiBusinessDistrict: ["2001", "2002"],
+      },
       (message) => warnings.push(message),
     );
 
@@ -57,6 +67,26 @@ describe("Boss auto collection contract", () => {
     assert.deepEqual(
       bodies.map((body) => body.get("salary")),
       ["405", "405"],
+    );
+    assert.deepEqual(
+      bodies.map((body) => body.get("jobType")),
+      ["1901", "1901"],
+    );
+    assert.deepEqual(
+      bodies.map((body) => body.get("stage")),
+      ["801", "801"],
+    );
+    assert.deepEqual(
+      bodies.map((body) => body.get("position")),
+      ["100101", "100101"],
+    );
+    assert.deepEqual(
+      bodies.map((body) => body.get("multiSubway")),
+      ["1001,1002", "1001,1002"],
+    );
+    assert.deepEqual(
+      bodies.map((body) => body.get("multiBusinessDistrict")),
+      ["2001,2002", "2001,2002"],
     );
   });
 });

@@ -18,8 +18,11 @@ interface AppSettings {
   openai_temperature?: number | null;
   openai_prompt_extra?: string | null;
   openai_schema_extra?: string | null;
-  wecom_webhook_url?: string | null;
-  has_wecom_webhook_url?: boolean | null;
+  ai_greeting_prompt_extra?: string | null;
+  telegram_bot_token?: string | null;
+  has_telegram_bot_token?: boolean | null;
+  telegram_chat_id?: string | null;
+  has_telegram_chat_id?: boolean | null;
   proxy_url?: string | null;
 }
 
@@ -59,19 +62,21 @@ interface ModelServiceDiagnostic {
   model_sample: string[];
 }
 
-interface WecomDiagnostic {
+interface TelegramDiagnostic {
   status: string;
   checked_at: string;
   message: string;
-  has_webhook_url: boolean;
-  webhook_url_valid: boolean;
+  has_bot_token: boolean;
+  bot_token_valid: boolean;
+  has_chat_id: boolean;
+  chat_id_valid: boolean;
 }
 
 interface ExternalDependencyDiagnostics {
   checked_at: string;
   boss_session: BossSessionDiagnostic;
   model_service: ModelServiceDiagnostic;
-  wecom: WecomDiagnostic;
+  telegram: TelegramDiagnostic;
 }
 
 const tauri = isTauri();
@@ -86,8 +91,11 @@ const apiMode = ref("chat_completions");
 const temperature = ref(0.2);
 const promptExtra = ref("");
 const schemaExtra = ref("");
-const wecomWebhookUrl = ref("");
-const hasSavedWecomWebhookUrl = ref(false);
+const greetingPromptExtra = ref("");
+const telegramBotToken = ref("");
+const hasSavedTelegramBotToken = ref(false);
+const telegramChatId = ref("");
+const hasSavedTelegramChatId = ref(false);
 const proxyUrl = ref("");
 
 const models = ref<ModelInfo[]>([]);
@@ -171,10 +179,15 @@ async function loadSettings(): Promise<void> {
     temperature.value = clampTemperature(settings.openai_temperature ?? 0.2);
     promptExtra.value = settings.openai_prompt_extra ?? "";
     schemaExtra.value = settings.openai_schema_extra ?? "";
-    wecomWebhookUrl.value = "";
-    hasSavedWecomWebhookUrl.value = typeof settings.has_wecom_webhook_url === "boolean"
-      ? settings.has_wecom_webhook_url
-      : !!settings.wecom_webhook_url;
+    greetingPromptExtra.value = settings.ai_greeting_prompt_extra ?? "";
+    telegramBotToken.value = "";
+    hasSavedTelegramBotToken.value = typeof settings.has_telegram_bot_token === "boolean"
+      ? settings.has_telegram_bot_token
+      : !!settings.telegram_bot_token;
+    telegramChatId.value = "";
+    hasSavedTelegramChatId.value = typeof settings.has_telegram_chat_id === "boolean"
+      ? settings.has_telegram_chat_id
+      : !!settings.telegram_chat_id;
     proxyUrl.value = settings.proxy_url ?? "";
     if (settings.openai_api_mode) {
       const m = settings.openai_api_mode.trim().toLowerCase();
@@ -201,9 +214,11 @@ function clearSavedApiKey(): void {
   hasSavedApiKey.value = false;
 }
 
-function clearSavedWecomWebhookUrl(): void {
-  wecomWebhookUrl.value = "";
-  hasSavedWecomWebhookUrl.value = false;
+function clearSavedTelegramConfig(): void {
+  telegramBotToken.value = "";
+  hasSavedTelegramBotToken.value = false;
+  telegramChatId.value = "";
+  hasSavedTelegramChatId.value = false;
 }
 
 function automaticCollectionLabel(source: JobSourceEntry): string {
@@ -358,7 +373,7 @@ function buildExternalDiagnosticsSummary(value: ExternalDependencyDiagnostics): 
   return [
     "Job-Sync 外部依赖诊断摘要",
     `检查时间：${value.checked_at}`,
-    "使用边界：仅用于本机依赖验收记录；不会触发采集、投递、开聊或企业微信发送；不包含 Key、Webhook、Cookie 或 LocalStorage。",
+    "使用边界：仅用于本机依赖验收记录；不会触发采集、投递、开聊或 Telegram 发送；不包含 Key、Bot Token、Chat ID、Cookie 或 LocalStorage。",
     "",
     `Boss 登录复用：${diagnosticStatusLabel(value.boss_session.status)}`,
     `- Cookie 文件：${availabilityLabel(value.boss_session.cookies_present)} / JSON：${parseabilityLabel(value.boss_session.cookies_valid_json)}`,
@@ -366,10 +381,12 @@ function buildExternalDiagnosticsSummary(value: ExternalDependencyDiagnostics): 
     "",
     ...modelLines,
     "",
-    `企业微信通知：${diagnosticStatusLabel(value.wecom.status)}`,
-    `- Webhook 已保存：${availabilityLabel(value.wecom.has_webhook_url)}`,
-    `- Webhook 地址格式：${value.wecom.webhook_url_valid ? "有效" : "待检查"}`,
-    "- 发送边界：只通过每日岗位情报手动触发，不由设置页自动发送。",
+    `Telegram 通知：${diagnosticStatusLabel(value.telegram.status)}`,
+    `- Bot Token 已保存：${availabilityLabel(value.telegram.has_bot_token)}`,
+    `- Bot Token 格式：${value.telegram.bot_token_valid ? "有效" : "待检查"}`,
+    `- Chat ID 已保存：${availabilityLabel(value.telegram.has_chat_id)}`,
+    `- Chat ID 格式：${value.telegram.chat_id_valid ? "有效" : "待检查"}`,
+    "- 发送边界：只通过 AI 采后判断触发，不由设置页自动发送。",
   ].join("\n");
 }
 
@@ -394,17 +411,23 @@ async function save(): Promise<void> {
       openaiTemperature: clampTemperature(temperature.value),
       openaiPromptExtra: promptExtra.value.trim() || null,
       openaiSchemaExtra: schemaExtra.value.trim() || null,
-      wecomWebhookUrl: wecomWebhookUrl.value.trim() || (hasSavedWecomWebhookUrl.value ? null : ""),
+      aiGreetingPromptExtra: greetingPromptExtra.value.trim() || null,
+      telegramBotToken: telegramBotToken.value.trim() || (hasSavedTelegramBotToken.value ? null : ""),
+      telegramChatId: telegramChatId.value.trim() || (hasSavedTelegramChatId.value ? null : ""),
       proxyUrl: proxyUrl.value.trim() || null,
     });
     hasSavedApiKey.value = typeof saved.has_openai_api_key === "boolean"
       ? saved.has_openai_api_key
       : !!apiKey.value.trim() || hasSavedApiKey.value;
     apiKey.value = "";
-    hasSavedWecomWebhookUrl.value = typeof saved.has_wecom_webhook_url === "boolean"
-      ? saved.has_wecom_webhook_url
-      : !!wecomWebhookUrl.value.trim() || hasSavedWecomWebhookUrl.value;
-    wecomWebhookUrl.value = "";
+    hasSavedTelegramBotToken.value = typeof saved.has_telegram_bot_token === "boolean"
+      ? saved.has_telegram_bot_token
+      : !!telegramBotToken.value.trim() || hasSavedTelegramBotToken.value;
+    hasSavedTelegramChatId.value = typeof saved.has_telegram_chat_id === "boolean"
+      ? saved.has_telegram_chat_id
+      : !!telegramChatId.value.trim() || hasSavedTelegramChatId.value;
+    telegramBotToken.value = "";
+    telegramChatId.value = "";
     proxyUrl.value = saved.proxy_url ?? proxyUrl.value.trim();
     success.value = true;
     setTimeout(() => { success.value = false; }, 2000);
@@ -714,30 +737,61 @@ watch(
             会追加到 AI 结构化输出提示中；只能增加字段说明或收紧约束，不能删除内置必填字段或改变内置字段类型。
           </div>
         </label>
+
+        <label class="block space-y-1 md:col-span-2">
+          <div class="text-xs font-medium text-content-muted">打招呼文案补充提示（可选）</div>
+          <textarea
+            v-model="greetingPromptExtra"
+            class="ui-input min-h-28 w-full resize-y"
+            placeholder="例如：语气更自然；优先突出项目成果和技术栈交集；不要写成群发模板。"
+          />
+          <div class="text-xs text-content-muted">
+            只会影响“打招呼”生成，不会影响简历分析、职位分析或公司评分。
+          </div>
+        </label>
       </div>
     </div>
 
     <!-- External Notification Config -->
     <div class="space-y-3">
       <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">外部通知</div>
-      <div class="ui-panel-muted grid gap-4 p-5">
+      <div class="ui-panel-muted grid gap-4 p-5 md:grid-cols-2">
         <label class="block space-y-1">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-xs font-medium text-content-muted">企业微信机器人 Webhook</span>
-            <span class="ui-badge">{{ hasSavedWecomWebhookUrl ? "已保存，当前不回显" : "未保存" }}</span>
+            <span class="text-xs font-medium text-content-muted">Telegram Bot Token</span>
+            <span class="ui-badge">{{ hasSavedTelegramBotToken ? "已保存，当前不回显" : "未保存" }}</span>
           </div>
           <input
-            v-model="wecomWebhookUrl"
+            v-model="telegramBotToken"
             type="password"
             class="ui-input w-full"
             autocomplete="new-password"
-            placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+            placeholder="123456789:AA..."
           />
-          <div class="flex flex-wrap items-center gap-2 text-xs text-content-muted">
-            <span>仅用于每日岗位情报的手动企业微信通知；留空会保留已保存 Webhook，点击清除后保存会删除本地 Webhook。</span>
-            <button v-if="hasSavedWecomWebhookUrl" class="ui-btn-secondary px-2 py-1 text-xs" type="button" @click="clearSavedWecomWebhookUrl">清除已保存 Webhook</button>
-          </div>
+          <div class="text-xs text-content-muted">用于向 Telegram 发送 AI 采后判断摘要；留空会保留已保存 Token，点击清除后保存会删除本地 Token。</div>
         </label>
+        <label class="block space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs font-medium text-content-muted">Telegram Chat ID</span>
+            <span class="ui-badge">{{ hasSavedTelegramChatId ? "已保存，当前不回显" : "未保存" }}</span>
+          </div>
+          <input
+            v-model="telegramChatId"
+            class="ui-input w-full"
+            placeholder="987654321 或 @channelname"
+          />
+          <div class="text-xs text-content-muted">可填写个人 chat id、群组 ID 或频道名；必须先让机器人在目标会话里收到过消息。</div>
+        </label>
+        <div class="md:col-span-2">
+          <button
+            v-if="hasSavedTelegramBotToken || hasSavedTelegramChatId"
+            class="ui-btn-secondary px-2 py-1 text-xs"
+            type="button"
+            @click="clearSavedTelegramConfig"
+          >
+            清除已保存 Telegram 配置
+          </button>
+        </div>
       </div>
     </div>
 
@@ -748,7 +802,7 @@ watch(
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div class="text-xs font-medium text-content-primary">本机依赖状态</div>
-            <div class="text-xs text-content-muted">诊断只返回状态摘要，不回显 Key、Webhook、Cookie 或 LocalStorage。</div>
+            <div class="text-xs text-content-muted">诊断只返回状态摘要，不回显 Key、Bot Token、Chat ID、Cookie 或 LocalStorage。</div>
           </div>
           <div class="flex flex-wrap gap-2">
             <button
@@ -809,19 +863,25 @@ watch(
 
           <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
             <div class="flex items-center justify-between gap-2">
-              <div class="text-sm font-medium text-content-primary">企业微信通知</div>
-              <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.wecom.status)">
-                {{ diagnosticStatusLabel(diagnostics.wecom.status) }}
+              <div class="text-sm font-medium text-content-primary">Telegram 通知</div>
+              <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.telegram.status)">
+                {{ diagnosticStatusLabel(diagnostics.telegram.status) }}
               </span>
             </div>
-            <div class="mt-2 text-xs leading-5 text-content-muted">{{ diagnostics.wecom.message }}</div>
+            <div class="mt-2 text-xs leading-5 text-content-muted">{{ diagnostics.telegram.message }}</div>
             <div class="mt-1 text-xs leading-5 text-content-muted">手动通知入口，不自动投递。</div>
             <div class="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-              <span class="ui-badge" :class="diagnostics.wecom.has_webhook_url ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
-                Webhook {{ diagnostics.wecom.has_webhook_url ? "已保存" : "未保存" }}
+              <span class="ui-badge" :class="diagnostics.telegram.has_bot_token ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                Bot Token {{ diagnostics.telegram.has_bot_token ? "已保存" : "未保存" }}
               </span>
-              <span class="ui-badge" :class="diagnostics.wecom.webhook_url_valid ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
-                地址 {{ diagnostics.wecom.webhook_url_valid ? "有效" : "待检查" }}
+              <span class="ui-badge" :class="diagnostics.telegram.bot_token_valid ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                Token 格式 {{ diagnostics.telegram.bot_token_valid ? "有效" : "待检查" }}
+              </span>
+              <span class="ui-badge" :class="diagnostics.telegram.has_chat_id ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                Chat ID {{ diagnostics.telegram.has_chat_id ? "已保存" : "未保存" }}
+              </span>
+              <span class="ui-badge" :class="diagnostics.telegram.chat_id_valid ? diagnosticBadgeClass('ok') : diagnosticBadgeClass('warning')">
+                ID 格式 {{ diagnostics.telegram.chat_id_valid ? "有效" : "待检查" }}
               </span>
             </div>
           </div>

@@ -36,9 +36,9 @@ export interface JobDailyIntelligence {
   notification_brief_text: string;
 }
 
-export interface DailyIntelligenceWebhookResult {
+export interface DailyIntelligenceTelegramResult {
   report_date: string;
-  channel: "wecom";
+  channel: "telegram";
 }
 
 export interface CompanyScoreRebuildResult {
@@ -401,9 +401,24 @@ export function filterBucketLabel(bucket?: string | null): string {
   return bucket || "未判断";
 }
 
+export function aiAuditStatusLabel(bucket?: string | null): string {
+  if (bucket === "recommended") return "通过";
+  if (bucket === "pending_confirmation") return "待确认";
+  if (bucket === "filtered") return "不通过";
+  return "待判断";
+}
+
+export function sourcePlatformLabel(platform?: string | null): string {
+  const normalized = platform?.trim();
+  if (!normalized) return "未知平台";
+  if (normalized === "boss") return "Boss";
+  if (normalized === "v2ex") return "V2EX";
+  return normalized;
+}
+
 export function formatAiPostCollectionJudgement(judgement: AiPostCollectionJudgement | null | undefined): string {
-  if (!judgement) return "暂无 AI 采后判断";
-  const parts: string[] = [`AI：${filterBucketLabel(judgement.bucket)}`];
+  if (!judgement) return "AI 审核：待判断";
+  const parts: string[] = [`AI 审核：${aiAuditStatusLabel(judgement.bucket)}`];
   if (typeof judgement.confidence === "number") {
     parts.push(`置信度 ${Math.round(judgement.confidence * 100)}%`);
   }
@@ -490,7 +505,7 @@ export function formatFilterReasonSummary(reason: FilterReasonJson | null | unde
 }
 
 export function formatScoreReasonSummary(reason: ScoreReasonJson | null | undefined): string {
-  if (!reason) return "暂无额外评分原因";
+  if (!reason) return "暂无额外判断依据";
 
   const parts: string[] = [];
   const matched = reason.preference?.matched ?? [];
@@ -519,11 +534,11 @@ export function formatScoreReasonSummary(reason: ScoreReasonJson | null | undefi
   }
 
   if (matched.length > 0) {
-    parts.push(`加分项：${matched.slice(0, 3).map(preferenceSignalLabel).join("、")}${matched.length > 3 ? ` 等${matched.length}项` : ""}`);
+    parts.push(`命中偏好：${matched.slice(0, 3).map(preferenceSignalLabel).join("、")}${matched.length > 3 ? ` 等${matched.length}项` : ""}`);
   }
 
   if (missing.length > 0) {
-    parts.push(`缺少加分项：${missing.slice(0, 3).map(preferenceSignalLabel).join("、")}${missing.length > 3 ? ` 等${missing.length}项` : ""}`);
+    parts.push(`未命中偏好：${missing.slice(0, 3).map(preferenceSignalLabel).join("、")}${missing.length > 3 ? ` 等${missing.length}项` : ""}`);
   }
 
   if (riskFlags.length > 0) {
@@ -534,7 +549,7 @@ export function formatScoreReasonSummary(reason: ScoreReasonJson | null | undefi
     parts.push(`公司风险：${evidence.slice(0, 2).join("；")}${evidence.length > 2 ? ` 等${evidence.length}项` : ""}`);
   }
 
-  return parts.join("；") || "暂无额外评分原因";
+  return parts.join("；") || "暂无额外判断依据";
 }
 
 export function formatResumeMatchEvidence(reason: ScoreReasonJson | null | undefined): string {

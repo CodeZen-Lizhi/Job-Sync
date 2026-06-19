@@ -54,6 +54,8 @@ type CollectionConfigPayload = {
   selectedCollectionSources?: string[];
   v2exFeedUrl?: string;
   v2exKeywordsText?: string;
+  v2exFeedSortBy?: string;
+  v2exRecentDays?: number | null;
   bossKeywordsText?: string;
   cityText?: string;
   salaryText?: string;
@@ -73,6 +75,8 @@ type CollectionConfigPayload = {
   maxJobs?: number;
   delayMs?: number;
 };
+
+type V2exFeedSortBy = "published_desc" | "updated_desc";
 
 let crawlPageState: CrawlPageState | null = null;
 
@@ -114,6 +118,8 @@ function createCrawlPageState() {
   const v2exFeedSettingsOpen = ref(true);
   const v2exFeedUrl = ref(DEFAULT_V2EX_FEED_URL);
   const v2exKeywordsText = ref("");
+  const v2exFeedSortBy = ref<V2exFeedSortBy>("published_desc");
+  const v2exRecentDays = ref<number | null>(null);
   const bossKeywordsText = ref("");
   const cityText = ref("");
   const salaryText = ref("");
@@ -161,7 +167,7 @@ function createCrawlPageState() {
   const bossIndustryGroups = computed<BossIndustryGroup[]>(() => buildBossIndustryGroups(runtime.bossMeta));
   const bossMetaReady = computed(() => bossCityGroups.value.length > 0 && bossSalaryOptions.value.length > 0);
   const bossFilterConditionCount = computed(
-    () => 4 + (bossIndustryGroups.value.length > 0 ? 1 : 0) + bossAdditionalFilterGroups.value.length,
+    () => 5 + (bossIndustryGroups.value.length > 0 ? 1 : 0) + bossAdditionalFilterGroups.value.length,
   );
   const collectableSourceOptions = computed(() => {
     const sources = collectionSourceRegistry.value.length > 0
@@ -232,6 +238,8 @@ function createCrawlPageState() {
         source_platform: V2EX_SOURCE_PLATFORM,
         filters: {
           feed_url: v2exFeedUrl.value.trim() || DEFAULT_V2EX_FEED_URL,
+          sort_by: v2exFeedSortBy.value,
+          recent_days: optionalNumber(v2exRecentDays.value),
           excluded_keywords: collectionExcludedKeywords.value,
           profile: filterProfileState.filterProfile.value,
           collection_intent: {
@@ -291,6 +299,22 @@ function createCrawlPageState() {
     return out;
   }
 
+  function buildBossSearchKeywordsFromIntent(baseKeywords: readonly string[], workModes: readonly string[]): string[] {
+    const bases = uniqueList(baseKeywords);
+    const modes = uniqueList(workModes);
+    if (modes.length === 0) return bases;
+    if (bases.length === 0) return modes;
+    return uniqueList(
+      bases.flatMap((base) =>
+        modes.map((mode) => {
+          const normalizedBase = normalizeToken(base);
+          const normalizedMode = normalizeToken(mode);
+          return normalizedMode && normalizedBase.includes(normalizedMode) ? base : `${base} ${mode}`;
+        }),
+      ),
+    );
+  }
+
   function optionalNumber(value: unknown): number | null {
     if (value === null || value === undefined || value === "") return null;
     const parsed = typeof value === "number" ? value : Number(value);
@@ -311,6 +335,10 @@ function createCrawlPageState() {
 
   function textValue(value: unknown): string {
     return typeof value === "string" ? value : "";
+  }
+
+  function sanitizeV2exFeedSortBy(value: unknown): V2exFeedSortBy {
+    return value === "updated_desc" ? "updated_desc" : "published_desc";
   }
 
   function sanitizeStringList(value: unknown): string[] {
@@ -334,6 +362,8 @@ function createCrawlPageState() {
       selectedCollectionSources: selectedCollectionSources.value,
       v2exFeedUrl: v2exFeedUrl.value,
       v2exKeywordsText: v2exKeywordsText.value,
+      v2exFeedSortBy: v2exFeedSortBy.value,
+      v2exRecentDays: optionalNumber(v2exRecentDays.value),
       bossKeywordsText: bossKeywordsText.value,
       cityText: cityText.value,
       salaryText: salaryText.value,
@@ -375,6 +405,8 @@ function createCrawlPageState() {
     }
     v2exFeedUrl.value = textValue(config.v2exFeedUrl) || DEFAULT_V2EX_FEED_URL;
     v2exKeywordsText.value = textValue(config.v2exKeywordsText);
+    v2exFeedSortBy.value = sanitizeV2exFeedSortBy(config.v2exFeedSortBy);
+    v2exRecentDays.value = optionalNumber(config.v2exRecentDays);
     bossKeywordsText.value = textValue(config.bossKeywordsText);
     cityText.value = textValue(config.cityText);
     salaryText.value = textValue(config.salaryText);
@@ -455,10 +487,11 @@ function createCrawlPageState() {
     const mapped: string[] = [];
     const unmapped: string[] = [];
     const expandedKeywords = uniqueList([...collectionKeywords.value, ...collectionTechStack.value]);
+    const bossSearchKeywords = buildBossSearchKeywordsFromIntent(expandedKeywords, collectionWorkModes.value);
 
-    if (bossSelected.value && expandedKeywords.length > 0) {
-      bossKeywordsText.value = expandedKeywords.join("\n");
-      mapped.push(`Boss 关键词：${expandedKeywords.join("、")}`);
+    if (bossSelected.value && bossSearchKeywords.length > 0) {
+      bossKeywordsText.value = bossSearchKeywords.join("\n");
+      mapped.push(`Boss 搜索关键词：${bossSearchKeywords.join("、")}`);
     }
 
     if (bossSelected.value) {
@@ -486,8 +519,10 @@ function createCrawlPageState() {
         unmapped.push(`学历：${collectionDegrees.value.join("、")}（Boss 字典未匹配）`);
       }
 
-      if (collectionWorkModes.value.length > 0) {
-        unmapped.push(`工作方式：${collectionWorkModes.value.join("、")}（Boss 站内筛选暂不支持稳定映射）`);
+      if (collectionWorkModes.value.length > 0 && bossSearchKeywords.length > 0) {
+        mapped.push(`Boss 工作方式：已写入同一行搜索词`);
+      } else if (collectionWorkModes.value.length > 0) {
+        unmapped.push(`工作方式：${collectionWorkModes.value.join("、")}（Boss 站内筛选暂不支持稳定下拉项）`);
       }
       if (collectionExcludedKeywords.value.length > 0) {
         unmapped.push(`排除关键词：${collectionExcludedKeywords.value.join("、")}（交给采后规则做排除）`);
@@ -817,6 +852,8 @@ function createCrawlPageState() {
     v2exFeedSettingsOpen,
     v2exFeedUrl,
     v2exKeywordsText,
+    v2exFeedSortBy,
+    v2exRecentDays,
     v2exKeywords,
     bossKeywordsText,
     cityText,

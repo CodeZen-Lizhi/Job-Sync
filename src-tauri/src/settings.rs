@@ -42,8 +42,14 @@ pub struct AppSettings {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub openai_schema_extra: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub ai_greeting_prompt_extra: String,
+    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub wecom_webhook_url: Option<String>,
+    pub telegram_bot_token: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub telegram_chat_id: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proxy_url: Option<String>,
@@ -85,7 +91,9 @@ impl AppSettings {
             openai_temperature: None,
             openai_prompt_extra: String::new(),
             openai_schema_extra: String::new(),
-            wecom_webhook_url: None,
+            ai_greeting_prompt_extra: String::new(),
+            telegram_bot_token: None,
+            telegram_chat_id: None,
             proxy_url: None,
             collection_config: None,
             ai_resume_text: String::new(),

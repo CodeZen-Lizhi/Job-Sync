@@ -568,6 +568,7 @@ fn build_job_candidate_filters(
     end_date: Option<String>,
     processed: Option<String>,
     status_filters: Option<Vec<String>>,
+    ai_audit_filters: Option<Vec<String>>,
     source_platforms: Option<Vec<String>>,
     collection_methods: Option<Vec<String>>,
 ) -> (String, Vec<SqlValue>) {
@@ -708,6 +709,26 @@ fn build_job_candidate_filters(
         }
     }
 
+    let ai_audits = clean_filter_values(ai_audit_filters);
+    if !ai_audits.is_empty() {
+        let ai_bucket_expr = "COALESCE(json_extract(r.reason_json, '$.bucket'), CASE WHEN r.eligible = 1 THEN 'recommended' WHEN r.eligible = 0 THEN 'filtered' ELSE '' END)";
+        let mut audit_parts = Vec::new();
+        for audit in ai_audits {
+            match audit.as_str() {
+                "ai_passed" => audit_parts.push(format!("{ai_bucket_expr} = 'recommended'")),
+                "ai_rejected" => audit_parts.push(format!("{ai_bucket_expr} = 'filtered'")),
+                "ai_pending" => audit_parts.push(
+                    "COALESCE(json_extract(r.reason_json, '$.bucket'), '') = 'pending_confirmation'"
+                        .to_string(),
+                ),
+                _ => {}
+            }
+        }
+        if !audit_parts.is_empty() {
+            where_parts.push(format!("({})", audit_parts.join(" OR ")));
+        }
+    }
+
     let platforms = clean_filter_values(source_platforms);
     if !platforms.is_empty() {
         where_parts.push(format!(
@@ -738,6 +759,7 @@ pub fn list_job_candidates(
     end_date: Option<String>,
     processed: Option<String>,
     status_filters: Option<Vec<String>>,
+    ai_audit_filters: Option<Vec<String>>,
     source_platforms: Option<Vec<String>>,
     collection_methods: Option<Vec<String>>,
     limit: Option<u32>,
@@ -753,6 +775,7 @@ pub fn list_job_candidates(
         end_date,
         processed,
         status_filters,
+        ai_audit_filters,
         source_platforms,
         collection_methods,
         limit,
@@ -769,6 +792,7 @@ pub(super) fn list_job_candidates_on_conn(
     end_date: Option<String>,
     processed: Option<String>,
     status_filters: Option<Vec<String>>,
+    ai_audit_filters: Option<Vec<String>>,
     source_platforms: Option<Vec<String>>,
     collection_methods: Option<Vec<String>>,
     limit: Option<u32>,
@@ -785,6 +809,7 @@ pub(super) fn list_job_candidates_on_conn(
         end_date,
         processed,
         status_filters,
+        ai_audit_filters,
         source_platforms,
         collection_methods,
     );
@@ -2433,6 +2458,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(1),
             Some(1),
         )
@@ -2523,6 +2549,7 @@ mod tests {
             Some("processed".to_string()),
             Some(vec!["favorited".to_string(), "replied".to_string()]),
             None,
+            None,
             Some(vec!["automatic".to_string()]),
             Some(20),
             Some(0),
@@ -2551,6 +2578,7 @@ mod tests {
             Some("unprocessed".to_string()),
             None,
             None,
+            None,
             Some(vec!["manual".to_string()]),
             Some(20),
             Some(0),
@@ -2565,6 +2593,7 @@ mod tests {
 
         let v2ex = list_job_candidates_on_conn(
             &conn,
+            None,
             None,
             None,
             None,
@@ -2673,6 +2702,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(20),
             Some(0),
         )
@@ -2696,6 +2726,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(20),
             Some(0),
         )
@@ -2712,11 +2743,46 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(20),
             Some(0),
         )
         .expect("list filtered bucket");
         assert_eq!(filtered.jobs[0].encrypt_job_id, "job_filtered");
+
+        let ai_rejected = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(vec!["ai_rejected".to_string()]),
+            None,
+            None,
+            Some(20),
+            Some(0),
+        )
+        .expect("list rejected ai audit");
+        assert_eq!(ai_rejected.jobs[0].encrypt_job_id, "job_filtered");
+
+        let ai_pending = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(vec!["ai_pending".to_string()]),
+            None,
+            None,
+            Some(20),
+            Some(0),
+        )
+        .expect("list pending ai audit");
+        assert_eq!(ai_pending.jobs[0].encrypt_job_id, "job_pending");
     }
 
     #[test]

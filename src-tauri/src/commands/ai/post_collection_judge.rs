@@ -7,6 +7,7 @@ use tauri::AppHandle;
 
 use crate::{
     commands::filter_profile,
+    commands::settings::send_telegram_message_from_settings,
     db,
     ipc::protocol::{AiPostCollectionJudgePayload, CommandIn},
     paths, settings,
@@ -147,12 +148,27 @@ fn run_recompute_ai_post_collection_judgement(
     }
 
     let counts = filter_profile::count_filter_buckets_on_conn(&conn)?;
+    let mut telegram_sent = false;
+    let mut telegram_error = None::<String>;
+    if ai_judged > 0 {
+        let telegram_message = build_telegram_summary(&counts, updated, ai_judged, hard_skipped, failed);
+        match saved_settings.as_ref() {
+            Some(settings) => match send_telegram_message_from_settings(settings, &telegram_message) {
+                Ok(()) => telegram_sent = true,
+                Err(err) => telegram_error = Some(err),
+            },
+            None => telegram_error = Some("未找到已保存设置，无法发送 Telegram 通知。".to_string()),
+        }
+    }
+
     Ok(json!({
       "updated": updated,
       "ai_judged": ai_judged,
       "hard_skipped": hard_skipped,
       "failed": failed,
       "counts": counts,
+      "telegram_sent": telegram_sent,
+      "telegram_error": telegram_error,
     }))
 }
 
@@ -389,6 +405,25 @@ fn clean_string_vec(items: Vec<String>) -> Vec<String> {
         .map(|item| item.trim().to_string())
         .filter(|item| !item.is_empty())
         .collect()
+}
+
+fn build_telegram_summary(
+    counts: &crate::db::models::BucketCounts,
+    updated: u64,
+    ai_judged: u64,
+    hard_skipped: u64,
+    failed: u64,
+) -> String {
+    vec![
+        "【Job Sync AI 采后判断】".to_string(),
+        format!("更新：{updated} 个岗位，AI 判断：{ai_judged} 个，硬规则跳过：{hard_skipped} 个，失败：{failed} 个"),
+        format!(
+            "分区：推荐 {} / 待确认 {} / 已过滤 {} / 已处理 {} / 全部 {}",
+            counts.recommended, counts.pending, counts.filtered, counts.processed, counts.all
+        ),
+        "入口：打开 Job Sync 查看职位库和 AI 采后结果；不会自动投递。".to_string(),
+    ]
+    .join("\n")
 }
 
 #[cfg(test)]

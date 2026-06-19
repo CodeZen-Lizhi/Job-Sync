@@ -64,6 +64,7 @@ export const AiGreetingPayloadSchema = z.object({
   resume_text: z.string().optional(),
   context_text: z.string().optional(),
   resume_files: z.string().optional(),
+  greeting_prompt_extra: z.string().optional(),
   job_detail: z.any(),
   match_report: z.any().optional(),
   filter_reason: z.any().optional(),

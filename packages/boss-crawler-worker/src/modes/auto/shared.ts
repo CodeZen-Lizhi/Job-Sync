@@ -7,11 +7,16 @@ import type { ModeContext } from "./types.js";
 
 export type ApiFilters = {
   city: string;
+  multiSubway: string;
+  multiBusinessDistrict: string;
+  position: string;
+  jobType: string;
   salary: string;
   experience: string;
   degree: string;
   industry: string;
   scale: string;
+  stage: string;
 };
 
 type PageFetchJsonResult = { status: number; json: any | null; error?: string };
@@ -114,15 +119,24 @@ function pickCodes(raw: unknown, key: string, warn: (msg: string) => void): stri
   return Array.from(new Set(out));
 }
 
+function pickCodesCsv(raw: unknown, key: string, warn: (msg: string) => void): string {
+  return pickCodes(raw, key, warn).join(",");
+}
+
 export function normalizeFilters(raw: unknown, warn: (msg: string) => void): ApiFilters {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return {
     city: pickCodeOrEmpty(obj.city, "city", warn),
+    multiSubway: pickCodesCsv(obj.multiSubway, "multiSubway", warn),
+    multiBusinessDistrict: pickCodesCsv(obj.multiBusinessDistrict, "multiBusinessDistrict", warn),
+    position: pickCodeOrEmpty(obj.position, "position", warn),
+    jobType: pickCodeOrEmpty(obj.jobType, "jobType", warn),
     salary: pickCodeOrEmpty(obj.salary, "salary", warn),
     experience: pickCodeOrEmpty(obj.experience, "experience", warn),
     degree: pickCodeOrEmpty(obj.degree, "degree", warn),
     industry: pickCodeOrEmpty(obj.industry, "industry", warn),
     scale: pickCodeOrEmpty(obj.scale, "scale", warn),
+    stage: pickCodeOrEmpty(obj.stage, "stage", warn),
   };
 }
 
@@ -138,15 +152,19 @@ export function buildJobListBody(keyword: string, page: number, pageSize: number
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
-  params.set("query", keyword);
   params.set("city", filters.city);
   params.set("expectInfo", "");
-  params.set("jobType", "");
+  params.set("query", keyword);
+  params.set("multiSubway", filters.multiSubway);
+  params.set("multiBusinessDistrict", filters.multiBusinessDistrict);
+  params.set("position", filters.position);
+  params.set("jobType", filters.jobType);
   params.set("salary", filters.salary);
   params.set("experience", filters.experience);
   params.set("degree", filters.degree);
   params.set("industry", filters.industry);
   params.set("scale", filters.scale);
+  params.set("stage", filters.stage);
   params.set("scene", "1");
   params.set("encryptExpectId", "");
   return params.toString();

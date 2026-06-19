@@ -7,6 +7,7 @@ import {
   fetchV2exFeedXml,
   htmlToText,
   parseV2exAtomFeed,
+  prepareV2exFeedEntries,
   runV2exFeedMode,
   type V2exFeedEntry,
 } from "../src/v2ex/feed.js";
@@ -71,6 +72,51 @@ describe("V2EX feed collector", () => {
       htmlToText("<p>招聘 Go 后端</p><p>远程 / 全职&nbsp;可投递</p>"),
       "招聘 Go 后端\n远程 / 全职 可投递",
     );
+  });
+
+  it("sorts and filters entries by selected feed time", () => {
+    const oldBumped: V2exFeedEntry = {
+      title: "招聘 Go 后端工程师",
+      url: "https://www.v2ex.com/t/100001",
+      topicId: "100001",
+      published: "2026-06-01T00:00:00Z",
+      updated: "2026-06-17T12:00:00Z",
+      contentHtml: "",
+      contentText: "远程，全职，投递邮箱 jobs@example.com",
+    };
+    const fresh: V2exFeedEntry = {
+      title: "招聘 SRE 平台工程师",
+      url: "https://www.v2ex.com/t/100002",
+      topicId: "100002",
+      published: "2026-06-17T08:00:00Z",
+      updated: "2026-06-17T08:30:00Z",
+      contentHtml: "",
+      contentText: "Kubernetes 平台建设，投递邮箱 sre@example.com",
+    };
+    const stale: V2exFeedEntry = {
+      title: "招聘前端工程师",
+      url: "https://www.v2ex.com/t/100003",
+      topicId: "100003",
+      published: "2026-06-14T00:00:00Z",
+      updated: "2026-06-14T01:00:00Z",
+      contentHtml: "",
+      contentText: "全职，投递邮箱 web@example.com",
+    };
+    const nowMs = Date.parse("2026-06-18T00:00:00Z");
+
+    const byPublished = prepareV2exFeedEntries([oldBumped, fresh, stale], {
+      sortBy: "published_desc",
+      recentDays: 2,
+      nowMs,
+    });
+    assert.deepEqual(byPublished.map((entry) => entry.topicId), ["100002"]);
+
+    const byUpdated = prepareV2exFeedEntries([oldBumped, fresh, stale], {
+      sortBy: "updated_desc",
+      recentDays: 2,
+      nowMs,
+    });
+    assert.deepEqual(byUpdated.map((entry) => entry.topicId), ["100001", "100002"]);
   });
 
   it("classifies clear hiring posts from positive hiring signals only", () => {

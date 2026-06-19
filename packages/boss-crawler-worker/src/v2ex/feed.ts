@@ -27,8 +27,11 @@ type Classification = {
   matched: string[];
 };
 
+type V2exFeedSortBy = "published_desc" | "updated_desc";
+
 const DEFAULT_FEED_URL = "https://www.v2ex.com/feed/tab/jobs.xml";
 const FEED_REQUEST_TIMEOUT_MS = 30_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const STRONG_HIRING_TERMS = [
   "招聘",
   "招人",
@@ -171,6 +174,76 @@ function asStringList(value: unknown): string[] {
   return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
 }
 
+function pickNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeRecentDays(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = pickNumber(value);
+    if (parsed === null || parsed <= 0) continue;
+    return Math.floor(parsed);
+  }
+  return null;
+}
+
+function normalizeSortBy(value: unknown): V2exFeedSortBy {
+  return value === "updated_desc" || value === "updated" ? "updated_desc" : "published_desc";
+}
+
+function timestampOf(value: string | undefined): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function entryTime(entry: V2exFeedEntry, sortBy: V2exFeedSortBy): number {
+  return sortBy === "updated_desc" ? timestampOf(entry.updated) : timestampOf(entry.published);
+}
+
+function fallbackEntryTime(entry: V2exFeedEntry, sortBy: V2exFeedSortBy): number {
+  return sortBy === "updated_desc" ? timestampOf(entry.published) : timestampOf(entry.updated);
+}
+
+function sortV2exEntries(entries: readonly V2exFeedEntry[], sortBy: V2exFeedSortBy): V2exFeedEntry[] {
+  return [...entries].sort((left, right) => {
+    const primary = entryTime(right, sortBy) - entryTime(left, sortBy);
+    if (primary !== 0) return primary;
+    const secondary = fallbackEntryTime(right, sortBy) - fallbackEntryTime(left, sortBy);
+    if (secondary !== 0) return secondary;
+    return right.topicId.localeCompare(left.topicId);
+  });
+}
+
+function filterRecentV2exEntries(
+  entries: readonly V2exFeedEntry[],
+  sortBy: V2exFeedSortBy,
+  recentDays: number | null,
+  nowMs = Date.now(),
+): V2exFeedEntry[] {
+  if (recentDays === null) return [...entries];
+  const cutoffMs = nowMs - recentDays * DAY_MS;
+  return entries.filter((entry) => entryTime(entry, sortBy) >= cutoffMs);
+}
+
+export function prepareV2exFeedEntries(
+  entries: readonly V2exFeedEntry[],
+  options: { sortBy?: unknown; recentDays?: unknown; nowMs?: number } = {},
+): V2exFeedEntry[] {
+  const sortBy = normalizeSortBy(options.sortBy);
+  const recentDays = normalizeRecentDays(options.recentDays);
+  return filterRecentV2exEntries(sortV2exEntries(entries, sortBy), sortBy, recentDays, options.nowMs);
+}
+
+function sortByLabel(sortBy: V2exFeedSortBy): string {
+  return sortBy === "updated_desc" ? "更新时间倒序" : "发布时间倒序";
+}
+
 function readNestedError(err: unknown): string {
   if (!err || typeof err !== "object") return "";
   const cause = (err as { cause?: unknown }).cause;
@@ -274,6 +347,8 @@ export async function runV2exFeedMode(payload: any, ctx: ModeContext): Promise<v
   const feedUrl = typeof filters.feed_url === "string" && filters.feed_url.trim() ? filters.feed_url.trim() : DEFAULT_FEED_URL;
   const maxEntries = typeof limits.maxEntries === "number" ? limits.maxEntries : 40;
   const maxJobs = typeof limits.maxJobs === "number" ? limits.maxJobs : 50;
+  const sortBy = normalizeSortBy(filters.sort_by ?? filters.sortBy);
+  const recentDays = normalizeRecentDays(filters.recent_days, filters.recentDays, filters.max_job_age_days, filters.maxJobAgeDays);
 
   ctx.emit({ type: "LOG", payload: { level: "info", message: `开始 V2EX Feed 自动采集：${feedUrl}` } });
   ctx.emit({ type: "LOG", payload: { level: "info", message: "正在请求 V2EX Feed..." } });
@@ -286,14 +361,22 @@ export async function runV2exFeedMode(payload: any, ctx: ModeContext): Promise<v
     throw new Error(`V2EX feed 返回异常：HTTP ${response.status}`);
   }
   const xml = response.body;
-  const entries = parseV2exAtomFeed(xml).slice(0, Math.max(1, maxEntries));
+  const parsedEntries = parseV2exAtomFeed(xml);
+  const sortedEntries = sortV2exEntries(parsedEntries, sortBy);
+  const filteredEntries = filterRecentV2exEntries(sortedEntries, sortBy, recentDays);
+  const entries = filteredEntries.slice(0, Math.max(1, maxEntries));
   ctx.emit({
     type: "PROGRESS",
     payload: { keyword: keywords[0] ?? "V2EX", captured_job_detail: 0, filtered_job: 0 },
   });
   ctx.emit({
     type: "LOG",
-    payload: { level: "info", message: `V2EX Feed 解析完成：候选 ${entries.length} 条，最多入库 ${maxJobs} 条。` },
+    payload: {
+      level: "info",
+      message: `V2EX Feed 解析完成：源 ${parsedEntries.length} 条，候选 ${entries.length} 条，排序 ${sortByLabel(sortBy)}${
+        recentDays === null ? "" : `，最近 ${recentDays} 天`
+      }，最多入库 ${maxJobs} 条。`,
+    },
   });
   let captured = 0;
   let filtered = 0;

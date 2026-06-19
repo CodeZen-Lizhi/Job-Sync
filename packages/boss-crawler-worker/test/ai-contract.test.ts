@@ -275,6 +275,7 @@ describe("AI fixture contract", () => {
       resumeText: fixtureResume,
       contextText: "候选人偏 Go / Infra，不接受外包。",
       jobDetail: fixtureJob,
+      greetingPromptExtra: "语气更自然，避免模板化。",
       matchReport: {
         resume_match_score: 88,
         matched_stack: ["Go", "Kubernetes", "Prometheus"],
@@ -306,6 +307,8 @@ describe("AI fixture contract", () => {
     assert.match(prompts.user, /matched_direction/);
     assert.match(prompts.user, /matched_resume_evidence/);
     assert.match(prompts.user, /候选人建设过 Kubernetes 多集群发布平台/);
+    assert.match(prompts.user, /打招呼补充提示/);
+    assert.match(prompts.user, /语气更自然，避免模板化/);
     assert.match(prompts.user, /matched_preferences/);
     assert.match(prompts.user, /company/);
     assert.match(prompts.user, /来源与审核上下文 JSON/);

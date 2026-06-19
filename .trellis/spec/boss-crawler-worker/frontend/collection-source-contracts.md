@@ -17,6 +17,8 @@
   - `keywords: string[]`
   - `source_platform: "boss" | "v2ex" | string`
   - `filters: object`
+    - Boss: `city`, `salary`, `experience`, `degree`, `industry`, `scale`, `stage`, and `jobType` are the user-facing platform filters known to map to `/wapi/zpgeek/search/joblist.json`; `position`, `multiSubway`, and `multiBusinessDistrict` may pass through internally if available, but must not be surfaced as generic unknown filters.
+    - V2EX: `feed_url?: string`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -37,10 +39,16 @@
   - `source_platform = "boss"`
   - requires Boss Cookie and LocalStorage session
   - emits Boss list/detail events already understood by sidecar
+  - `query` is built from Boss search keywords; each keyword line is one Boss search request, so remote intent should be expressed as one line such as `Go 远程` rather than a separate standalone `远程` keyword.
+  - platform-side filters must be limited to observed `joblist` parameters. Do not add visible controls for latest sorting or Boss active status unless a logged-in request proves stable API parameters.
+  - Boss active status remains saved job evidence/display input and AI judgement evidence after collection, not an API pre-filter.
 - V2EX:
   - `source_platform = "v2ex"`
   - does not require Boss session
   - uses `filters.feed_url`, defaulting to `https://www.v2ex.com/feed/tab/jobs.xml`
+  - supports `filters.sort_by = "published_desc" | "updated_desc"`; missing or invalid values default to `published_desc`
+  - supports `filters.recent_days` as a positive day window applied to the same timestamp field selected by `sort_by`; null, missing, or non-positive values mean no time pre-filter
+  - sorts parsed feed entries before applying `limits.maxEntries` so old threads bumped by replies do not crowd out newer postings when `published_desc` is selected
   - emits `JOB_NORMALIZED_CAPTURED`
   - stores `encrypt_job_id = "v2ex:<topicId>"`
   - stores `dedup_key = <topicId>`
@@ -73,6 +81,8 @@
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
 - V2EX feed entry lacks stable topic id or title -> skip that entry.
+- V2EX feed entry timestamp is missing or invalid while `recent_days` is active -> it is not considered recent for that selected time field.
+- Unknown V2EX `sort_by` values -> worker falls back to `published_desc`.
 - V2EX entry lacks positive hiring signals -> emit `JOB_FILTERED` with `缺少招聘信号词`; do not insert `job`.
 - V2EX entry matches default discussion words, collection excluded keywords, or profile `mustNotKeywords` -> do not pre-filter at feed stage; let post-collection rules and AI judgement decide after ingest.
 - Worker emits malformed normalized payload -> Rust IPC deserialization rejects it before DB write.
@@ -92,6 +102,7 @@
 
 - Worker unit tests:
   - Atom parser extracts title, normalized topic URL, topic id, author, and text content.
+  - V2EX sorting and time-window filtering distinguish `published_desc` from `updated_desc`, including old posts bumped by recent replies.
   - HTML entity decoding handles `&nbsp;`.
   - classifier accepts clear hiring posts from positive signals only.
   - classifier does not let search keywords alone make a feed entry a job posting.
@@ -270,6 +281,8 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - Frontend config page:
   - exposes default post-collection rules only.
   - allowed actions: save config, save and recompute existing jobs.
+  - user-facing post-collection controls expose AI judgement preferences only: what to prefer, AI soft exclusions, risk focus, and uncertain-result strategy.
+  - legacy deterministic profile fields may continue to load, save, and round-trip internally for compatibility, but must not be shown as editable form groups in the default config page.
 - Backend compatibility:
   - default profile remains `DEFAULT_FILTER_PROFILE_ID = "default"`.
   - existing `filter_profile` commands can remain for migration and internal compatibility.
@@ -592,4 +605,89 @@ json_object(
   'jd_text', j.jd_text,
   'raw_payload_json', j.raw_payload_json
 )
+```
+
+## Scenario: Job Library AI Audit Filters
+
+### 1. Scope / Trigger
+
+- Trigger: the Jobs page exposes AI judgement status as a filter dimension.
+- Applies when changing `Jobs.vue` filter controls, `useJobsPage.ts` candidate loading, `list_job_candidates`, or `job_filter_result.reason_json` bucket handling.
+- Keep AI audit status separate from manual job status. Manual status describes user workflow; AI audit describes post-collection judgement.
+
+### 2. Signatures
+
+- Frontend state:
+  - `selectedAiAuditFilters: Array<"ai_passed" | "ai_rejected" | "ai_pending">`
+- Frontend request:
+  - `list_job_candidates({ aiAuditFilters: selectedAiAuditFilters.value, ... })`
+- Tauri command:
+  - `list_job_candidates(..., status_filters: Option<Vec<String>>, ai_audit_filters: Option<Vec<String>>, source_platforms: Option<Vec<String>>, collection_methods: Option<Vec<String>>, ...)`
+- SQLite source of truth:
+  - `job_filter_result.reason_json.bucket`
+  - fallback: `job_filter_result.eligible`
+
+### 3. Contracts
+
+- The Jobs page must render AI audit filters in a dedicated group labeled for AI review, not inside the manual job status group.
+- Accepted filter values map to canonical buckets:
+  - `ai_passed` -> `recommended`
+  - `ai_rejected` -> `filtered`
+  - `ai_pending` -> `pending_confirmation`
+- Query code reads `reason_json.bucket` first.
+- Legacy filter rows without a bucket fall back through `eligible`:
+  - `eligible = 1` -> recommended-style match
+  - `eligible = 0` -> filtered-style match
+- Unknown AI audit filter values are ignored rather than broadening the query.
+
+### 4. Validation & Error Matrix
+
+- `aiAuditFilters` empty or missing -> do not add an AI audit SQL predicate.
+- `aiAuditFilters` contains only unknown values -> do not add an AI audit SQL predicate.
+- `reason_json.bucket = pending_confirmation` with `eligible = 0` -> matches only `ai_pending`, not `ai_rejected`.
+- Legacy row with `eligible = 0` and no bucket -> matches `ai_rejected`.
+
+### 5. Good/Base/Bad Cases
+
+- Good: user selects “不通过” in AI 审核; query returns jobs whose canonical bucket is `filtered`.
+- Good: user combines AI 审核 with platform and collection-method filters; all predicates apply together.
+- Base: old rows without `reason_json.bucket` still appear under AI passed/rejected based on `eligible`.
+- Bad: put `ai_passed` / `ai_rejected` / `ai_pending` into `status_filters`; this mixes AI review with manual workflow state and can shift positional command parameters.
+- Bad: infer AI audit status from score labels or UI-only text.
+
+### 6. Tests Required
+
+- Frontend contract tests:
+  - assert `AI_AUDIT_FILTER_OPTIONS`, `selectedAiAuditFilters`, and `toggleAiAuditFilter` exist.
+  - assert `list_job_candidates` receives `aiAuditFilters` independently from `statusFilters`.
+- Rust query tests:
+  - assert `ai_rejected` returns `bucket = filtered`.
+  - assert `ai_pending` returns `bucket = pending_confirmation`.
+  - assert source-platform and collection-method filters still bind to their own parameters after adding `ai_audit_filters`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+statusFilters: [...selectedJobStatusFilters.value, ...selectedAiAuditFilters.value]
+```
+
+#### Correct
+
+```ts
+statusFilters: selectedJobStatusFilters.value,
+aiAuditFilters: selectedAiAuditFilters.value,
+```
+
+#### Wrong
+
+```rust
+list_job_candidates_on_conn(conn, bucket, query, start, end, processed, status, source, collection, limit, offset)
+```
+
+#### Correct
+
+```rust
+list_job_candidates_on_conn(conn, bucket, query, start, end, processed, status, ai_audit, source, collection, limit, offset)
 ```

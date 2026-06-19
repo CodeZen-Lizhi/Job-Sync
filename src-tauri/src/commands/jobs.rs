@@ -3,22 +3,12 @@ mod mutations;
 mod queries;
 mod shared;
 
-use std::time::Duration;
-
-use serde_json::{json, Value};
-
-use crate::{paths, settings};
+use serde_json::Value;
 
 pub use models::{
     CompanyScoreRebuildResult, JobBlacklistEntry, JobCandidatePage, JobDailyIntelligence, JobRow,
     JobSourceEntry, KeywordGroup,
 };
-
-#[derive(Debug, serde::Serialize)]
-pub struct DailyIntelligenceWebhookResult {
-    pub report_date: String,
-    pub channel: String,
-}
 
 #[tauri::command]
 pub fn list_jobs(
@@ -40,6 +30,7 @@ pub fn list_job_candidates(
     end_date: Option<String>,
     processed: Option<String>,
     status_filters: Option<Vec<String>>,
+    ai_audit_filters: Option<Vec<String>>,
     source_platforms: Option<Vec<String>>,
     collection_methods: Option<Vec<String>>,
     limit: Option<u32>,
@@ -53,6 +44,7 @@ pub fn list_job_candidates(
         end_date,
         processed,
         status_filters,
+        ai_audit_filters,
         source_platforms,
         collection_methods,
         limit,
@@ -160,25 +152,6 @@ pub fn get_daily_job_intelligence(
 }
 
 #[tauri::command]
-pub fn send_daily_job_intelligence_wecom_notification(
-    app: tauri::AppHandle,
-    report_date: Option<String>,
-) -> Result<DailyIntelligenceWebhookResult, String> {
-    let app_data_dir = paths::resolve_data_dir(&app)?;
-    let saved_settings = settings::read_settings(&app_data_dir).map_err(|e| e.to_string())?;
-    let webhook_url = normalize_wecom_webhook_url(saved_settings.wecom_webhook_url)?;
-    let summary = queries::get_daily_job_intelligence(app, report_date)?;
-    let content = truncate_wecom_text(&summary.notification_brief_text);
-
-    post_wecom_text_webhook(&webhook_url, &content)?;
-
-    Ok(DailyIntelligenceWebhookResult {
-        report_date: summary.report_date,
-        channel: "wecom".to_string(),
-    })
-}
-
-#[tauri::command]
 pub fn get_job_detail(
     app: tauri::AppHandle,
     encrypt_job_id: String,
@@ -276,103 +249,6 @@ pub fn delete_job_blacklist(app: tauri::AppHandle, blacklist_id: i64) -> Result<
     mutations::delete_job_blacklist(app, blacklist_id)
 }
 
-fn normalize_wecom_webhook_url(value: Option<String>) -> Result<String, String> {
-    let Some(value) = value else {
-        return Err("未配置企业微信机器人 Webhook，请先到设置页保存。".to_string());
-    };
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err("未配置企业微信机器人 Webhook，请先到设置页保存。".to_string());
-    }
-    if !trimmed.starts_with("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=") {
-        return Err(
-            "企业微信机器人 Webhook 必须使用 qyapi.weixin.qq.com 的 HTTPS 地址。".to_string(),
-        );
-    }
-    Ok(trimmed.to_string())
-}
-
-fn truncate_wecom_text(content: &str) -> String {
-    const MAX_CHARS: usize = 1900;
-    if content.chars().count() <= MAX_CHARS {
-        return content.to_string();
-    }
-
-    let mut out = content.chars().take(MAX_CHARS).collect::<String>();
-    out.push_str("\n...（内容过长，请打开 Job Sync 查看完整每日岗位情报；不会自动投递。）");
-    out
-}
-
-fn post_wecom_text_webhook(webhook_url: &str, content: &str) -> Result<(), String> {
-    let payload = json!({
-        "msgtype": "text",
-        "text": {
-            "content": content,
-        },
-    });
-
-    let response = ureq::post(webhook_url)
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(10))
-        .send_json(payload);
-
-    let response = match response {
-        Ok(response) => response,
-        Err(ureq::Error::Status(status, response)) => {
-            let body = response.into_string().unwrap_or_default();
-            return Err(format!("企业微信通知发送失败：HTTP {status} {body}"));
-        }
-        Err(err) => {
-            return Err(format!("企业微信通知发送失败：{err}"));
-        }
-    };
-
-    let body: Value = response
-        .into_json()
-        .map_err(|e| format!("解析企业微信响应失败：{e}"))?;
-    let errcode = body.get("errcode").and_then(Value::as_i64).unwrap_or(-1);
-    if errcode != 0 {
-        let errmsg = body
-            .get("errmsg")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown error");
-        return Err(format!("企业微信通知发送失败：errcode {errcode} {errmsg}"));
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn normalize_wecom_webhook_accepts_enterprise_wechat_robot_url() {
-        let url = normalize_wecom_webhook_url(Some(
-            " https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc ".to_string(),
-        ))
-        .expect("valid wecom webhook");
-
-        assert_eq!(
-            url,
-            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc"
-        );
-    }
-
-    #[test]
-    fn normalize_wecom_webhook_rejects_missing_or_non_wecom_url() {
-        assert!(normalize_wecom_webhook_url(None).is_err());
-        assert!(
-            normalize_wecom_webhook_url(Some("https://example.test/hook".to_string())).is_err()
-        );
-    }
-
-    #[test]
-    fn truncate_wecom_text_keeps_manual_boundary_notice() {
-        let content = "岗位".repeat(2000);
-        let truncated = truncate_wecom_text(&content);
-
-        assert!(truncated.chars().count() < content.chars().count());
-        assert!(truncated.contains("不会自动投递"));
-    }
 }

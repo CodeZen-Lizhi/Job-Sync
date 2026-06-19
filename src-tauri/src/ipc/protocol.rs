@@ -111,6 +111,9 @@ pub struct AiGreetingPayload {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resume_files: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_prompt_extra: Option<String>,
     pub job_detail: Value,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]

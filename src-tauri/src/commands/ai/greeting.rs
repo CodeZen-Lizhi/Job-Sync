@@ -84,6 +84,9 @@ fn run_generate_greeting(
             .as_ref()
             .and_then(|settings| opt_trimmed(Some(settings.ai_context_text.clone())))
     });
+    let greeting_prompt_extra = saved_settings
+        .as_ref()
+        .and_then(|settings| opt_trimmed(Some(settings.ai_greeting_prompt_extra.clone())));
 
     let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
     ensure_greeting_allowed_review_status(&conn, &encrypt_job_id)?;
@@ -116,6 +119,7 @@ fn run_generate_greeting(
         resume_text: resolved_resume_text,
         context_text: resolved_context_text,
         resume_files: resolved_resume_files,
+        greeting_prompt_extra,
         job_detail,
         match_report,
         filter_reason: job_context.filter_reason,

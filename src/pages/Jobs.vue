@@ -26,6 +26,7 @@ const {
   jobCandidateProcessedFilter,
   jobCandidateBucket,
   selectedJobStatusFilters,
+  selectedAiAuditFilters,
   selectedSourcePlatformFilters,
   selectedCollectionMethodFilters,
   jobCandidateTotalPages,
@@ -51,6 +52,7 @@ const {
   JOB_TIME_RANGE_OPTIONS,
   PROCESSED_FILTER_OPTIONS,
   JOB_STATUS_FILTER_OPTIONS,
+  AI_AUDIT_FILTER_OPTIONS,
   SOURCE_PLATFORM_FILTER_OPTIONS,
   COLLECTION_METHOD_FILTER_OPTIONS,
   loadJobCandidates,
@@ -58,6 +60,7 @@ const {
   loadApplicationReadyJobs,
   loadFilteredJobs,
   toggleJobStatusFilter,
+  toggleAiAuditFilter,
   toggleSourcePlatformFilter,
   toggleCollectionMethodFilter,
   goJobCandidatePage,
@@ -127,6 +130,7 @@ const hasActiveFilters = computed(
     !!jobCandidateSearch.value.trim() ||
     jobCandidateProcessedFilter.value !== defaultProcessedFilterForBucket(activeJobLibraryBucket.value) ||
     selectedJobStatusFilters.value.length > 0 ||
+    selectedAiAuditFilters.value.length > 0 ||
     selectedSourcePlatformFilters.value.length > 0 ||
     selectedCollectionMethodFilters.value.length > 0 ||
     jobCandidateTimeRange.value !== "last7",
@@ -171,6 +175,7 @@ function applyBucket(bucket: JobLibraryBucket): void {
   if (bucket === "recommended") {
     jobCandidateProcessedFilter.value = "unprocessed";
     selectedJobStatusFilters.value = [];
+    selectedAiAuditFilters.value = [];
     void loadReviewCandidates();
     void loadJobCandidates();
     return;
@@ -178,6 +183,7 @@ function applyBucket(bucket: JobLibraryBucket): void {
   if (bucket === "processed") {
     jobCandidateProcessedFilter.value = "processed";
     selectedJobStatusFilters.value = [];
+    selectedAiAuditFilters.value = [];
     void loadApplicationReadyJobs();
     void loadJobCandidates();
     return;
@@ -185,6 +191,7 @@ function applyBucket(bucket: JobLibraryBucket): void {
   if (bucket === "filtered") {
     jobCandidateProcessedFilter.value = "all";
     selectedJobStatusFilters.value = [];
+    selectedAiAuditFilters.value = [];
     void loadFilteredJobs();
     void loadJobCandidates();
     return;
@@ -192,11 +199,13 @@ function applyBucket(bucket: JobLibraryBucket): void {
   if (bucket === "all") {
     jobCandidateProcessedFilter.value = "all";
     selectedJobStatusFilters.value = [];
+    selectedAiAuditFilters.value = [];
     void loadJobCandidates();
     return;
   }
   jobCandidateProcessedFilter.value = "all";
   selectedJobStatusFilters.value = [];
+  selectedAiAuditFilters.value = [];
   void loadJobCandidates();
 }
 
@@ -471,6 +480,22 @@ onMounted(() => {
           </div>
         </div>
 
+        <div class="space-y-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">AI 审核</div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="option in AI_AUDIT_FILTER_OPTIONS"
+              :key="option.value"
+              type="button"
+              class="ui-badge transition-colors"
+              :class="selectedAiAuditFilters.includes(option.value) ? 'bg-accent/20 text-cyan-100 ring-accent/40' : 'hover:bg-card-hover/80'"
+              @click="toggleAiAuditFilter(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+
         <div class="grid gap-4 lg:grid-cols-2">
           <div class="space-y-2">
             <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">岗位平台</div>
@@ -575,7 +600,7 @@ onMounted(() => {
         </button>
       </div>
       <div v-else-if="activeJobLibraryBucket === 'filtered' && filteredJobs.length > 0" class="border-t border-border/10 px-4 py-3 text-xs text-content-muted">
-        已过滤视图当前展示最近 20 条过滤结果；岗位仍保留在职位库，可通过采集配置调整规则后重算。
+        已过滤视图当前展示最近 20 条过滤结果；岗位仍保留在职位库，可通过当前规则调整后重算。
       </div>
     </section>
 

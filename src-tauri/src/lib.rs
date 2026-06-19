@@ -65,7 +65,6 @@ pub fn run() {
             commands::jobs::list_job_sources,
             commands::jobs::set_job_source_enabled,
             commands::jobs::get_daily_job_intelligence,
-            commands::jobs::send_daily_job_intelligence_wecom_notification,
             commands::jobs::get_job_detail,
             commands::jobs::delete_job,
             commands::jobs::delete_all_jobs,

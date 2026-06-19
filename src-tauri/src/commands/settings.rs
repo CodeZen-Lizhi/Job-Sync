@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use serde_json::json;
+
 use crate::{paths, settings, storage};
 
 #[derive(Debug, serde::Serialize)]
@@ -14,8 +16,11 @@ pub struct PublicAppSettings {
     pub openai_temperature: Option<f64>,
     pub openai_prompt_extra: String,
     pub openai_schema_extra: String,
-    pub wecom_webhook_url: Option<String>,
-    pub has_wecom_webhook_url: bool,
+    pub ai_greeting_prompt_extra: String,
+    pub telegram_bot_token: Option<String>,
+    pub has_telegram_bot_token: bool,
+    pub telegram_chat_id: Option<String>,
+    pub has_telegram_chat_id: bool,
     pub proxy_url: Option<String>,
     pub collection_config: Option<serde_json::Value>,
     pub ai_resume_text: String,
@@ -48,12 +53,14 @@ pub struct ModelServiceDiagnostic {
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct WecomDiagnostic {
+pub struct TelegramDiagnostic {
     pub status: String,
     pub checked_at: String,
     pub message: String,
-    pub has_webhook_url: bool,
-    pub webhook_url_valid: bool,
+    pub has_bot_token: bool,
+    pub bot_token_valid: bool,
+    pub has_chat_id: bool,
+    pub chat_id_valid: bool,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -61,7 +68,7 @@ pub struct ExternalDependencyDiagnostics {
     pub checked_at: String,
     pub boss_session: BossSessionDiagnostic,
     pub model_service: ModelServiceDiagnostic,
-    pub wecom: WecomDiagnostic,
+    pub telegram: TelegramDiagnostic,
 }
 
 impl From<settings::AppSettings> for PublicAppSettings {
@@ -71,8 +78,13 @@ impl From<settings::AppSettings> for PublicAppSettings {
             .as_deref()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty());
-        let has_wecom_webhook_url = settings
-            .wecom_webhook_url
+        let has_telegram_bot_token = settings
+            .telegram_bot_token
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|value| !value.is_empty());
+        let has_telegram_chat_id = settings
+            .telegram_chat_id
             .as_deref()
             .map(str::trim)
             .is_some_and(|value| !value.is_empty());
@@ -88,8 +100,11 @@ impl From<settings::AppSettings> for PublicAppSettings {
             openai_temperature: settings.openai_temperature,
             openai_prompt_extra: settings.openai_prompt_extra,
             openai_schema_extra: settings.openai_schema_extra,
-            wecom_webhook_url: None,
-            has_wecom_webhook_url,
+            ai_greeting_prompt_extra: settings.ai_greeting_prompt_extra,
+            telegram_bot_token: None,
+            has_telegram_bot_token,
+            telegram_chat_id: None,
+            has_telegram_chat_id,
             proxy_url: settings.proxy_url,
             collection_config: settings.collection_config,
             ai_resume_text: settings.ai_resume_text,
@@ -124,7 +139,7 @@ pub fn diagnose_external_dependencies(
         checked_at: checked_at.clone(),
         boss_session: diagnose_boss_session(&app_data_dir, &checked_at),
         model_service: diagnose_model_service(app, &saved_settings, api_key, base_url, &checked_at),
-        wecom: diagnose_wecom(&saved_settings, &checked_at),
+        telegram: diagnose_telegram(&saved_settings, &checked_at),
     })
 }
 
@@ -290,28 +305,42 @@ fn diagnose_model_service(
     }
 }
 
-fn diagnose_wecom(settings: &settings::AppSettings, checked_at: &str) -> WecomDiagnostic {
-    let url = opt_trimmed(settings.wecom_webhook_url.clone());
-    let has_webhook_url = url.is_some();
-    let webhook_url_valid = url.as_deref().is_some_and(|value| {
-        value.starts_with("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=")
+fn diagnose_telegram(settings: &settings::AppSettings, checked_at: &str) -> TelegramDiagnostic {
+    let bot_token = opt_trimmed(settings.telegram_bot_token.clone());
+    let chat_id = opt_trimmed(settings.telegram_chat_id.clone());
+    let has_bot_token = bot_token.is_some();
+    let has_chat_id = chat_id.is_some();
+    let bot_token_valid = bot_token.as_deref().is_some_and(|value| {
+        let mut parts = value.splitn(2, ':');
+        parts.next().is_some_and(|head| !head.trim().is_empty())
+            && parts.next().is_some_and(|tail| !tail.trim().is_empty())
     });
-    let status = if webhook_url_valid { "ok" } else { "warning" }.to_string();
-    let message = if webhook_url_valid {
-        "企业微信 Webhook 已保存；每日岗位情报仍需用户手动点击发送。"
-    } else if has_webhook_url {
-        "企业微信 Webhook 已保存但格式不符合 qyapi.weixin.qq.com 机器人地址。"
+    let chat_id_valid = chat_id.as_deref().is_some_and(|value| {
+        value.parse::<i64>().is_ok() || value.starts_with('@')
+    });
+    let status = if bot_token_valid && chat_id_valid {
+        "ok"
     } else {
-        "尚未保存企业微信 Webhook；每日岗位情报不会发送到企业微信。"
+        "warning"
+    }
+    .to_string();
+    let message = if bot_token_valid && chat_id_valid {
+        "Telegram 配置已保存；AI 采后判断完成后会自动推送摘要。"
+    } else if has_bot_token || has_chat_id {
+        "Telegram 配置已保存但 bot token 或 chat id 格式需要检查。"
+    } else {
+        "尚未保存 Telegram 配置；AI 采后判断不会自动推送。"
     }
     .to_string();
 
-    WecomDiagnostic {
+    TelegramDiagnostic {
         status,
         checked_at: checked_at.to_string(),
         message,
-        has_webhook_url,
-        webhook_url_valid,
+        has_bot_token,
+        bot_token_valid,
+        has_chat_id,
+        chat_id_valid,
     }
 }
 
@@ -323,6 +352,80 @@ fn clamp_temperature(value: Option<f64>) -> Option<f64> {
             None
         }
     })
+}
+
+fn telegram_bot_api_base(token: &str) -> String {
+    format!("https://api.telegram.org/bot{token}")
+}
+
+pub(crate) fn telegram_message_is_valid(token: &str, chat_id: &str) -> bool {
+    let token = token.trim();
+    let chat_id = chat_id.trim();
+    let mut parts = token.splitn(2, ':');
+    let token_ok = parts
+        .next()
+        .is_some_and(|head| !head.trim().is_empty())
+        && parts.next().is_some_and(|tail| !tail.trim().is_empty());
+    let chat_id_ok = chat_id.parse::<i64>().is_ok() || chat_id.starts_with('@');
+    token_ok && chat_id_ok
+}
+
+pub(crate) fn send_telegram_message_from_settings(
+    settings: &settings::AppSettings,
+    content: &str,
+) -> Result<(), String> {
+    let bot_token = settings
+        .telegram_bot_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "未配置 Telegram bot token，请先到设置页保存。".to_string())?;
+    let chat_id = settings
+        .telegram_chat_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "未配置 Telegram chat id，请先到设置页保存。".to_string())?;
+    if !telegram_message_is_valid(bot_token, chat_id) {
+        return Err("Telegram 配置格式不正确，请检查 bot token 和 chat id。".to_string());
+    }
+
+    let payload = json!({
+        "chat_id": chat_id,
+        "text": content,
+        "disable_web_page_preview": true,
+    });
+
+    let response = ureq::post(&format!("{}/sendMessage", telegram_bot_api_base(bot_token)))
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send_json(payload);
+
+    let response = match response {
+        Ok(response) => response,
+        Err(ureq::Error::Status(status, response)) => {
+            let body = response.into_string().unwrap_or_default();
+            return Err(format!("Telegram 通知发送失败：HTTP {status} {body}"));
+        }
+        Err(err) => {
+            return Err(format!("Telegram 通知发送失败：{err}"));
+        }
+    };
+
+    let body: serde_json::Value = response
+        .into_json()
+        .map_err(|e| format!("解析 Telegram 响应失败：{e}"))?;
+    let ok = body.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    if !ok {
+        return Err(format!(
+            "Telegram 通知发送失败：{}",
+            body.get("description")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown error")
+        ));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -337,7 +440,9 @@ pub fn save_settings(
     openai_temperature: Option<f64>,
     openai_prompt_extra: Option<String>,
     openai_schema_extra: Option<String>,
-    wecom_webhook_url: Option<String>,
+    ai_greeting_prompt_extra: Option<String>,
+    telegram_bot_token: Option<String>,
+    telegram_chat_id: Option<String>,
     proxy_url: Option<String>,
 ) -> Result<PublicAppSettings, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
@@ -356,8 +461,12 @@ pub fn save_settings(
     current.openai_temperature = clamp_temperature(openai_temperature);
     current.openai_prompt_extra = opt_trimmed(openai_prompt_extra).unwrap_or_default();
     current.openai_schema_extra = opt_trimmed(openai_schema_extra).unwrap_or_default();
-    if let Some(webhook_url) = wecom_webhook_url {
-        current.wecom_webhook_url = opt_trimmed(Some(webhook_url));
+    current.ai_greeting_prompt_extra = opt_trimmed(ai_greeting_prompt_extra).unwrap_or_default();
+    if let Some(bot_token) = telegram_bot_token {
+        current.telegram_bot_token = opt_trimmed(Some(bot_token));
+    }
+    if let Some(chat_id) = telegram_chat_id {
+        current.telegram_chat_id = opt_trimmed(Some(chat_id));
     }
     current.proxy_url = opt_trimmed(proxy_url);
 
@@ -383,15 +492,17 @@ mod tests {
     }
 
     #[test]
-    fn public_settings_redacts_saved_wecom_webhook_url() {
+    fn public_settings_redacts_saved_telegram_values() {
         let mut settings = settings::AppSettings::platform_default();
-        settings.wecom_webhook_url =
-            Some("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret".to_string());
+        settings.telegram_bot_token = Some("123:secret".to_string());
+        settings.telegram_chat_id = Some("987654321".to_string());
 
         let public = PublicAppSettings::from(settings);
 
-        assert_eq!(public.wecom_webhook_url, None);
-        assert!(public.has_wecom_webhook_url);
+        assert_eq!(public.telegram_bot_token, None);
+        assert_eq!(public.telegram_chat_id, None);
+        assert!(public.has_telegram_bot_token);
+        assert!(public.has_telegram_chat_id);
     }
 
     #[test]
@@ -422,6 +533,16 @@ mod tests {
                 .and_then(|value| value.as_i64()),
             Some(1)
         );
+    }
+
+    #[test]
+    fn public_settings_exposes_greeting_prompt_extra() {
+        let mut settings = settings::AppSettings::platform_default();
+        settings.ai_greeting_prompt_extra = "更偏项目成果".to_string();
+
+        let public = PublicAppSettings::from(settings);
+
+        assert_eq!(public.ai_greeting_prompt_extra, "更偏项目成果");
     }
 
     #[test]
@@ -458,21 +579,23 @@ mod tests {
     }
 
     #[test]
-    fn wecom_diagnostic_reports_saved_webhook_without_revealing_url() {
+    fn telegram_diagnostic_reports_saved_values_without_revealing_content() {
         let mut settings = settings::AppSettings::platform_default();
         let checked_at = "2026-06-14T00:00:00Z";
 
-        let empty = diagnose_wecom(&settings, checked_at);
+        let empty = diagnose_telegram(&settings, checked_at);
         assert_eq!(empty.status, "warning");
-        assert!(!empty.has_webhook_url);
-        assert!(!empty.webhook_url_valid);
+        assert!(!empty.has_bot_token);
+        assert!(!empty.has_chat_id);
 
-        settings.wecom_webhook_url =
-            Some("https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret".to_string());
-        let configured = diagnose_wecom(&settings, checked_at);
+        settings.telegram_bot_token = Some("123:secret".to_string());
+        settings.telegram_chat_id = Some("987654321".to_string());
+        let configured = diagnose_telegram(&settings, checked_at);
         assert_eq!(configured.status, "ok");
-        assert!(configured.has_webhook_url);
-        assert!(configured.webhook_url_valid);
+        assert!(configured.has_bot_token);
+        assert!(configured.has_chat_id);
+        assert!(configured.bot_token_valid);
+        assert!(configured.chat_id_valid);
         assert!(!configured.message.contains("secret"));
     }
 }

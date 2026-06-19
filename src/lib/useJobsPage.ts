@@ -28,7 +28,6 @@ import type {
   CompanyReviewStatus,
   CompanyScoreRebuildResult,
   CommunicationStatus,
-  DailyIntelligenceWebhookResult,
   GreetingErrorState,
   GreetingMessageResult,
   JobBlacklistEntry,
@@ -59,6 +58,8 @@ interface AiPostCollectionJudgeResult {
   ai_judged: number;
   hard_skipped: number;
   failed: number;
+  telegram_sent?: boolean;
+  telegram_error?: string | null;
 }
 
 interface ConfirmDialogState {
@@ -85,7 +86,10 @@ export type JobStatusFilter =
   | CommunicationStatus
   | "has_notes"
   | "company_not_fit"
-  | "blacklisted";
+  | "blacklisted"
+  | "ai_passed"
+  | "ai_rejected"
+  | "ai_pending";
 
 export const JOB_TIME_RANGE_OPTIONS: Array<{ value: JobTimeRange; label: string }> = [
   { value: "today", label: "今天" },
@@ -115,6 +119,12 @@ export const JOB_STATUS_FILTER_OPTIONS: Array<{ value: JobStatusFilter; label: s
   { value: "manual_not_fit", label: "岗位不合适" },
   { value: "company_not_fit", label: "公司不合适" },
   { value: "blacklisted", label: "黑名单" },
+];
+
+export const AI_AUDIT_FILTER_OPTIONS: Array<{ value: "ai_passed" | "ai_rejected" | "ai_pending"; label: string }> = [
+  { value: "ai_passed", label: "通过" },
+  { value: "ai_rejected", label: "不通过" },
+  { value: "ai_pending", label: "待确认" },
 ];
 
 export const COLLECTION_METHOD_FILTER_OPTIONS: Array<{ value: CollectionMethod; label: string }> = [
@@ -297,7 +307,7 @@ function buildResumeWorkspaceTitle(job: JobRow): string {
 }
 
 function formatCommunicationTrace(job: JobRow): string {
-  const statusLabel = job.communication_status === "greeted_unread" ? "未读回流" : communicationStatusLabel(job.communication_status);
+  const statusLabel = communicationStatusLabel(job.communication_status);
   const parts = [statusLabel];
   if (job.last_greeted_at) parts.push(`上次打招呼 ${formatDate(job.last_greeted_at)}`);
   if (job.review_updated_at) parts.push(`更新 ${formatDate(job.review_updated_at)}`);
@@ -451,8 +461,8 @@ function buildApplicationPacket(
     `审核状态：${reviewStatusLabel(job.review_status)}`,
     `沟通状态：${communicationStatusLabel(job.communication_status)}`,
     `沟通追踪：${formatCommunicationTrace(job)}`,
-    `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
-    `评分依据：${scoreSummary}`,
+    `判断：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
+    `判断依据：${scoreSummary}`,
     `Resume Match 证据：\n${resumeMatchEvidence}`,
     `筛选依据：${formatApplicationFilterTrace(job)}`,
     `来源追踪：${formatSourceTrace(job)}`,
@@ -484,7 +494,7 @@ function buildReadyToApplyConfirmationMessage(
     `简历匹配报告：${resumeTrace}`,
     `Resume Match 证据：\n${resumeMatchEvidence}`,
     `采后规则：${formatApplicationFilterTrace(job)}`,
-    `评分：Final ${formatPacketScore(job.final_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
+    `判断：Final ${formatPacketScore(job.final_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `投递准备预检：\n${readinessPreflight}`,
     `投递准备清单：\n${checklist}`,
     "后续仍需人工核对最终简历/PDF、打招呼文案和原平台动作；该操作只记录本地准备投递状态，不会自动发送或投递。",
@@ -507,7 +517,7 @@ function buildApplicationReadyJobSummary(entry: ApplicationReadySummaryEntry): s
     `岗位：${job.position_name ?? job.encrypt_job_id}`,
     `公司：${job.brand_name ?? "未知"} / ${job.city_name ?? "未知城市"}`,
     `来源：${formatSourceTrace(job)}`,
-    `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
+    `判断：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `Resume Match 证据：\n${buildResumeMatchEvidenceTrace(job.score_reason_json)}`,
     `沟通状态：${formatCommunicationTrace(job)}`,
     `来源链接：${jobSourceUrl(job)}`,
@@ -539,8 +549,8 @@ function buildReviewCandidateSummary(job: JobRow): string {
     `公司：${job.brand_name ?? "未知"} / ${job.city_name ?? "未知城市"}`,
     `薪资/经验/学历：${job.salary_desc ?? "未知"} / ${job.experience_name ?? "未知"} / ${job.degree_name ?? "未知"}`,
     `审核状态：${reviewStatusLabel(job.review_status)}；沟通追踪：${formatCommunicationTrace(job)}`,
-    `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
-    `评分依据：${scoreSummary}`,
+    `判断：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
+    `判断依据：${scoreSummary}`,
     `Resume Match 证据：\n${buildResumeMatchEvidenceTrace(job.score_reason_json)}`,
     `采后规则：${formatApplicationFilterTrace(job)}`,
     `来源追踪：${formatSourceTrace(job)}`,
@@ -582,7 +592,7 @@ function buildFilteredJobSummary(job: JobRow): string {
     job.company_review_status && job.company_review_status !== "pending"
       ? `公司判断：${companyReviewStatusLabel(job.company_review_status)}`
       : null,
-    `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
+    `判断：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `来源追踪：${formatSourceTrace(job)}`,
     `来源链接：${jobSourceUrl(job)}`,
   ];
@@ -620,7 +630,7 @@ function buildCommunicationFollowupJobSummary(job: JobRow): string {
       ? `黑名单：${job.blacklist_reason ?? "已命中黑名单"}`
       : null,
     `采后规则：${formatApplicationFilterTrace(job)}`,
-    `评分：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
+    `判断：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
     `来源追踪：${formatSourceTrace(job)}`,
     `来源链接：${jobSourceUrl(job)}`,
     "下一步：人工复盘沟通结果，必要时补备注、拉黑公司/职位或恢复候选；不会自动发送或投递。",
@@ -665,6 +675,7 @@ export function useJobsPage() {
   const jobCandidateProcessedFilter = ref<ProcessedFilter>("all");
   const jobCandidateBucket = ref<JobCandidateBucket>("all");
   const selectedJobStatusFilters = ref<JobStatusFilter[]>([]);
+  const selectedAiAuditFilters = ref<Array<"ai_passed" | "ai_rejected" | "ai_pending">>([]);
   const selectedSourcePlatformFilters = ref<string[]>([]);
   const selectedCollectionMethodFilters = ref<CollectionMethod[]>([]);
   const reviewCandidates = ref<JobRow[]>([]);
@@ -676,7 +687,7 @@ export function useJobsPage() {
   const dailyIntelligence = ref<JobDailyIntelligence | null>(null);
   const dailyIntelligenceAutoNotifyEnabled = ref(readStoredBoolean(DAILY_INTELLIGENCE_AUTO_NOTIFY_KEY, false));
   const dailyIntelligenceExternalMessage = ref<string | null>(null);
-  const dailyIntelligenceWecomSending = ref(false);
+  const dailyIntelligenceTelegramSending = ref(false);
   const blacklistEntries = ref<JobBlacklistEntry[]>([]);
   const filterProfileUpdatedAt = ref<string | null>(null);
   const filterProfileLoading = ref(false);
@@ -931,6 +942,7 @@ export function useJobsPage() {
         endDate,
         processed: jobCandidateProcessedFilter.value === "all" ? null : jobCandidateProcessedFilter.value,
         statusFilters: selectedJobStatusFilters.value,
+        aiAuditFilters: selectedAiAuditFilters.value,
         sourcePlatforms: selectedSourcePlatformFilters.value,
         collectionMethods: selectedCollectionMethodFilters.value,
         limit: jobCandidatePageSize.value,
@@ -955,6 +967,12 @@ export function useJobsPage() {
       : [...selectedJobStatusFilters.value, value];
     void loadJobCandidates();
   }
+  function toggleAiAuditFilter(value: "ai_passed" | "ai_rejected" | "ai_pending"): void {
+    selectedAiAuditFilters.value = selectedAiAuditFilters.value.includes(value)
+      ? selectedAiAuditFilters.value.filter((item) => item !== value)
+      : [...selectedAiAuditFilters.value, value];
+    void loadJobCandidates();
+  }
   function toggleSourcePlatformFilter(value: string): void {
     selectedSourcePlatformFilters.value = selectedSourcePlatformFilters.value.includes(value)
       ? selectedSourcePlatformFilters.value.filter((item) => item !== value)
@@ -975,10 +993,12 @@ export function useJobsPage() {
     jobCandidateProcessedFilter.value = "all";
     jobCandidateBucket.value = "all";
     selectedJobStatusFilters.value = [];
+    selectedAiAuditFilters.value = [];
     selectedSourcePlatformFilters.value = [];
     selectedCollectionMethodFilters.value = [];
     void loadJobCandidates();
   }
+
   function goJobCandidatePage(page: number): void {
     const nextPage = Math.min(Math.max(page, 1), jobCandidateTotalPages.value);
     if (nextPage === jobCandidatePage.value) return;
@@ -1211,7 +1231,9 @@ export function useJobsPage() {
       });
       aiPostCollectionJudgeMessage.value = `AI 采后判断已更新 ${result.updated} 个岗位，其中 ${result.ai_judged} 个由 AI 判断${
         result.hard_skipped > 0 ? `，${result.hard_skipped} 个保留硬规则结果` : ""
-      }${result.failed > 0 ? `，${result.failed} 个转入待确认` : ""}`;
+      }${result.failed > 0 ? `，${result.failed} 个转入待确认` : ""}${result.telegram_sent ? "，已推送 Telegram" : ""}${
+        result.telegram_error ? `，推送失败：${result.telegram_error}` : ""
+      }`;
       await refreshAfterJobStateChange(false);
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -1503,8 +1525,8 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     `城市：${candidate.city_name ?? "未知城市"}`,
     `来源：${platform} / 去重 ${sourceKey}`,
     sourceUrl ? `来源链接：${sourceUrl}` : null,
-    `评分：Final ${formatPacketScore(candidate.final_score)}，Resume ${formatPacketScore(candidate.resume_match_score)}，Preference ${formatPacketScore(candidate.preference_score)}，Company ${formatPacketScore(candidate.company_score)}`,
-    `推荐理由：${candidate.recommendation_reason || "达到当前推荐阈值"}`,
+    `判断：Final ${formatPacketScore(candidate.final_score)}，Resume ${formatPacketScore(candidate.resume_match_score)}，Preference ${formatPacketScore(candidate.preference_score)}，Company ${formatPacketScore(candidate.company_score)}`,
+    `推荐原因：${candidate.recommendation_reason || "达到当前推荐阈值"}`,
     `Resume Match 证据：\n${resumeMatchEvidence}`,
     `入口：打开 Job Sync 查看 Top 20 人工审核队列并人工确认 ${candidate.encrypt_job_id}`,
     "使用边界：仅供人工复制、研究和确认；不会自动发送或投递。",
@@ -1544,7 +1566,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
       error.value = `打开邮件草稿失败：${message}`;
     }
   }
-  async function sendDailyIntelligenceWecomNotification(): Promise<void> {
+  async function sendDailyIntelligenceTelegramNotification(): Promise<void> {
     error.value = null;
     dailyIntelligenceExternalMessage.value = null;
     if (!dailyIntelligence.value?.notification_brief_text && !dailyIntelligence.value?.notification_text) {
@@ -1552,21 +1574,21 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
       return;
     }
     if (!tauri) {
-      error.value = "企业微信通知只在 Tauri 桌面端可用。";
+      error.value = "Telegram 通知只在 Tauri 桌面端可用。";
       return;
     }
 
-    dailyIntelligenceWecomSending.value = true;
+    dailyIntelligenceTelegramSending.value = true;
     try {
-      const result = await invoke<DailyIntelligenceWebhookResult>("send_daily_job_intelligence_wecom_notification", {
+      const result = await invoke<{ report_date: string; channel: "telegram" }>("send_daily_job_intelligence_telegram_notification", {
         reportDate: dailyIntelligence.value.report_date || null,
       });
-      dailyIntelligenceExternalMessage.value = `已发送企业微信摘要（${result.report_date}）；不会自动投递。`;
+      dailyIntelligenceExternalMessage.value = `已发送 Telegram 摘要（${result.report_date}）；不会自动投递。`;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      error.value = `发送企业微信通知失败：${message}`;
+      error.value = `发送 Telegram 通知失败：${message}`;
     } finally {
-      dailyIntelligenceWecomSending.value = false;
+      dailyIntelligenceTelegramSending.value = false;
     }
   }
 
@@ -2001,6 +2023,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     jobCandidateProcessedFilter,
     jobCandidateBucket,
     selectedJobStatusFilters,
+    selectedAiAuditFilters,
     selectedSourcePlatformFilters,
     selectedCollectionMethodFilters,
     jobCandidateTotalPages,
@@ -2016,7 +2039,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     dailyIntelligence,
     dailyIntelligenceAutoNotifyEnabled,
     dailyIntelligenceExternalMessage,
-    dailyIntelligenceWecomSending,
+    dailyIntelligenceTelegramSending,
     blacklistEntries,
     ...filterProfileState,
     filterProfileUpdatedAt,
@@ -2065,6 +2088,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     loadKeywords,
     loadJobCandidates,
     toggleJobStatusFilter,
+    toggleAiAuditFilter,
     toggleSourcePlatformFilter,
     toggleCollectionMethodFilter,
     clearJobCandidateFilters,
@@ -2072,6 +2096,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     JOB_TIME_RANGE_OPTIONS,
     PROCESSED_FILTER_OPTIONS,
     JOB_STATUS_FILTER_OPTIONS,
+    AI_AUDIT_FILTER_OPTIONS,
     SOURCE_PLATFORM_FILTER_OPTIONS,
     COLLECTION_METHOD_FILTER_OPTIONS,
     loadReviewCandidates,
@@ -2104,7 +2129,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     copyDailyIntelligence,
     copyDailyRecommendedCandidate,
     openDailyIntelligenceEmailDraft,
-    sendDailyIntelligenceWecomNotification,
+    sendDailyIntelligenceTelegramNotification,
     openJobSourceUrl,
     copyFilteredJobsSummary,
     showDailyIntelligenceNotification,

@@ -1,4 +1,4 @@
-import { withPromptExtra, withSchemaExtra } from "./promptExtra.js";
+import { withGreetingPromptExtra, withPromptExtra, withSchemaExtra } from "./promptExtra.js";
 
 type JobAiPromptContext = {
   filterReason?: unknown;
@@ -184,6 +184,7 @@ export function buildGreetingPrompts(args: {
   resumeText?: string;
   contextText?: string;
   resumeFiles?: string;
+  greetingPromptExtra?: string;
   jobDetail: unknown;
   matchReport?: unknown;
   filterReason?: unknown;
@@ -191,13 +192,16 @@ export function buildGreetingPrompts(args: {
   sourceContext?: unknown;
   reviewContext?: unknown;
 }): { system: string; user: string } {
-  const system = withPromptExtra([
-    "你是一名谨慎、具体的求职沟通文案助手。",
-    "你必须输出严格 JSON（不要 Markdown，不要代码块，不要额外文本）。",
-    "你不能编造经历，候选人经历只能来自简历、当前情况说明、匹配报告或评分理由。",
-    "你不能输出自动发送动作，只能生成供用户编辑复制的短文案。",
-    "避免泛化模板，尤其不要使用“您好，我对贵司岗位/这个岗位/该职位很感兴趣”这类空话开头。",
-  ]);
+  const system = withGreetingPromptExtra(
+    withPromptExtra([
+      "你是一名谨慎、具体的求职沟通文案助手。",
+      "你必须输出严格 JSON（不要 Markdown，不要代码块，不要额外文本）。",
+      "你不能编造经历，候选人经历只能来自简历、当前情况说明、匹配报告或评分理由。",
+      "你不能输出自动发送动作，只能生成供用户编辑复制的短文案。",
+      "避免泛化模板，尤其不要使用“您好，我对贵司岗位/这个岗位/该职位很感兴趣”这类空话开头。",
+    ]),
+    args.greetingPromptExtra ?? "",
+  );
 
   const schemaHint = {
     message: "...",
@@ -230,6 +234,9 @@ export function buildGreetingPrompts(args: {
     "",
     "【简历原文】",
     (args.resumeText ?? "").trim() || "（未提供，必须更保守，只能基于匹配报告和当前情况说明）",
+    "",
+    "【打招呼补充提示】",
+    (args.greetingPromptExtra ?? "").trim() || "（无）",
     "",
     "【匹配报告 JSON】",
     args.matchReport ? JSON.stringify(args.matchReport) : "（无）",

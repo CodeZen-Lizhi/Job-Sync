@@ -13,6 +13,7 @@ export async function runAiGreetingMode(payload: AiGreetingPayload, ctx: ModeCon
       resumeText: payload.resume_text,
       contextText: payload.context_text,
       resumeFiles: payload.resume_files,
+      greetingPromptExtra: payload.greeting_prompt_extra,
       jobDetail: payload.job_detail,
       matchReport: payload.match_report,
       filterReason: payload.filter_reason,

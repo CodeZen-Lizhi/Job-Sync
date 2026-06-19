@@ -26,6 +26,8 @@ const {
   v2exFeedSettingsOpen,
   v2exFeedUrl,
   v2exKeywordsText,
+  v2exFeedSortBy,
+  v2exRecentDays,
   v2exKeywords,
   bossKeywordsText,
   cityText,
@@ -40,43 +42,6 @@ const {
   selectedDegree,
   selectedIndustry,
   selectedScale,
-  mustKeywordsText,
-  mustNotKeywordsText,
-  requiredDirectionsText,
-  excludedDirectionsText,
-  requiredTechTagsText,
-  excludedTechTagsText,
-  requiredWorkModesText,
-  excludedWorkModesText,
-  requiredBossActiveStatusesText,
-  excludedBossActiveStatusesText,
-  targetCitiesText,
-  excludedCitiesText,
-  selectedSourcePlatforms,
-  sourcePlatformModeLabel,
-  sourcePlatformModeHint,
-  sourcePlatformOptions,
-  setBossOnlySourcePlatforms,
-  setManualImportSourcePlatforms,
-  setAllSourcePlatforms,
-  communicationStatusesText,
-  minimumSalaryK,
-  maximumSalaryK,
-  acceptNegotiableSalary,
-  recentDays,
-  minimumExperienceYears,
-  maximumExperienceYears,
-  acceptUnknownExperience,
-  allowedDegreesText,
-  excludedDegreesText,
-  companyMustKeywordsText,
-  companyMustNotKeywordsText,
-  companyRequiredScalesText,
-  companyExcludedScalesText,
-  companyRequiredFinancingStagesText,
-  companyExcludedFinancingStagesText,
-  companyRequiredIndustriesText,
-  companyExcludedIndustriesText,
   error,
   bossMetaLoading,
   bossMetaSyncing,
@@ -302,7 +267,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
         <div v-if="bossSettingsOpen" class="space-y-3 p-4">
           <div class="ui-crawl-toolbar flex flex-wrap items-center justify-between gap-2 px-3 py-3">
             <div class="text-xs text-content-muted">
-              Boss 筛选字典：
+              Boss 平台筛选：
               <span class="text-content-secondary">{{ bossMetaReady ? `${bossMetaSyncedAt ?? "已加载"} · ${bossFilterConditionCount} 类筛选项` : "未同步，请先同步后使用完整 Boss 筛选项" }}</span>
             </div>
             <div class="flex items-center gap-2">
@@ -317,8 +282,11 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
           <div v-if="bossMetaError" class="ui-status-danger p-3 text-xs">{{ bossMetaError }}</div>
 
           <label class="block space-y-1">
-            <div class="text-xs font-medium text-content-muted">Boss 搜索关键词（每行一个，OR 扩样本）</div>
-            <textarea v-model="bossKeywordsText" class="ui-textarea h-24 w-full" placeholder="同步采集意图后自动生成，也可手动调整" />
+            <div class="text-xs font-medium text-content-muted">Boss 搜索关键词（每行一轮搜索）</div>
+            <textarea v-model="bossKeywordsText" class="ui-textarea h-24 w-full" placeholder="Go 远程&#10;SRE 远程&#10;Kubernetes 平台" />
+            <div class="text-[11px] leading-5 text-content-muted">
+              一行会作为一个完整 query 传给 Boss；要找远程岗位，把「远程」和岗位词写在同一行。
+            </div>
           </label>
 
           <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -389,7 +357,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             </label>
           </div>
           <div v-if="bossMetaReady && bossAdditionalFilterGroups.length === 0" class="rounded-md border border-border/10 bg-surface-secondary/50 p-3 text-xs text-content-muted">
-            当前 Boss 字典没有返回除城市、薪资、经验、学历、行业、规模以外的可用筛选项。
+            当前 Boss 字典没有返回融资阶段或职位类型筛选项。
           </div>
         </div>
       </section>
@@ -413,12 +381,23 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <div class="font-medium text-content-secondary">本次 Feed 关键词</div>
             <textarea v-model="v2exKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;远程&#10;Kubernetes" />
           </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">排序</div>
+            <UiSelect v-model="v2exFeedSortBy">
+              <option value="published_desc">发布时间倒序</option>
+              <option value="updated_desc">更新时间倒序</option>
+            </UiSelect>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">最近天数</div>
+            <input v-model.number="v2exRecentDays" type="number" min="0" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
           <div class="md:col-span-2 rounded-md border border-border/10 bg-surface-secondary/50 p-3 text-xs text-content-muted">
             <span class="font-medium text-content-secondary">当前关键词：</span>
             <span>{{ v2exKeywords.length > 0 ? v2exKeywords.join("、") : "未填写关键词时只使用招聘帖识别规则" }}</span>
           </div>
           <div class="md:col-span-2 text-xs text-content-muted">
-            V2EX 会用这里的关键词做 OR 匹配；“同步到平台配置”会用采集意图里的关键词和技术栈填充这里，但你可以单独调整。排除词仍来自采集意图和采后判断规则；城市、薪资、经验、学历继续交给采后判断规则。
+            V2EX 会先按所选时间字段排序并应用最近天数，再用这里的关键词做 OR 匹配；排除词仍来自采集意图和采后判断规则，城市、薪资、经验、学历继续交给采后判断规则。
           </div>
         </div>
       </section>
@@ -490,177 +469,8 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
               <div class="text-[11px] leading-5 text-content-muted">低置信度仍会优先待确认，避免把可疑但不确定的岗位误杀。</div>
             </label>
           </div>
-
-          <div class="ui-rule-group">
-            <div class="ui-rule-group-title">正文与 JD 信号</div>
-            <p class="ui-rule-group-copy">这些规则会参与采后判断；现有筛选器会合并列表字段、详情文本和 JD 文本进行匹配。关键词只是其中一种信号。</p>
-          </div>
-
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="ui-field-label">必须命中的正文信号</div>
-              <textarea v-model="mustKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Kubernetes&#10;SRE" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">正文排除信号</div>
-              <textarea v-model="mustNotKeywordsText" class="ui-textarea h-20 w-full" placeholder="外包&#10;驻场&#10;培训" />
-            </label>
-          </div>
-          <div class="ui-rule-group">
-            <div class="ui-rule-group-title">岗位方向与技术证据</div>
-            <p class="ui-rule-group-copy">用于判断 JD 是否真的描述了你要做的方向，而不只是平台搜索标题里出现过某个词。</p>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="ui-field-label">必须岗位方向</div>
-              <textarea v-model="requiredDirectionsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;Infra&#10;云原生" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">排除岗位方向</div>
-              <textarea v-model="excludedDirectionsText" class="ui-textarea h-20 w-full" placeholder="前端&#10;销售型售前" />
-            </label>
-          </div>
-          <div class="ui-rule-group">
-            <div class="ui-rule-group-title">工作方式与状态门槛</div>
-            <p class="ui-rule-group-copy">这些规则决定岗位能否成为候选，但被挡掉的记录仍在已过滤/全部入库视图中可追溯。</p>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须技术标签</div>
-              <textarea v-model="requiredTechTagsText" class="ui-textarea h-20 w-full" placeholder="Kubernetes&#10;Docker" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除技术标签</div>
-              <textarea v-model="excludedTechTagsText" class="ui-textarea h-20 w-full" placeholder="Java&#10;PHP&#10;Windows 运维" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须工作方式</div>
-              <textarea v-model="requiredWorkModesText" class="ui-textarea h-20 w-full" placeholder="remote&#10;hybrid" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除工作方式</div>
-              <textarea v-model="excludedWorkModesText" class="ui-textarea h-20 w-full" placeholder="on_site&#10;office" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须 Boss 活跃状态</div>
-              <textarea v-model="requiredBossActiveStatusesText" class="ui-textarea h-20 w-full" placeholder="刚刚活跃&#10;今日活跃&#10;3日内活跃" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除 Boss 活跃状态</div>
-              <textarea v-model="excludedBossActiveStatusesText" class="ui-textarea h-20 w-full" placeholder="半年前活跃&#10;很久未活跃" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-4">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">可接受城市</div>
-              <textarea v-model="targetCitiesText" class="ui-textarea h-20 w-full" placeholder="北京&#10;上海&#10;深圳" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除城市</div>
-              <textarea v-model="excludedCitiesText" class="ui-textarea h-20 w-full" placeholder="杭州&#10;广州" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">允许候选来源</div>
-              <div class="mb-1 flex flex-wrap gap-1.5">
-                <button type="button" class="ui-btn-secondary px-2 py-1 text-[11px]" @click="setBossOnlySourcePlatforms">Boss-only</button>
-                <button type="button" class="ui-btn-secondary px-2 py-1 text-[11px]" @click="setManualImportSourcePlatforms">外部保留来源</button>
-                <button type="button" class="ui-btn-secondary px-2 py-1 text-[11px]" @click="setAllSourcePlatforms">全来源</button>
-              </div>
-              <UiMultiSelect v-model="selectedSourcePlatforms">
-                <option v-for="option in sourcePlatformOptions" :key="option.value" :value="option.value">
-                  {{ option.label }}
-                </option>
-              </UiMultiSelect>
-              <div class="text-[11px] text-content-muted">{{ sourcePlatformModeLabel }} · {{ sourcePlatformModeHint }}</div>
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">允许沟通状态</div>
-              <textarea v-model="communicationStatusesText" class="ui-textarea h-20 w-full" placeholder="not_contacted&#10;greeted_unread" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-4">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最低薪资 K</div>
-              <input v-model.number="minimumSalaryK" type="number" min="0" step="1" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最高薪资 K</div>
-              <input v-model.number="maximumSalaryK" type="number" min="0" step="1" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最近新增天数</div>
-              <input v-model.number="recentDays" type="number" min="0" step="1" class="ui-input w-full" />
-            </label>
-            <label class="flex items-center gap-2 self-end rounded-md border border-border/10 bg-surface-secondary/50 px-3 py-2 text-xs text-content-muted">
-              <input v-model="acceptNegotiableSalary" type="checkbox" class="h-4 w-4 accent-accent" />
-              接受面议薪资
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-4">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最低经验年限</div>
-              <input v-model.number="minimumExperienceYears" type="number" min="0" step="0.5" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">最高经验年限</div>
-              <input v-model.number="maximumExperienceYears" type="number" min="0" step="0.5" class="ui-input w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">允许学历要求</div>
-              <textarea v-model="allowedDegreesText" class="ui-textarea h-16 w-full" placeholder="学历不限&#10;本科" />
-            </label>
-            <label class="flex items-center gap-2 self-end rounded-md border border-border/10 bg-surface-secondary/50 px-3 py-2 text-xs text-content-muted">
-              <input v-model="acceptUnknownExperience" type="checkbox" class="h-4 w-4 accent-accent" />
-              接受未知经验
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-3">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除学历要求</div>
-              <textarea v-model="excludedDegreesText" class="ui-textarea h-20 w-full" placeholder="硕士&#10;博士" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">公司必须条件</div>
-              <textarea v-model="companyMustKeywordsText" class="ui-textarea h-20 w-full" placeholder="云计算&#10;B轮" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">公司排除条件</div>
-              <textarea v-model="companyMustNotKeywordsText" class="ui-textarea h-20 w-full" placeholder="外包&#10;培训机构" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须公司规模</div>
-              <textarea v-model="companyRequiredScalesText" class="ui-textarea h-20 w-full" placeholder="1000人以上&#10;500-999人" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除公司规模</div>
-              <textarea v-model="companyExcludedScalesText" class="ui-textarea h-20 w-full" placeholder="20人以下" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须融资阶段</div>
-              <textarea v-model="companyRequiredFinancingStagesText" class="ui-textarea h-20 w-full" placeholder="B轮&#10;上市" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除融资阶段</div>
-              <textarea v-model="companyExcludedFinancingStagesText" class="ui-textarea h-20 w-full" placeholder="未融资" />
-            </label>
-          </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">必须行业</div>
-              <textarea v-model="companyRequiredIndustriesText" class="ui-textarea h-20 w-full" placeholder="云计算&#10;企业服务" />
-            </label>
-            <label class="space-y-1">
-              <div class="text-xs font-medium text-content-muted">排除行业</div>
-              <textarea v-model="companyExcludedIndustriesText" class="ui-textarea h-20 w-full" placeholder="培训&#10;外包服务" />
-            </label>
+          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3 text-xs leading-5 text-content-muted">
+            黑名单、沟通状态、公司状态和历史兼容规则仍在底层生效；这里先只保留需要人工维护的 AI 判断偏好。
           </div>
           <div v-if="filterRecomputeMessage" class="text-xs text-emerald-300">{{ filterRecomputeMessage }}</div>
         </div>

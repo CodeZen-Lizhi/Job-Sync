@@ -278,6 +278,7 @@ const BOSS_FILTER_FIELD_LABELS: Record<string, string> = {
 };
 
 const PRIMARY_BOSS_FILTER_FIELDS = new Set(["salary", "experience", "degree", "scale"]);
+const SECONDARY_BOSS_FILTER_FIELDS = new Set(["stage", "jobType"]);
 
 function normalizeBossFilterField(key: string): string {
   return key.replace(/List$/u, "");
@@ -296,6 +297,7 @@ export function buildBossFilterConditionGroups(meta: unknown): BossFilterConditi
     if (!key.endsWith("List")) continue;
     const field = normalizeBossFilterField(key);
     if (PRIMARY_BOSS_FILTER_FIELDS.has(field)) continue;
+    if (!SECONDARY_BOSS_FILTER_FIELDS.has(field)) continue;
     const options = filterBossOptions(value);
     if (options.length === 0) continue;
     out.push({
