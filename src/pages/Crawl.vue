@@ -9,14 +9,12 @@ const {
   tauri,
   runtime,
   clearLogs,
-  mode,
-  selectedCollectionSources,
-  maxPages,
-  maxJobs,
-  delayMs,
   actionBusy,
   error,
   sidecarRunning,
+  selectedCollectionSources,
+  delayMs,
+  latestCollectionRun,
   start,
   stop,
 } = useCrawlPage();
@@ -24,11 +22,11 @@ const {
 
 <template>
   <section class="flex min-h-[calc(100vh-5.25rem)] flex-col gap-4">
-    <header class="shrink-0 space-y-1">
+    <header class="shrink-0 space-y-2">
       <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div class="space-y-1">
           <h1 class="text-xl font-semibold text-content-primary">岗位采集</h1>
-          <p class="mt-1 text-xs text-content-muted">自动采集只负责写入职位库并触发采后判断，不执行投递或开聊。</p>
+          <p class="text-xs text-content-muted">只写入职位库，后续判断另算。</p>
         </div>
         <RouterLink class="ui-btn-secondary px-3 py-1.5 text-xs" to="/crawl-config">采集配置</RouterLink>
       </div>
@@ -38,42 +36,22 @@ const {
       当前是浏览器模式（非 Tauri）。采集命令不可用。
     </div>
 
-    <div class="ui-crawl-panel shrink-0 space-y-4 p-5">
+    <div class="ui-crawl-panel shrink-0 space-y-4 p-4 sm:p-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="inline-flex rounded-xl bg-card/80 p-1 ring-1 ring-border/10">
-          <button
-            class="rounded-md px-4 py-1.5 text-sm font-medium transition-all"
-            :class="mode === 'manual' ? 'bg-accent/90 text-white shadow-sm' : 'text-content-secondary hover:bg-card-hover/60 hover:text-content-primary'"
-            @click="mode = 'manual'"
-          >
-            手动采集
-          </button>
-          <button
-            class="rounded-md px-4 py-1.5 text-sm font-medium transition-all"
-            :class="mode === 'auto' ? 'bg-accent/90 text-white shadow-sm' : 'text-content-secondary hover:bg-card-hover/60 hover:text-content-primary'"
-            @click="mode = 'auto'"
-          >
-            自动采集
-          </button>
+        <div class="space-y-1">
+          <div class="text-xs font-semibold uppercase tracking-[0.18em] text-content-muted">自动采集</div>
+          <div class="text-sm font-medium text-content-primary">运行控制</div>
         </div>
       </div>
 
-      <div v-if="mode === 'auto'" class="grid gap-3 sm:grid-cols-3">
-        <label class="space-y-1.5">
-          <div class="text-xs font-medium text-content-muted">最大页数</div>
-          <input v-model.number="maxPages" type="number" min="1" class="ui-input w-full" />
-        </label>
-        <label class="space-y-1.5">
-          <div class="text-xs font-medium text-content-muted">最大职位数</div>
-          <input v-model.number="maxJobs" type="number" min="1" class="ui-input w-full" />
-        </label>
+      <div class="grid gap-3 sm:grid-cols-2">
         <label class="space-y-1.5">
           <div class="text-xs font-medium text-content-muted">延迟 (ms)</div>
           <input v-model.number="delayMs" type="number" min="0" class="ui-input w-full" />
         </label>
       </div>
 
-      <div v-if="mode === 'auto' && selectedCollectionSources.length === 0" class="ui-status-warning p-3 text-xs">
+      <div v-if="selectedCollectionSources.length === 0" class="ui-status-warning p-3 text-xs">
         当前没有可执行的自动采集来源。请到设置页启用 Boss 或 V2EX，并在采集配置里选择本次采集来源。
       </div>
 
@@ -87,11 +65,7 @@ const {
     </div>
 
     <CrawlRuntimePanel
-      :keyword="runtime.progress.keyword"
-      :current-page="runtime.progress.current_page"
-      :captured-job-list="runtime.progress.captured_job_list"
-      :captured-job-detail="runtime.progress.captured_job_detail"
-      :filtered-job="runtime.progress.filtered_job"
+      :run="latestCollectionRun"
       :logs="runtime.logs"
       :sidecar-running="sidecarRunning"
       :error="error"

@@ -81,6 +81,51 @@ export function useCrawlPage(): CrawlPageState {
 
 **Related**: After splitting a setup page from an execution page, browser-smoke both routes and verify that editing setup state on one route is visible to the execution route.
 
+### Convention: Keep Configuration Copy Short
+
+**What**: Dense setup pages should keep helper text to short, task-oriented phrases instead of multi-sentence explanations or stacked callouts.
+
+**Why**: Long explanatory blocks make configuration pages feel heavier than their job and tend to duplicate the same contract in several places. Short labels and one-line hints keep the page closer to a tool surface.
+
+**Example**:
+```vue
+<div class="ui-field-label">关键词</div>
+<div class="text-[11px] text-content-muted">一行一个关键词。</div>
+```
+
+**Related**: Use this with the setup/execution split so the setup page stays compact and the execution page stays focused on runtime feedback.
+
+### Convention: Prefer Compact Setup Panels
+
+**What**: Setup pages should use one clear section per concern, with short labels, short helper lines, and lighter panel chrome.
+
+**Why**: Dense configuration screens get hard to scan when they mix long explanatory blocks, nested cards, and repeated emphasis. A flatter layout keeps the page readable without turning it into a documentation wall.
+
+**Example**:
+```vue
+<section class="ui-panel overflow-hidden">
+  <div class="ui-section-header">
+    <h2 class="ui-section-title">范围与来源</h2>
+  </div>
+  <div class="space-y-4 p-4">...</div>
+</section>
+```
+
+**Related**: Apply this when simplifying crawl setup, filter profile setup, or any page that mainly edits persisted configuration.
+
+### Convention: Keep Resume Settings Text-Only
+
+**What**: Resume-related settings panels should only expose pasted text input for the editable resume source. Do not keep a separate "current situation" note field or a file-picker path mode in the settings page.
+
+**Why**: The settings page should stay a narrow configuration surface. Extra resume modes add friction without improving the saved settings contract for this app.
+
+**Example**:
+```vue
+<AiProfileInputs v-model:resumeText="resumeText" />
+```
+
+**Related**: If resume file import is needed elsewhere, keep it in the dedicated resume workspace instead of reintroducing it into settings.
+
 ---
 
 ## Accessibility

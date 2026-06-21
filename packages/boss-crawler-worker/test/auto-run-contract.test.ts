@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
 
-import { buildJobListBody, normalizeFilterVariants } from "../src/modes/auto/shared.js";
+import { buildJobListBody, isAbnormalAccess, normalizeFilterVariants } from "../src/modes/auto/shared.js";
 
 const workerRoot = process.cwd();
 
@@ -88,5 +88,16 @@ describe("Boss auto collection contract", () => {
       bodies.map((body) => body.get("multiBusinessDistrict")),
       ["2001,2002", "2001,2002"],
     );
+  });
+
+  it("treats Boss risk-control responses as terminal collection failures", () => {
+    const runSource = readWorkerFile("src/modes/auto/run.ts");
+
+    assert.equal(isAbnormalAccess({ code: 36, message: "您的账户存在异常行为." }), true);
+    assert.equal(isAbnormalAccess({ code: 37, message: "访问行为异常" }), true);
+    assert.equal(isAbnormalAccess({ code: 0, message: "ok" }), false);
+    assert.doesNotMatch(runSource, /waitUntilApiOk/);
+    assert.doesNotMatch(runSource, /waitUntilNoRiskUrl/);
+    assert.match(runSource, /Boss 风控已触发，已退出本次采集/);
   });
 });

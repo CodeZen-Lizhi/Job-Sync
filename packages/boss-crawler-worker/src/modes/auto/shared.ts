@@ -54,9 +54,11 @@ export function readApiMessage(raw: any): string {
 
 export function isAbnormalAccess(raw: any): boolean {
   const code = readApiCode(raw);
+  if (code === 36) return true;
   if (code === 37) return true;
   const msg = readApiMessage(raw);
   if (msg.includes("访问行为异常")) return true;
+  if (msg.includes("账户存在异常行为")) return true;
   return false;
 }
 

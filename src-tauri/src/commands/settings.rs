@@ -374,6 +374,14 @@ pub(crate) fn send_telegram_message_from_settings(
     settings: &settings::AppSettings,
     content: &str,
 ) -> Result<(), String> {
+    send_telegram_message_from_settings_with_format(settings, content, None)
+}
+
+pub(crate) fn send_telegram_message_from_settings_with_format(
+    settings: &settings::AppSettings,
+    content: &str,
+    parse_mode: Option<&str>,
+) -> Result<(), String> {
     let bot_token = settings
         .telegram_bot_token
         .as_deref()
@@ -390,11 +398,16 @@ pub(crate) fn send_telegram_message_from_settings(
         return Err("Telegram 配置格式不正确，请检查 bot token 和 chat id。".to_string());
     }
 
-    let payload = json!({
+    let mut payload = json!({
         "chat_id": chat_id,
         "text": content,
         "disable_web_page_preview": true,
     });
+    if let Some(parse_mode) = parse_mode {
+        if !parse_mode.trim().is_empty() {
+            payload["parse_mode"] = json!(parse_mode);
+        }
+    }
 
     let response = ureq::post(&format!("{}/sendMessage", telegram_bot_api_base(bot_token)))
         .set("Content-Type", "application/json")

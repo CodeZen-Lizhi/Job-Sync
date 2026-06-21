@@ -11,7 +11,7 @@ import { API_PATH, URLS } from "../../boss/selectors.js";
 import { delayWithJitter } from "../../utils/delay.js";
 import { SageTime } from "../../utils/sage-time.js";
 
-import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, normalizeFilterVariants, readApiCode, readApiMessage, safeError, setLocalStorage, waitUntilApiOk, waitUntilNoRiskUrl } from "./shared.js";
+import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, normalizeFilterVariants, readApiCode, readApiMessage, safeError, setLocalStorage } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
 import { runV2exFeedMode } from "../../v2ex/feed.js";
 
@@ -30,7 +30,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
   const keywords = payload.task.keywords ?? [];
   const limits = (payload.task.limits ?? {}) as any;
   const maxPages: number = typeof limits.maxPages === "number" ? limits.maxPages : 3;
-  const maxJobs: number = typeof limits.maxJobs === "number" ? limits.maxJobs : 50;
+  const maxJobs: number = typeof limits.maxJobs === "number" ? limits.maxJobs : Number.POSITIVE_INFINITY;
   const delayMs: number = typeof limits.delayMs === "number" ? limits.delayMs : 800;
   const jitterMs: number = typeof limits.jitterMs === "number" ? limits.jitterMs : 1000;
   const pageSize: number = typeof limits.pageSize === "number" ? limits.pageSize : 15;
@@ -44,6 +44,26 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
   };
   const warn = (msg: string): void => {
     ctx.emit({ type: "LOG", payload: { level: "warn", message: msg } });
+  };
+  const stopForBossRiskControl = (status: "captcha" | "denied", message: string): never => {
+    const finalMessage = `Boss 风控已触发，已退出本次采集：${message}`;
+    ctx.emit({ type: "LOGIN_STATUS", payload: { status, message: finalMessage } });
+    warn(finalMessage);
+    throw new Error(finalMessage);
+  };
+  const stopForRiskUrl = (): void => {
+    const risk = detectRiskUrl(page.url());
+    if (risk) {
+      stopForBossRiskControl(risk, `检测到风控页面：${page.url()}`);
+    }
+  };
+  const stopForApiRiskControl = (label: string, raw: any): never => {
+    const msg = readApiMessage(raw);
+    const code = readApiCode(raw);
+    return stopForBossRiskControl(
+      "captcha",
+      `${label} 接口返回访问异常：${msg || `code=${String(code ?? 37)}`}`,
+    );
   };
 
   const filterVariants = normalizeFilterVariants(payload.task.filters, warn);
@@ -71,7 +91,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
     await page.goto(URLS.GEEK_JOBS, { waitUntil: "domcontentloaded" });
 
-    await waitUntilNoRiskUrl(page, ctx);
+    stopForRiskUrl();
     if (ctx.signal.aborted) return;
 
     const meta = await collectBossMetaByListening(page, ctx.signal).catch(() => null);
@@ -102,10 +122,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
           const risk = detectRiskUrl(page.url());
           if (risk) {
-            await waitUntilNoRiskUrl(page, ctx);
-            if (ctx.signal.aborted) break;
-            pageIndex -= 1;
-            continue;
+            stopForBossRiskControl(risk, `检测到风控页面：${page.url()}`);
           }
 
           ctx.emit({
@@ -125,15 +142,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
           if (ctx.signal.aborted) break;
 
           if (jobListRes.status === 403) {
-            ctx.emit({
-              type: "LOGIN_STATUS",
-              payload: { status: "denied", message: "joblist 接口返回 403（可能触发风控）。" },
-            });
-            const recovered = await waitUntilApiOk(page, ctx, "joblist", () =>
-              fetchJsonFromPage(page, jobListUrl, { method: "POST", body: jobListBody, timeoutMs: 60_000 }),
-            );
-            if (!recovered) return;
-            jobListRes = recovered;
+            stopForBossRiskControl("denied", "joblist 接口返回 403（可能触发风控）。");
           }
 
           if (!jobListRes.json || typeof jobListRes.json !== "object") {
@@ -146,19 +155,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
           let jobListRaw = jobListRes.json as any;
           if (readApiCode(jobListRaw) !== 0 && isAbnormalAccess(jobListRaw)) {
-            const msg = readApiMessage(jobListRaw);
-            ctx.emit({
-              type: "LOGIN_STATUS",
-              payload: {
-                status: "captcha",
-                message: `joblist 接口返回访问异常：${msg || "code=37"}。请在浏览器窗口完成人机验证后自动重试。`,
-              },
-            });
-            const recovered = await waitUntilApiOk(page, ctx, "joblist", () =>
-              fetchJsonFromPage(page, jobListUrl, { method: "POST", body: jobListBody, timeoutMs: 60_000 }),
-            );
-            if (!recovered) return;
-            jobListRaw = recovered.json as any;
+            stopForApiRiskControl("joblist", jobListRaw);
           }
 
           if (readApiCode(jobListRaw) !== 0) {
@@ -232,32 +229,12 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
             if (ctx.signal.aborted) break;
 
             if (detailResGet.status === 403) {
-              ctx.emit({
-                type: "LOGIN_STATUS",
-                payload: { status: "denied", message: "job/detail 接口返回 403（可能触发风控）。" },
-              });
-              const recovered = await waitUntilApiOk(page, ctx, "job/detail", () =>
-                fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 }),
-              );
-              if (!recovered) return;
-              detailResGet = recovered;
+              stopForBossRiskControl("denied", "job/detail 接口返回 403（可能触发风控）。");
             }
 
             let detailRaw = detailResGet.json as any;
             if (detailRaw && typeof detailRaw === "object" && readApiCode(detailRaw) !== 0 && isAbnormalAccess(detailRaw)) {
-              const msg = readApiMessage(detailRaw);
-              ctx.emit({
-                type: "LOGIN_STATUS",
-                payload: {
-                  status: "captcha",
-                  message: `job/detail 接口返回访问异常：${msg || "code=37"}。请在浏览器窗口完成人机验证后自动重试。`,
-                },
-              });
-              const recovered = await waitUntilApiOk(page, ctx, "job/detail", () =>
-                fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 }),
-              );
-              if (!recovered) return;
-              detailRaw = recovered.json as any;
+              stopForApiRiskControl("job/detail", detailRaw);
             }
             if (!detailRaw || typeof detailRaw !== "object" || detailRaw.code !== 0) {
               const detailBody = buildJobDetailBody(securityId, lid);
@@ -270,21 +247,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
               if (ctx.signal.aborted) break;
 
               if (detailResPost.status === 403) {
-                ctx.emit({
-                  type: "LOGIN_STATUS",
-                  payload: { status: "denied", message: "job/detail 接口返回 403（可能触发风控）。" },
-                });
-                const recovered = await waitUntilApiOk(page, ctx, "job/detail", () =>
-                  fetchJsonFromPage(page, detailUrl, { method: "POST", body: detailBody, timeoutMs: 60_000 }),
-                );
-                if (!recovered) return;
-                const recoveredRaw = recovered.json as any;
-                if (recoveredRaw && typeof recoveredRaw === "object" && readApiCode(recoveredRaw) === 0) {
-                  detailRaw = recoveredRaw;
-                } else {
-                  await delayWithJitter(delayMs, ctx.signal, jitterMs);
-                  continue;
-                }
+                stopForBossRiskControl("denied", "job/detail 接口返回 403（可能触发风控）。");
               }
 
               detailRaw = detailResPost.json as any;
@@ -294,19 +257,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
                 continue;
               }
               if (readApiCode(detailRaw) !== 0 && isAbnormalAccess(detailRaw)) {
-                const msg = readApiMessage(detailRaw);
-                ctx.emit({
-                  type: "LOGIN_STATUS",
-                  payload: {
-                    status: "captcha",
-                    message: `job/detail 接口返回访问异常：${msg || "code=37"}。请在浏览器窗口完成人机验证后自动重试。`,
-                  },
-                });
-                const recovered = await waitUntilApiOk(page, ctx, "job/detail", () =>
-                  fetchJsonFromPage(page, detailUrl, { method: "POST", body: detailBody, timeoutMs: 60_000 }),
-                );
-                if (!recovered) return;
-                detailRaw = recovered.json as any;
+                stopForApiRiskControl("job/detail", detailRaw);
               }
               if (detailRaw.code !== 0) {
                 warn(`job/detail 接口返回异常：code=${String(detailRaw.code)} message=${String(detailRaw.message ?? "")}`);

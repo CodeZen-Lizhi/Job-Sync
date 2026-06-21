@@ -4,7 +4,7 @@ use crate::{
     db::{self, models},
     ipc::protocol::{
         BossChatSyncPayload, BossMetaSyncPayload, CommandIn, CrawlAutoStartPayload,
-        CrawlManualStartPayload, RefreshJobEvidencePayload, SearchTaskPayload, SessionStatePayload,
+        RefreshJobEvidencePayload, SearchTaskPayload, SessionStatePayload,
     },
     paths,
     sidecar::SidecarManager,
@@ -52,17 +52,6 @@ fn load_session_optional(app_data_dir: &std::path::Path) -> SessionStatePayload 
         cookies,
         local_storage,
     }
-}
-
-#[tauri::command]
-pub fn crawl_manual_start(sidecar: State<SidecarManager>) -> Result<(), String> {
-    let session = load_session(sidecar.app_data_dir())?;
-    sidecar
-        .send(&CommandIn::CrawlManualStart(CrawlManualStartPayload {
-            session,
-        }))
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 #[tauri::command]

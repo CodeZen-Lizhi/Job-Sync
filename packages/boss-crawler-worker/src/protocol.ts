@@ -18,10 +18,6 @@ export const SearchTaskPayloadSchema = z.object({
   mode: z.string().optional(),
 });
 
-export const CrawlManualStartPayloadSchema = z.object({
-  session: SessionStatePayloadSchema,
-});
-
 export const CrawlAutoStartPayloadSchema = z.object({
   session: SessionStatePayloadSchema,
   task: SearchTaskPayloadSchema,
@@ -112,10 +108,6 @@ export const ResumeRewriteModulePayloadSchema = z.object({
 
 export const CommandInSchema = z.union([
   z.object({ type: z.literal("LOGIN_START"), payload: LoginStartPayloadSchema }),
-  z.object({
-    type: z.literal("CRAWL_MANUAL_START"),
-    payload: CrawlManualStartPayloadSchema,
-  }),
   z.object({
     type: z.literal("CRAWL_AUTO_START"),
     payload: CrawlAutoStartPayloadSchema,

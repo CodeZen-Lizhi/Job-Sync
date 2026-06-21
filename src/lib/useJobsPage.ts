@@ -711,6 +711,7 @@ export function useJobsPage() {
   const aiCompanyScoreMessage = ref<string | null>(null);
   const aiCompanyScoreError = ref<AiCompanyScoreErrorState | null>(null);
   const aiPostCollectionJudging = ref(false);
+  const aiPostCollectionJudgingJobIds = reactive<Set<string>>(new Set());
   const aiPostCollectionJudgeMessage = ref<string | null>(null);
   const blacklistLoading = ref(false);
   const expandedKeyword = ref<string | null>(null);
@@ -1193,6 +1194,7 @@ export function useJobsPage() {
       return;
     }
     aiPostCollectionJudging.value = true;
+    ids.forEach((id) => aiPostCollectionJudgingJobIds.add(id));
     try {
       const result = await invoke<AiPostCollectionJudgeResult>("recompute_ai_post_collection_judgement", {
         jobIds: ids,
@@ -1200,7 +1202,7 @@ export function useJobsPage() {
       });
       aiPostCollectionJudgeMessage.value = `AI 采后判断已更新 ${result.updated} 个岗位，其中 ${result.ai_judged} 个由 AI 判断${
         result.hard_skipped > 0 ? `，${result.hard_skipped} 个保留硬规则结果` : ""
-      }${result.failed > 0 ? `，${result.failed} 个转入待确认` : ""}${result.telegram_sent ? "，已推送 Telegram" : ""}${
+      }${result.failed > 0 ? `，${result.failed} 个审核失败` : ""}${result.telegram_sent ? "，已推送 Telegram" : ""}${
         result.telegram_error ? `，推送失败：${result.telegram_error}` : ""
       }`;
       await refreshAfterJobStateChange(false);
@@ -1208,6 +1210,7 @@ export function useJobsPage() {
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
       aiPostCollectionJudging.value = false;
+      ids.forEach((id) => aiPostCollectionJudgingJobIds.delete(id));
     }
   }
   async function refreshAfterJobStateChange(refreshBlacklist = false): Promise<void> {
@@ -2034,6 +2037,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     aiCompanyScoreMessage,
     aiCompanyScoreError,
     aiPostCollectionJudging,
+    aiPostCollectionJudgingJobIds,
     aiPostCollectionJudgeMessage,
     blacklistLoading,
     expandedKeyword,

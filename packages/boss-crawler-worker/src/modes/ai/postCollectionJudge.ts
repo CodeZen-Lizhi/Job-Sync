@@ -6,8 +6,6 @@ import { AiPostCollectionJudgeResultSchema } from "./schemas.js";
 import { envFlag, safeError } from "./shared.js";
 import type { AiPostCollectionJudgePayload, ModeContext } from "./types.js";
 
-const LOW_CONFIDENCE_THRESHOLD = 0.65;
-
 function rawPreview(raw: unknown): { keys: string; preview: string } {
   let preview = "";
   try {
@@ -60,19 +58,7 @@ export async function runAiPostCollectionJudgeMode(payload: AiPostCollectionJudg
       return;
     }
 
-    const result =
-      parsed.data.confidence < LOW_CONFIDENCE_THRESHOLD
-        ? {
-            ...parsed.data,
-            bucket: "pending_confirmation" as const,
-            risks: [
-              ...parsed.data.risks,
-              `AI 置信度 ${parsed.data.confidence.toFixed(2)} 低于 ${LOW_CONFIDENCE_THRESHOLD.toFixed(2)}，转入待确认`,
-            ],
-          }
-        : parsed.data;
-
-    ctx.emit({ type: "AI_RESULT", payload: { result } });
+    ctx.emit({ type: "AI_RESULT", payload: { result: parsed.data } });
   } catch (err) {
     ctx.emit({ type: "ERROR", payload: safeError(err) });
   } finally {

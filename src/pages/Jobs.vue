@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from "vue";
 import { Activity, BrainCircuit, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
-import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
 import JobsJobItem from "../components/jobs/JobsJobItem.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
@@ -33,22 +32,15 @@ const {
   jobIntelligenceRangeLabel,
   currentPageProcessedCount,
   currentPageUnprocessedCount,
-  reviewCandidates,
-  filteredJobs,
-  applicationReadyJobsLoading,
   expandedJobId,
   detailLoading,
   expandedDetail,
-  greetingCache,
   greetingDrafts,
   greetingErrors,
   greetingLoading,
-  pendingEvidenceRefreshingJobId,
-  pendingEvidenceRefreshMessage,
   aiPostCollectionJudging,
+  aiPostCollectionJudgingJobIds,
   aiPostCollectionJudgeMessage,
-  resumeWorkspaceStatuses,
-  confirmDialog,
   JOB_TIME_RANGE_OPTIONS,
   PROCESSED_FILTER_OPTIONS,
   JOB_STATUS_FILTER_OPTIONS,
@@ -56,48 +48,31 @@ const {
   SOURCE_PLATFORM_FILTER_OPTIONS,
   COLLECTION_METHOD_FILTER_OPTIONS,
   loadJobCandidates,
-  loadReviewCandidates,
-  loadApplicationReadyJobs,
-  loadFilteredJobs,
   toggleJobStatusFilter,
   toggleAiAuditFilter,
   toggleSourcePlatformFilter,
   toggleCollectionMethodFilter,
   goJobCandidatePage,
   toggleDetail,
-  goAi,
-  goResumeWorkspace,
   copy,
   jobSourceUrl,
   openJobSourceUrl,
-  deleteJob,
+  generateGreeting,
+  copyGreeting,
+  copyApplicationPacket,
   updateReviewStatus,
   restoreReviewCandidate,
   updateCommunicationStatus,
   updateReviewNotes,
   updateCompanyReviewStatus,
-  blacklistCompany,
-  blacklistJob,
-  blacklistKeyword,
-  generateGreeting,
-  updateGreetingDraft,
-  copyGreeting,
-  copyApplicationPacket,
-  refreshPendingJobEvidence,
   recomputeAiPostCollectionJudgement,
-  closeConfirm,
-  executeConfirm,
 } = useJobsPage();
 
 type JobLibraryBucket = "recommended" | "confirm" | "filtered" | "processed" | "all";
 
 const activeJobLibraryBucket = ref<JobLibraryBucket>("recommended");
 
-const bucketOptions: Array<{
-  value: JobLibraryBucket;
-  label: string;
-  description: string;
-}> = [
+const bucketOptions: Array<{ value: JobLibraryBucket; label: string; description: string }> = [
   {
     value: "recommended",
     label: "推荐查看",
@@ -140,34 +115,11 @@ const activeBucket = computed(() => bucketOptions.find((bucket) => bucket.value 
 
 const displayedJobs = computed(() => jobCandidates.value);
 
-const displayedJobsLoading = computed(() => {
-  if (activeJobLibraryBucket.value === "processed") return jobCandidatesLoading.value || applicationReadyJobsLoading.value;
-  return jobCandidatesLoading.value;
-});
+const displayedJobsLoading = computed(() => jobCandidatesLoading.value);
 
-const displayedJobsTotal = computed(() => {
-  return jobCandidatesTotal.value;
-});
+const displayedJobsTotal = computed(() => jobCandidatesTotal.value);
 
 const showPagination = computed(() => true);
-
-const bucketSummaryCards = computed(() => [
-  {
-    label: "推荐查看",
-    value: reviewCandidates.value.length || currentPageUnprocessedCount.value,
-    hint: "当前规则下优先处理",
-  },
-  {
-    label: "已过滤",
-    value: filteredJobs.value.length,
-    hint: "保留原因，可复盘",
-  },
-  {
-    label: "已处理",
-    value: currentPageProcessedCount.value,
-    hint: "当前页已产生动作",
-  },
-]);
 
 function applyBucket(bucket: JobLibraryBucket): void {
   activeJobLibraryBucket.value = bucket;
@@ -176,23 +128,6 @@ function applyBucket(bucket: JobLibraryBucket): void {
     jobCandidateProcessedFilter.value = "unprocessed";
     selectedJobStatusFilters.value = [];
     selectedAiAuditFilters.value = [];
-    void loadReviewCandidates();
-    void loadJobCandidates();
-    return;
-  }
-  if (bucket === "processed") {
-    jobCandidateProcessedFilter.value = "processed";
-    selectedJobStatusFilters.value = [];
-    selectedAiAuditFilters.value = [];
-    void loadApplicationReadyJobs();
-    void loadJobCandidates();
-    return;
-  }
-  if (bucket === "filtered") {
-    jobCandidateProcessedFilter.value = "all";
-    selectedJobStatusFilters.value = [];
-    selectedAiAuditFilters.value = [];
-    void loadFilteredJobs();
     void loadJobCandidates();
     return;
   }
@@ -244,13 +179,6 @@ const jobCandidatePageSizeModel = computed<string>({
 });
 
 function refreshCandidates(): void {
-  if (activeJobLibraryBucket.value === "filtered") void loadFilteredJobs();
-  if (activeJobLibraryBucket.value === "processed") {
-    void loadApplicationReadyJobs();
-  }
-  if (activeJobLibraryBucket.value === "recommended") {
-    void loadReviewCandidates();
-  }
   void loadJobCandidates({ keepPage: true });
 }
 
@@ -270,7 +198,6 @@ function clearCurrentViewFilters(): void {
 
 onMounted(() => {
   applyBucket("recommended");
-  void loadFilteredJobs();
 });
 </script>
 
@@ -297,32 +224,26 @@ onMounted(() => {
 
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。查询命令不可用。</div>
     <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
-    <div v-if="pendingEvidenceRefreshMessage" class="ui-status-success p-4 text-sm">{{ pendingEvidenceRefreshMessage }}</div>
-
     <section v-if="linkedJob || linkedJobLoading || linkedJobError" class="ui-panel overflow-hidden">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/10 px-4 py-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/90 px-4 py-3">
         <div>
           <h2 class="text-sm font-semibold text-content-primary">定位岗位</h2>
           <p class="mt-1 text-xs text-content-muted">来自外部入口的岗位会在这里单独定位。</p>
         </div>
       </div>
       <div v-if="linkedJobLoading" class="px-4 py-5 text-sm text-content-muted">正在加载岗位…</div>
-      <div v-else-if="linkedJobError" class="px-4 py-5 text-sm text-rose-300">{{ linkedJobError }}</div>
+      <div v-else-if="linkedJobError" class="px-4 py-5 text-sm text-rose-700">{{ linkedJobError }}</div>
       <JobsJobItem
         v-else-if="linkedJob"
         :job="linkedJob"
         :expanded="expandedJobId === linkedJob.encrypt_job_id"
         :detail-loading="detailLoading === linkedJob.encrypt_job_id"
         :detail="expandedJobId === linkedJob.encrypt_job_id ? expandedDetail : null"
-        :greeting="greetingCache.get(linkedJob.encrypt_job_id)"
+        :ai-audit-status-override="aiPostCollectionJudgingJobIds.has(linkedJob.encrypt_job_id) ? 'processing' : null"
         :greeting-draft="greetingDrafts.get(linkedJob.encrypt_job_id) ?? ''"
-        :greeting-error="greetingErrors.get(linkedJob.encrypt_job_id)"
+        :greeting-error="greetingErrors.get(linkedJob.encrypt_job_id) ?? undefined"
         :greeting-loading="greetingLoading === linkedJob.encrypt_job_id"
-        :pending-evidence-refreshing="pendingEvidenceRefreshingJobId === linkedJob.encrypt_job_id"
-        :resume-workspace-status="resumeWorkspaceStatuses.get(linkedJob.encrypt_job_id)"
         @toggle-detail="(jobId) => toggleDetail(jobId)"
-        @go-ai="(jobId) => goAi(jobId)"
-        @go-resume-workspace="(jobId) => goResumeWorkspace(jobId)"
         @copy-link="(job) => copy(jobSourceUrl(job))"
         @open-source-url="(job) => openJobSourceUrl(job)"
         @update-review="(job, status) => updateReviewStatus(job, status)"
@@ -330,14 +251,9 @@ onMounted(() => {
         @update-communication="(job, status) => updateCommunicationStatus(job, status)"
         @update-review-notes="(job) => updateReviewNotes(job)"
         @update-company-review="(job, status) => updateCompanyReviewStatus(job, status)"
-        @blacklist-company="(job) => blacklistCompany(job)"
-        @blacklist-job="(job) => blacklistJob(job)"
-        @blacklist-keyword="(job) => blacklistKeyword(job)"
         @generate-greeting="(job) => generateGreeting(job)"
-        @update-greeting-draft="(jobId, message) => updateGreetingDraft(jobId, message)"
         @copy-greeting="(job) => copyGreeting(job)"
         @copy-application-packet="(job) => copyApplicationPacket(job)"
-        @refresh-pending-evidence="(job) => refreshPendingJobEvidence(job)"
       />
     </section>
 
@@ -346,7 +262,7 @@ onMounted(() => {
         <div>
           <div class="ui-section-kicker">Result Buckets</div>
           <h2 class="ui-section-title mt-1">采后结果分区</h2>
-          <p class="ui-section-copy">切换的是职位库的行动视图，不会删除底层岗位记录。</p>
+          <p class="ui-section-copy">分区只代表当前判断，不删岗位记录。</p>
         </div>
         <div class="ui-segmented">
           <button
@@ -362,7 +278,7 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-2 border-t border-border/10 px-4 py-3">
+      <div class="flex flex-wrap items-center gap-2 border-t border-border/90 px-4 py-3">
         <button
           type="button"
           class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
@@ -376,10 +292,10 @@ onMounted(() => {
         <span v-if="aiPostCollectionJudgeMessage" class="text-xs text-content-muted">{{ aiPostCollectionJudgeMessage }}</span>
       </div>
 
-      <div class="grid gap-3 p-4 md:grid-cols-[1.4fr_repeat(3,minmax(0,1fr))]">
+      <div class="grid gap-3 p-4 md:grid-cols-[1.4fr_1fr]">
         <div class="ui-card-soft p-4">
           <div class="flex items-start gap-3">
-            <div class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-border-glow/10 text-cyan-200 ring-1 ring-border-glow/15" aria-hidden="true">
+            <div class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-blue-700 ring-1 ring-border/90" aria-hidden="true">
               <Activity class="h-4 w-4" />
             </div>
             <div>
@@ -392,10 +308,10 @@ onMounted(() => {
             </div>
           </div>
         </div>
-        <div v-for="card in bucketSummaryCards" :key="card.label" class="ui-card-soft p-4">
-          <div class="text-xs font-medium text-content-muted">{{ card.label }}</div>
-          <div class="mt-3 text-3xl font-semibold leading-none text-content-primary">{{ card.value }}</div>
-          <div class="mt-2 text-[11px] text-content-muted">{{ card.hint }}</div>
+        <div class="ui-card-soft p-4">
+          <div class="text-xs font-medium text-content-muted">当前页</div>
+          <div class="mt-3 text-3xl font-semibold leading-none text-content-primary">{{ currentPageUnprocessedCount }}</div>
+          <div class="mt-2 text-[11px] text-content-muted">未处理 {{ currentPageUnprocessedCount }}，已处理 {{ currentPageProcessedCount }}</div>
         </div>
       </div>
     </section>
@@ -440,15 +356,6 @@ onMounted(() => {
               </option>
             </UiSelect>
           </label>
-          <label class="space-y-1 text-xs text-content-muted">
-            <span>每页数量</span>
-            <UiSelect v-model="jobCandidatePageSizeModel">
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </UiSelect>
-          </label>
         </div>
 
         <div v-if="jobCandidateTimeRange === 'custom'" class="grid gap-3 sm:grid-cols-2">
@@ -463,7 +370,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="space-y-4 border-t border-border/10 p-4">
+      <div class="space-y-4 border-t border-border/90 p-4">
         <div class="space-y-2">
           <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">岗位状态</div>
           <div class="flex flex-wrap gap-2">
@@ -472,7 +379,7 @@ onMounted(() => {
               :key="option.value"
               type="button"
               class="ui-badge transition-colors"
-              :class="selectedJobStatusFilters.includes(option.value) ? 'bg-accent/20 text-cyan-100 ring-accent/40' : 'hover:bg-card-hover/80'"
+              :class="selectedJobStatusFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
               @click="toggleJobStatusFilter(option.value)"
             >
               {{ option.label }}
@@ -481,14 +388,14 @@ onMounted(() => {
         </div>
 
         <div class="space-y-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">AI 审核</div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">AI 结果</div>
           <div class="flex flex-wrap gap-2">
             <button
               v-for="option in AI_AUDIT_FILTER_OPTIONS"
               :key="option.value"
               type="button"
               class="ui-badge transition-colors"
-              :class="selectedAiAuditFilters.includes(option.value) ? 'bg-accent/20 text-cyan-100 ring-accent/40' : 'hover:bg-card-hover/80'"
+              :class="selectedAiAuditFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
               @click="toggleAiAuditFilter(option.value)"
             >
               {{ option.label }}
@@ -505,7 +412,7 @@ onMounted(() => {
                 :key="option.value"
                 type="button"
                 class="ui-badge transition-colors"
-                :class="selectedSourcePlatformFilters.includes(option.value) ? 'bg-accent/20 text-cyan-100 ring-accent/40' : 'hover:bg-card-hover/80'"
+                :class="selectedSourcePlatformFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
                 @click="toggleSourcePlatformFilter(option.value)"
               >
                 {{ option.label }}
@@ -521,7 +428,7 @@ onMounted(() => {
                 :key="option.value"
                 type="button"
                 class="ui-badge transition-colors"
-                :class="selectedCollectionMethodFilters.includes(option.value) ? 'bg-accent/20 text-cyan-100 ring-accent/40' : 'hover:bg-card-hover/80'"
+                :class="selectedCollectionMethodFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
                 @click="toggleCollectionMethodFilter(option.value)"
               >
                 {{ option.label }}
@@ -559,59 +466,49 @@ onMounted(() => {
           :expanded="expandedJobId === job.encrypt_job_id"
           :detail-loading="detailLoading === job.encrypt_job_id"
           :detail="expandedJobId === job.encrypt_job_id ? expandedDetail : null"
-          :allow-delete="true"
-          :greeting="greetingCache.get(job.encrypt_job_id)"
+          :ai-audit-status-override="aiPostCollectionJudgingJobIds.has(job.encrypt_job_id) ? 'processing' : null"
           :greeting-draft="greetingDrafts.get(job.encrypt_job_id) ?? ''"
-          :greeting-error="greetingErrors.get(job.encrypt_job_id)"
+          :greeting-error="greetingErrors.get(job.encrypt_job_id) ?? undefined"
           :greeting-loading="greetingLoading === job.encrypt_job_id"
-          :pending-evidence-refreshing="pendingEvidenceRefreshingJobId === job.encrypt_job_id"
-          :resume-workspace-status="resumeWorkspaceStatuses.get(job.encrypt_job_id)"
           @toggle-detail="(jobId) => toggleDetail(jobId)"
-          @go-ai="(jobId) => goAi(jobId)"
-          @go-resume-workspace="(jobId) => goResumeWorkspace(jobId)"
           @copy-link="(job) => copy(jobSourceUrl(job))"
           @open-source-url="(job) => openJobSourceUrl(job)"
-          @delete="(job) => deleteJob(job, '__all__')"
           @update-review="(job, status) => updateReviewStatus(job, status)"
           @restore-review-candidate="(job) => restoreReviewCandidate(job)"
           @update-communication="(job, status) => updateCommunicationStatus(job, status)"
           @update-review-notes="(job) => updateReviewNotes(job)"
           @update-company-review="(job, status) => updateCompanyReviewStatus(job, status)"
-          @blacklist-company="(job) => blacklistCompany(job)"
-          @blacklist-job="(job) => blacklistJob(job)"
-          @blacklist-keyword="(job) => blacklistKeyword(job)"
           @generate-greeting="(job) => generateGreeting(job)"
-          @update-greeting-draft="(jobId, message) => updateGreetingDraft(jobId, message)"
           @copy-greeting="(job) => copyGreeting(job)"
           @copy-application-packet="(job) => copyApplicationPacket(job)"
-          @refresh-pending-evidence="(job) => refreshPendingJobEvidence(job)"
         />
       </div>
 
-      <div v-if="showPagination" class="flex flex-wrap items-center justify-between gap-3 border-t border-border/10 px-4 py-3">
-        <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="jobCandidatePage <= 1 || jobCandidatesLoading" @click="goJobCandidatePage(jobCandidatePage - 1)">
-          <ChevronLeft class="h-3.5 w-3.5" aria-hidden="true" />
-          上一页
-        </button>
-        <div class="text-xs text-content-muted">第 {{ jobCandidatePage }} / {{ jobCandidateTotalPages }} 页</div>
-        <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="jobCandidatePage >= jobCandidateTotalPages || jobCandidatesLoading" @click="goJobCandidatePage(jobCandidatePage + 1)">
-          下一页
-          <ChevronRight class="h-3.5 w-3.5" aria-hidden="true" />
-        </button>
+      <div v-if="showPagination" class="flex flex-wrap items-center justify-between gap-3 border-t border-border/90 px-4 py-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="jobCandidatePage <= 1 || jobCandidatesLoading" @click="goJobCandidatePage(jobCandidatePage - 1)">
+            <ChevronLeft class="h-3.5 w-3.5" aria-hidden="true" />
+            上一页
+          </button>
+          <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="jobCandidatePage >= jobCandidateTotalPages || jobCandidatesLoading" @click="goJobCandidatePage(jobCandidatePage + 1)">
+            下一页
+            <ChevronRight class="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          <div class="text-xs text-content-muted">第 {{ jobCandidatePage }} / {{ jobCandidateTotalPages }} 页</div>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-content-muted">
+          <span>每页</span>
+          <UiSelect v-model="jobCandidatePageSizeModel" class="min-w-24">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </UiSelect>
+        </label>
       </div>
-      <div v-else-if="activeJobLibraryBucket === 'filtered' && filteredJobs.length > 0" class="border-t border-border/10 px-4 py-3 text-xs text-content-muted">
-        已过滤视图当前展示最近 20 条过滤结果；岗位仍保留在职位库，可通过当前规则调整后重算。
+      <div v-else-if="activeJobLibraryBucket === 'filtered'" class="border-t border-border/90 px-4 py-3 text-xs text-content-muted">
+        已过滤岗位仍保留在职位库里，可通过当前规则调整后重算。
       </div>
     </section>
-
-    <JobsConfirmDialog
-      :visible="confirmDialog.visible"
-      :title="confirmDialog.title"
-      :message="confirmDialog.message"
-      :confirm-label="confirmDialog.confirmLabel"
-      :loading="confirmDialog.loading"
-      @cancel="closeConfirm"
-      @confirm="executeConfirm"
-    />
   </section>
 </template>

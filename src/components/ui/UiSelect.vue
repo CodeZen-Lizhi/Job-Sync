@@ -41,34 +41,34 @@ const isWorkspace = computed(() => props.variant === "workspace");
 const triggerClass = computed(() =>
   isWorkspace.value
     ? "group relative flex w-full items-center justify-between gap-3 rounded-2xl bg-card-hover/70 px-4 py-3 text-sm text-content-primary shadow-[0_18px_36px_-28px_rgba(2,6,23,0.52)] transition-colors duration-200 hover:bg-card-hover/90 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-    : "group relative flex w-full items-center justify-between gap-2 rounded-xl border border-border/10 bg-input/90 px-3.5 py-2.5 text-sm text-content-primary shadow-inner transition-colors duration-200 hover:border-border/20 hover:bg-card-hover/75 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
+    : "group relative flex min-h-9 w-full items-center justify-between gap-2 rounded-md border border-border/90 bg-white px-3 py-1.5 text-sm text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
 );
-const triggerOpenClass = computed(() => (isWorkspace.value ? "border-border-glow/25 bg-card-hover/95 ring-1 ring-inset ring-border-glow/20" : "border-border-glow/35 bg-card-hover/80"));
+const triggerOpenClass = computed(() => (isWorkspace.value ? "border-border-glow/25 bg-card-hover/95 ring-1 ring-inset ring-border-glow/20" : "border-border-glow bg-white ring-4 ring-border-glow/10"));
 const triggerOverlayClass = computed(() =>
   isWorkspace.value
     ? "pointer-events-none absolute inset-0 rounded-2xl border border-transparent"
-    : "pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-colors group-hover:border-border/10",
+    : "pointer-events-none absolute inset-0 rounded-md border border-transparent transition-colors group-hover:border-border/20",
 );
 const triggerFocusRingClass = computed(() =>
   isWorkspace.value
     ? "pointer-events-none absolute -inset-0.5 hidden rounded-[1.1rem] border border-border-glow/18 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100"
-    : "pointer-events-none absolute -inset-0.5 hidden rounded-[1rem] border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100",
+    : "pointer-events-none absolute -inset-0.5 hidden rounded-lg border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100",
 );
 const menuClass = computed(() =>
   isWorkspace.value
     ? "fixed z-[120] overflow-hidden rounded-[22px] bg-surface-elevated/97 shadow-2xl shadow-black/50 backdrop-blur-xl"
-    : "fixed z-[120] overflow-hidden rounded-2xl border border-border/10 bg-surface-elevated/95 shadow-2xl shadow-black/40 backdrop-blur-xl",
+    : "fixed z-[120] overflow-hidden rounded-md border border-border/90 bg-white shadow-lg shadow-slate-200/70",
 );
 const optionClass = computed(() =>
   isWorkspace.value
     ? "flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm transition-colors duration-150"
-    : "flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-150",
+    : "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors duration-150",
 );
 const optionStateClass = computed(() => ({
   disabled: isWorkspace.value ? "cursor-not-allowed opacity-40" : "cursor-not-allowed opacity-50",
-  hover: isWorkspace.value ? "hover:bg-card-hover/90" : "hover:bg-card-hover/75",
+  hover: isWorkspace.value ? "hover:bg-card-hover/90" : "hover:bg-slate-50",
   selected: isWorkspace.value ? "bg-border-glow/8 text-content-primary ring-1 ring-inset ring-border-glow/18" : "bg-border-glow/10 text-content-primary ring-1 ring-inset ring-border-glow/20",
-  active: isWorkspace.value ? "bg-card-hover/95 text-content-primary" : "bg-card-hover/90 text-content-primary",
+  active: isWorkspace.value ? "bg-card-hover/95 text-content-primary" : "bg-slate-50 text-content-primary",
 }));
 
 function refreshItems(): void {

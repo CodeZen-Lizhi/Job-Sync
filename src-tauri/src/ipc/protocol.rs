@@ -27,11 +27,6 @@ pub struct CrawlAutoStartPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CrawlManualStartPayload {
-    pub session: SessionStatePayload,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshJobEvidencePayload {
     pub session: SessionStatePayload,
     pub encrypt_job_id: String,
@@ -199,8 +194,6 @@ pub struct ResumeRewriteModulePayload {
 pub enum CommandIn {
     #[serde(rename = "LOGIN_START")]
     LoginStart(LoginStartPayload),
-    #[serde(rename = "CRAWL_MANUAL_START")]
-    CrawlManualStart(CrawlManualStartPayload),
     #[serde(rename = "CRAWL_AUTO_START")]
     CrawlAutoStart(CrawlAutoStartPayload),
     #[serde(rename = "REFRESH_JOB_EVIDENCE")]

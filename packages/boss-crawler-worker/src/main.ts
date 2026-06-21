@@ -7,7 +7,6 @@ import { runRefreshJobEvidenceMode } from "./modes/evidenceRefresh.js";
 import { runBossChatSyncMode } from "./modes/chatSync.js";
 import { runLoginMode } from "./modes/login.js";
 import { runBossMetaSyncMode } from "./modes/meta.js";
-import { runManualMode } from "./modes/manual.js";
 
 type Running = {
   controller: AbortController;
@@ -53,9 +52,6 @@ readCommands((cmd: CommandIn) => {
     switch (cmd.type) {
       case "LOGIN_START":
         await startMode(runLoginMode, cmd.payload);
-        return;
-      case "CRAWL_MANUAL_START":
-        await startMode(runManualMode, cmd.payload);
         return;
       case "CRAWL_AUTO_START":
         await startMode(runAutoMode, cmd.payload);

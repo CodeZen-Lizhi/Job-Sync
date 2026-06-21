@@ -119,8 +119,8 @@ onUnmounted(() => {
       ref="buttonEl"
       v-bind="buttonAttrs"
       type="button"
-      class="group relative flex w-full items-center justify-between gap-2 rounded-xl border border-border/10 bg-input/90 px-3.5 py-2.5 text-sm text-content-primary shadow-inner transition-colors duration-200 hover:border-border/20 hover:bg-card-hover/75 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-      :class="open ? 'border-border-glow/35 bg-card-hover/80' : ''"
+      class="group relative flex min-h-9 w-full items-center justify-between gap-2 rounded-md border border-border/90 bg-white px-3 py-1.5 text-sm text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      :class="open ? 'border-border-glow bg-white ring-4 ring-border-glow/10' : ''"
       :disabled="isDisabled"
       :aria-expanded="open"
       :aria-controls="listboxId"
@@ -135,8 +135,8 @@ onUnmounted(() => {
         :class="open ? 'rotate-180 text-content-secondary' : ''"
         aria-hidden="true"
       />
-      <span class="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-colors group-hover:border-border/10" aria-hidden="true" />
-      <span class="pointer-events-none absolute -inset-0.5 hidden rounded-[1rem] border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100" aria-hidden="true" />
+      <span class="pointer-events-none absolute inset-0 rounded-md border border-transparent transition-colors group-hover:border-border/20" aria-hidden="true" />
+      <span class="pointer-events-none absolute -inset-0.5 hidden rounded-lg border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100" aria-hidden="true" />
     </button>
 
     <Teleport to="body">
@@ -144,7 +144,7 @@ onUnmounted(() => {
         v-if="open"
         ref="listboxEl"
         :id="listboxId"
-        class="fixed z-[120] overflow-hidden rounded-2xl border border-border/10 bg-surface-elevated/95 shadow-2xl shadow-black/40 backdrop-blur-xl"
+        class="fixed z-[120] overflow-hidden rounded-md border border-border/90 bg-white shadow-lg shadow-slate-200/70"
         :style="menuStyle"
         role="listbox"
         aria-multiselectable="true"
@@ -157,9 +157,9 @@ onUnmounted(() => {
             <button
               v-else
               type="button"
-              class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition-colors duration-150"
+              class="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors duration-150"
               :class="[
-                it.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-card-hover/75',
+                it.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-slate-50',
                 selectedSet.has(it.value) ? 'bg-border-glow/10 text-content-primary ring-1 ring-inset ring-border-glow/20' : 'text-content-secondary',
               ]"
               :disabled="it.disabled"

@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    convert::TryFrom,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Stdio},
@@ -15,11 +16,11 @@ use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 
 use crate::{
-    commands::filter_profile,
+    commands::{ai, filter_profile},
     db,
     db::models,
     ipc,
-    ipc::protocol::{CommandIn, EventOut},
+    ipc::protocol::{CommandIn, EventOut, LogPayload},
     settings, storage,
 };
 
@@ -44,6 +45,28 @@ fn now_rfc3339() -> String {
     time::OffsetDateTime::now_utc().format(&Rfc3339).unwrap()
 }
 
+fn extract_max_jobs(limits: &Value) -> Option<i64> {
+    let raw = limits.get("maxJobs").or_else(|| limits.get("max_jobs"))?;
+    let parsed = if let Some(value) = raw.as_i64() {
+        Some(value)
+    } else if let Some(value) = raw.as_u64() {
+        i64::try_from(value).ok()
+    } else if let Some(value) = raw.as_f64() {
+        if value.is_finite() {
+            Some(value.floor() as i64)
+        } else {
+            None
+        }
+    } else {
+        None
+    }?;
+    if parsed > 0 {
+        Some(parsed)
+    } else {
+        None
+    }
+}
+
 fn local_job_exists(conn: &rusqlite::Connection, encrypt_job_id: &str) -> bool {
     conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM job WHERE encrypt_job_id = ?1)",
@@ -52,6 +75,65 @@ fn local_job_exists(conn: &rusqlite::Connection, encrypt_job_id: &str) -> bool {
     )
     .map(|exists| exists != 0)
     .unwrap_or(false)
+}
+
+fn emit_runtime_log(app_handle: &tauri::AppHandle, level: &str, message: impl Into<String>) {
+    let _ = ipc::emit_event_all(
+        app_handle,
+        &EventOut::Log(LogPayload {
+            level: level.to_string(),
+            message: message.into(),
+            ts: Some(now_rfc3339()),
+        }),
+    );
+}
+
+fn summarize_auto_ai_result(result: &Value) -> String {
+    let updated = result
+        .get("updated")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let ai_judged = result
+        .get("ai_judged")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let hard_skipped = result
+        .get("hard_skipped")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let failed = result
+        .get("failed")
+        .and_then(Value::as_u64)
+        .unwrap_or_default();
+    let mut message = format!("AI 采后判断已更新 {updated} 个岗位，其中 {ai_judged} 个由 AI 判断");
+    if hard_skipped > 0 {
+        message.push_str(&format!("，{hard_skipped} 个保留硬规则结果"));
+    }
+    if failed > 0 {
+        message.push_str(&format!("，{failed} 个转入待确认"));
+    }
+    message
+}
+
+fn auto_recompute_ai_after_collection(app_handle: &tauri::AppHandle) {
+    let app_handle = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        match ai::recompute_ai_post_collection_judgement(
+            app_handle.clone(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        {
+            Ok(result) => emit_runtime_log(&app_handle, "info", summarize_auto_ai_result(&result)),
+            Err(err) => emit_runtime_log(&app_handle, "error", format!("AI 采后判断失败：{err}")),
+        }
+    });
 }
 
 fn extract_job_id_from_list_item(item: &Value) -> Option<String> {
@@ -147,6 +229,46 @@ fn record_collection_failure(
     );
 }
 
+fn send_worker_command(inner: &Arc<Mutex<Option<RunningSidecar>>>, cmd: &CommandIn) -> Result<()> {
+    let mut guard = inner
+        .lock()
+        .map_err(|_| SidecarError::Message("sidecar lock poisoned".into()))?;
+    let Some(running) = guard.as_mut() else {
+        return Err(SidecarError::Message("sidecar not running".into()));
+    };
+
+    if let Ok(Some(_)) = running.child.try_wait() {
+        let _ = running.child.wait();
+        *guard = None;
+        return Err(SidecarError::Message("sidecar exited".into()));
+    }
+
+    let line = serde_json::to_string(cmd)?;
+    running.stdin.write_all(format!("{line}\n").as_bytes())?;
+    running.stdin.flush().ok();
+    Ok(())
+}
+
+fn request_stop_when_ready(
+    active_collection_run: &Arc<Mutex<Option<ActiveCollectionRun>>>,
+    inner: &Arc<Mutex<Option<RunningSidecar>>>,
+) {
+    let should_stop = {
+        let mut guard = match active_collection_run.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        let Some(run) = guard.as_mut() else {
+            return;
+        };
+        run.note_inserted_and_should_stop()
+    };
+
+    if should_stop {
+        let _ = send_worker_command(inner, &CommandIn::Stop);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +318,26 @@ struct RunningSidecar {
 struct ActiveCollectionRun {
     id: String,
     source_platform: String,
+    max_jobs: Option<i64>,
+    inserted_count: i64,
+    stop_sent: bool,
+}
+
+impl ActiveCollectionRun {
+    fn note_inserted_and_should_stop(&mut self) -> bool {
+        self.inserted_count += 1;
+        if self.stop_sent {
+            return false;
+        }
+        let Some(max_jobs) = self.max_jobs else {
+            return false;
+        };
+        if self.inserted_count >= max_jobs {
+            self.stop_sent = true;
+            return true;
+        }
+        false
+    }
 }
 
 pub struct SidecarManager {
@@ -360,6 +502,15 @@ impl SidecarManager {
                                                 outcome.counter(),
                                                 1,
                                             );
+                                            if matches!(
+                                                outcome.counter(),
+                                                models::CollectionCounter::Inserted
+                                            ) {
+                                                request_stop_when_ready(
+                                                    &active_collection_run,
+                                                    &inner,
+                                                );
+                                            }
                                         }
                                         if let Err(err) =
                                             filter_profile::recompute_default_filter_profile_for_job_on_conn(
@@ -436,6 +587,12 @@ impl SidecarManager {
                                             outcome.counter(),
                                             1,
                                         );
+                                        if matches!(
+                                            outcome.counter(),
+                                            models::CollectionCounter::Inserted
+                                        ) {
+                                            request_stop_when_ready(&active_collection_run, &inner);
+                                        }
                                     }
                                 }
                                 Err(err) => {
@@ -521,6 +678,15 @@ impl SidecarManager {
                                                 outcome.counter(),
                                                 1,
                                             );
+                                            if matches!(
+                                                outcome.counter(),
+                                                models::CollectionCounter::Inserted
+                                            ) {
+                                                request_stop_when_ready(
+                                                    &active_collection_run,
+                                                    &inner,
+                                                );
+                                            }
                                         }
                                     }
                                     Err(err) => {
@@ -543,7 +709,9 @@ impl SidecarManager {
                                     filters_json.as_deref(),
                                 );
                                 if let Err(err) =
-                                    filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, id)
+                                    filter_profile::recompute_default_filter_profile_for_job_on_conn(
+                                        conn, id,
+                                    )
                                 {
                                     record_collection_failure(
                                         conn,
@@ -713,6 +881,11 @@ impl SidecarManager {
                                     );
                                 }
                                 let _ = models::finish_collection_run(conn, &active_run.id, None);
+                                if active_run.source_platform == "boss"
+                                    || active_run.source_platform == "v2ex"
+                                {
+                                    auto_recompute_ai_after_collection(&app_handle);
+                                }
                                 if let Ok(mut guard) = active_collection_run.lock() {
                                     if guard.as_ref().map(|run| run.id.as_str())
                                         == Some(active_run.id.as_str())
@@ -799,6 +972,9 @@ impl SidecarManager {
                         .source_platform
                         .clone()
                         .unwrap_or_else(|| "boss".to_string()),
+                    max_jobs: extract_max_jobs(&payload.task.limits),
+                    inserted_count: 0,
+                    stop_sent: false,
                 })
             }
             _ => None,

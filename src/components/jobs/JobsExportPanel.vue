@@ -90,17 +90,17 @@ onUnmounted(() => {
 
     <div
       v-if="open"
-      class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-72 overflow-hidden rounded-2xl border border-border/10 bg-surface-elevated/95 p-1 shadow-2xl shadow-black/40 backdrop-blur-xl"
+      class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-72 overflow-hidden rounded-lg border border-border/90 bg-white p-1 shadow-lg shadow-slate-200/70"
       role="menu"
     >
       <button
         type="button"
-        class="group flex w-full items-start justify-between gap-3 rounded-xl p-3 text-left transition-colors hover:bg-card-hover/75 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60"
+        class="group flex w-full items-start justify-between gap-3 rounded-md p-3 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="!canExport"
         @click="runExport('csv')"
       >
         <div class="flex min-w-0 items-start gap-3">
-          <div class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20" aria-hidden="true">
+          <div class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-700 ring-1 ring-emerald-200" aria-hidden="true">
             <FileSpreadsheet class="h-4 w-4" />
           </div>
           <div class="min-w-0">
@@ -116,12 +116,12 @@ onUnmounted(() => {
 
       <button
         type="button"
-        class="group flex w-full items-start justify-between gap-3 rounded-xl p-3 text-left transition-colors hover:bg-card-hover/75 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60"
+        class="group flex w-full items-start justify-between gap-3 rounded-md p-3 text-left transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60"
         :disabled="!canExport"
         @click="runExport('json')"
       >
         <div class="flex min-w-0 items-start gap-3">
-          <div class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/20" aria-hidden="true">
+          <div class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-blue-700 ring-1 ring-blue-200" aria-hidden="true">
             <FileJson2 class="h-4 w-4" />
           </div>
           <div class="min-w-0">

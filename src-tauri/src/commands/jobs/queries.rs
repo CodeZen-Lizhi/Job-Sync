@@ -1744,13 +1744,7 @@ fn list_jobs_by_review_status_on_conn(
       SELECT j.encrypt_job_id
       FROM job_review_state rs
       INNER JOIN job j ON j.encrypt_job_id = rs.encrypt_job_id
-      LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       WHERE rs.review_status = ?1
-        AND NOT EXISTS (
-          SELECT 1
-          FROM json_each(COALESCE(json_extract(r.reason_json, '$.blocked_by'), json('[]'))) blocked
-          WHERE json_extract(blocked.value, '$.rule_type') = 'source_platform'
-        )
       ORDER BY rs.updated_at DESC, j.last_seen_at DESC, j.encrypt_job_id ASC
       LIMIT ?2
       "#,
@@ -1796,16 +1790,10 @@ pub(super) fn list_communication_followup_jobs_on_conn(
       SELECT j.encrypt_job_id
       FROM job_review_state rs
       INNER JOIN job j ON j.encrypt_job_id = rs.encrypt_job_id
-      LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       WHERE (
           rs.review_status = 'applied'
           OR COALESCE(rs.communication_status, 'not_contacted') != 'not_contacted'
           OR NULLIF(TRIM(COALESCE(rs.notes, '')), '') IS NOT NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM json_each(COALESCE(json_extract(r.reason_json, '$.blocked_by'), json('[]'))) blocked
-          WHERE json_extract(blocked.value, '$.rule_type') = 'source_platform'
         )
       ORDER BY rs.updated_at DESC, j.last_seen_at DESC, j.encrypt_job_id ASC
       LIMIT ?1
@@ -1987,7 +1975,6 @@ fn count_eligible_jobs(conn: &Connection) -> Result<i64, String> {
             ) LIKE '%' || lower(kb.value) || '%'
         )
         AND COALESCE(rs.review_status, 'pending') NOT IN ('ignored', 'applied')
-        AND COALESCE(rs.communication_status, 'not_contacted') NOT IN ('read_no_reply', 'rejected', 'manual_not_fit')
       "#,
       [],
       |row| row.get(0),
@@ -3202,7 +3189,7 @@ mod tests {
                 .iter()
                 .map(|job| job.encrypt_job_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["job_ready_recent", "job_ready_old"]
+            vec!["job_ready_liepin", "job_ready_recent", "job_ready_old"]
         );
         assert!(ready_jobs
             .iter()
@@ -3215,7 +3202,7 @@ mod tests {
             .all(|job| job.encrypt_job_id != "job_pending"));
         assert!(ready_jobs
             .iter()
-            .all(|job| job.encrypt_job_id != "job_ready_liepin"));
+            .any(|job| job.encrypt_job_id == "job_ready_liepin"));
     }
 
     #[test]
@@ -3356,7 +3343,7 @@ mod tests {
                 .iter()
                 .map(|job| job.encrypt_job_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["job_favorited_recent", "job_favorited_old"]
+            vec!["job_favorited_liepin", "job_favorited_recent", "job_favorited_old"]
         );
         assert!(favorited_jobs
             .iter()
@@ -3369,7 +3356,7 @@ mod tests {
             .all(|job| job.encrypt_job_id != "job_applied"));
         assert!(favorited_jobs
             .iter()
-            .all(|job| job.encrypt_job_id != "job_favorited_liepin"));
+            .any(|job| job.encrypt_job_id == "job_favorited_liepin"));
     }
 
     #[test]
@@ -3526,23 +3513,35 @@ mod tests {
                 .iter()
                 .map(|job| job.encrypt_job_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["job_noted", "job_no_reply", "job_greeted", "job_applied"]
+            vec![
+                "job_liepin_followup",
+                "job_noted",
+                "job_no_reply",
+                "job_greeted",
+                "job_applied"
+            ]
         );
         assert!(followup_jobs
             .iter()
             .all(|job| job.encrypt_job_id != "job_pending"));
         assert!(followup_jobs
             .iter()
-            .all(|job| job.encrypt_job_id != "job_liepin_followup"));
+            .any(|job| job.encrypt_job_id == "job_liepin_followup"));
         assert_eq!(
             followup_jobs[1].communication_status.as_deref(),
-            Some("read_no_reply")
+            Some("not_contacted")
         );
         assert_eq!(
             followup_jobs[2].last_greeted_at.as_deref(),
-            Some("2026-06-13T00:30:00Z")
+            Some("2026-06-13T00:45:00Z")
         );
-        assert_eq!(followup_jobs[3].review_status.as_deref(), Some("applied"));
+        assert_eq!(
+            followup_jobs
+                .iter()
+                .find(|job| job.encrypt_job_id == "job_applied")
+                .and_then(|job| job.review_status.as_deref()),
+            Some("applied")
+        );
     }
 
     #[test]
@@ -4002,8 +4001,9 @@ mod tests {
 
         let candidates = list_review_candidates_on_conn(&conn, Some(20)).expect("list candidates");
 
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].encrypt_job_id, "job_boss_missing_filter");
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].encrypt_job_id, "job_liepin_missing_filter");
+        assert_eq!(candidates[1].encrypt_job_id, "job_boss_missing_filter");
         let liepin_reason: String = conn
       .query_row(
         "SELECT reason_json FROM job_filter_result WHERE encrypt_job_id = 'job_liepin_missing_filter'",
@@ -4013,12 +4013,11 @@ mod tests {
       .expect("query liepin filter reason");
         let liepin_reason: Value =
             serde_json::from_str(&liepin_reason).expect("parse liepin reason");
-        assert_eq!(liepin_reason["eligible"], json!(false));
+        assert_eq!(liepin_reason["eligible"], json!(true));
         assert!(liepin_reason["blocked_by"]
             .as_array()
             .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")));
+            .is_empty());
     }
 
     #[test]
@@ -4063,8 +4062,9 @@ mod tests {
 
         let candidates = list_review_candidates_on_conn(&conn, Some(20)).expect("list candidates");
 
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].encrypt_job_id, "job_boss_current_filter");
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].encrypt_job_id, "job_liepin_stale_filter");
+        assert_eq!(candidates[1].encrypt_job_id, "job_boss_current_filter");
         let liepin_reason: String = conn
             .query_row(
                 "SELECT reason_json FROM job_filter_result WHERE encrypt_job_id = 'job_liepin_stale_filter'",
@@ -4074,12 +4074,11 @@ mod tests {
             .expect("query stale liepin filter reason");
         let liepin_reason: Value =
             serde_json::from_str(&liepin_reason).expect("parse liepin reason");
-        assert_eq!(liepin_reason["eligible"], json!(false));
+        assert_eq!(liepin_reason["eligible"], json!(true));
         assert!(liepin_reason["blocked_by"]
             .as_array()
             .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")));
+            .is_empty());
     }
 
     #[test]
@@ -4340,13 +4339,13 @@ mod tests {
         let summary = get_daily_job_intelligence_on_conn(&conn, Some("2026-06-13".to_string()))
             .expect("daily summary");
 
-        assert_eq!(summary.today_new_jobs, 4);
-        assert_eq!(summary.high_match_jobs, 2);
-        assert_eq!(summary.eligible_jobs, 3);
-        assert_eq!(summary.recommended_jobs, 1);
-        assert_eq!(summary.ready_to_apply_jobs, 1);
-        assert_eq!(summary.applied_jobs, 1);
-        assert_eq!(summary.recommended_candidates.len(), 1);
+        assert_eq!(summary.today_new_jobs, 7);
+        assert_eq!(summary.high_match_jobs, 3);
+        assert_eq!(summary.eligible_jobs, 6);
+        assert_eq!(summary.recommended_jobs, 2);
+        assert_eq!(summary.ready_to_apply_jobs, 2);
+        assert_eq!(summary.applied_jobs, 2);
+        assert_eq!(summary.recommended_candidates.len(), 2);
         assert_eq!(
             summary.recommended_candidates[0].encrypt_job_id,
             "job_recommended"

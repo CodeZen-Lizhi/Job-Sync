@@ -679,6 +679,8 @@ fn upsert_job_from_normalized_writes_v2ex_unified_source_fields() {
         raw_payload: json!({
           "topicId": "123456",
           "title": "远程 Go 平台工程师",
+          "contentHtml": "<p>负责 Kubernetes 平台建设</p>",
+          "contentText": "负责 Kubernetes 平台建设",
           "classification": { "isJobPosting": true }
         }),
     };
@@ -727,6 +729,81 @@ fn upsert_job_from_normalized_writes_v2ex_unified_source_fields() {
     assert_eq!(
         row.5.as_deref(),
         Some("远程 Go 平台工程师\n负责 Kubernetes 平台建设")
+    );
+
+    let detail_json: String = conn
+        .query_row(
+            "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+            ["v2ex:123456"],
+            |row| row.get(0),
+        )
+        .expect("query normalized job detail");
+    let detail: Value = serde_json::from_str(&detail_json).expect("parse normalized job detail");
+    assert_eq!(
+        detail
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("postDescription"))
+            .and_then(Value::as_str),
+        Some("<p>负责 Kubernetes 平台建设</p>")
+    );
+}
+
+#[test]
+fn init_db_backfills_missing_v2ex_job_detail_raw() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    conn.execute(
+        r#"
+      INSERT INTO job (
+        encrypt_job_id,
+        source_platform,
+        source_url,
+        dedup_key,
+        position_name,
+        boss_name,
+        jd_text,
+        raw_payload_json,
+        last_seen_at
+      )
+      VALUES (?1, 'v2ex', ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      "#,
+        rusqlite::params![
+            "v2ex:654321",
+            "https://www.v2ex.com/t/654321",
+            "654321",
+            "招聘 Rust 平台工程师",
+            "alice",
+            "招聘 Rust 平台工程师\n负责 Rust 平台建设",
+            json!({
+              "topicId": "654321",
+              "title": "招聘 Rust 平台工程师",
+              "contentHtml": "<p>负责 Rust 平台建设</p>",
+              "contentText": "负责 Rust 平台建设"
+            })
+            .to_string(),
+            "2026-06-20T00:00:00Z",
+        ],
+    )
+    .expect("insert legacy v2ex job");
+    drop(conn);
+
+    let conn = init_db(&app_data_dir).expect("re-init db");
+    let detail_json: String = conn
+        .query_row(
+            "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+            ["v2ex:654321"],
+            |row| row.get(0),
+        )
+        .expect("query backfilled v2ex detail");
+    let detail: Value = serde_json::from_str(&detail_json).expect("parse backfilled detail");
+
+    assert_eq!(
+        detail
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("postDescription"))
+            .and_then(Value::as_str),
+        Some("<p>负责 Rust 平台建设</p>")
     );
 }
 

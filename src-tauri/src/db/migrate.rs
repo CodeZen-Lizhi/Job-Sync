@@ -1,4 +1,5 @@
 use rusqlite::Connection;
+use serde_json::{json, Value};
 
 use super::{models::supported_job_source_adapters, Result};
 
@@ -282,6 +283,7 @@ pub fn migrate(conn: &Connection) -> Result<()> {
         "confidence",
         "REAL NOT NULL DEFAULT 0.72",
     )?;
+    backfill_v2ex_job_detail_raw(conn)?;
     backfill_company_scores(conn)?;
 
     // Deduplicate job_source_link rows and add a unique index to prevent future duplicates.
@@ -290,6 +292,128 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     ensure_job_fts(conn)?;
 
     Ok(())
+}
+
+fn backfill_v2ex_job_detail_raw(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare(
+        r#"
+    SELECT
+      j.encrypt_job_id,
+      j.source_platform,
+      j.source_url,
+      j.dedup_key,
+      j.position_name,
+      j.boss_name,
+      j.brand_name,
+      j.city_name,
+      j.salary_desc,
+      j.experience_name,
+      j.degree_name,
+      j.jd_text,
+      j.raw_payload_json
+    FROM job j
+    LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+    WHERE j.source_platform = 'v2ex'
+      AND d.encrypt_job_id IS NULL
+    "#,
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+            row.get::<_, Option<String>>(8)?,
+            row.get::<_, Option<String>>(9)?,
+            row.get::<_, Option<String>>(10)?,
+            row.get::<_, Option<String>>(11)?,
+            row.get::<_, Option<String>>(12)?,
+        ))
+    })?;
+    let rows: Vec<_> = rows.collect::<std::result::Result<_, _>>()?;
+    drop(stmt);
+
+    for row in rows {
+        let (
+            encrypt_job_id,
+            source_platform,
+            source_url,
+            dedup_key,
+            position_name,
+            boss_name,
+            brand_name,
+            city_name,
+            salary_desc,
+            experience_name,
+            degree_name,
+            jd_text,
+            raw_payload_json,
+        ) = row;
+        let raw_payload = raw_payload_json
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<Value>(value).ok())
+            .unwrap_or(Value::Null);
+        let Some(post_description) = v2ex_post_description(&raw_payload, jd_text.as_deref()) else {
+            continue;
+        };
+        let detail = json!({
+            "sourcePlatform": source_platform,
+            "sourceUrl": source_url,
+            "dedupKey": dedup_key,
+            "jobInfo": {
+                "positionName": position_name,
+                "postDescription": post_description,
+                "cityName": city_name,
+                "salaryDesc": salary_desc,
+                "experienceName": experience_name,
+                "degreeName": degree_name,
+            },
+            "bossInfo": {
+                "name": boss_name,
+            },
+            "brandInfo": {
+                "brandName": brand_name,
+            },
+            "rawPayload": raw_payload,
+        });
+        conn.execute(
+            r#"
+      INSERT INTO job_detail_raw (encrypt_job_id, zp_data_json, fetched_at)
+      VALUES (?1, ?2, datetime('now'))
+      ON CONFLICT(encrypt_job_id) DO NOTHING
+      "#,
+            rusqlite::params![encrypt_job_id, detail.to_string()],
+        )?;
+    }
+
+    Ok(())
+}
+
+fn v2ex_post_description(raw_payload: &Value, jd_text: Option<&str>) -> Option<String> {
+    raw_payload
+        .get("contentHtml")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            jd_text
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            raw_payload
+                .get("contentText")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
 }
 
 fn upsert_job_sources(conn: &Connection) -> Result<()> {

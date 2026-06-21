@@ -15,7 +15,6 @@ src/
 │   └── filters.ts        # Filter application logic (city, salary, experience, etc.)
 ├── modes/                # Crawl mode implementations
 │   ├── login.ts          # Login mode — opens browser for user to log in, collects cookies
-│   ├── manual.ts         # Manual crawl — user browses, sidecar intercepts API responses
 │   ├── auto.ts           # Auto crawl — keyword search, pagination, detail collection
 │   └── ai.ts             # AI analysis mode — resume vs. job matching via OpenAI
 ├── browser/              # Browser lifecycle & anti-detection
@@ -35,7 +34,7 @@ src/
 
 Communicates with the Tauri (Rust) host process over **stdin/stdout NDJSON**:
 
-- **stdin** receives commands: `LOGIN_START`, `CRAWL_MANUAL_START`, `CRAWL_AUTO_START`, `AI_ANALYZE`, `STOP`, `PAUSE`, `RESUME`
+- **stdin** receives commands: `LOGIN_START`, `CRAWL_AUTO_START`, `AI_ANALYZE`, `STOP`, `PAUSE`, `RESUME`
 - **stdout** emits events: `LOG`, `PROGRESS`, `LOGIN_STATUS`, `COOKIE_COLLECTED`, `JOB_LIST_CAPTURED`, `JOB_DETAIL_CAPTURED`, `AI_RESULT`, `FINISHED`, `ERROR`
 
 ## Supported API Endpoints

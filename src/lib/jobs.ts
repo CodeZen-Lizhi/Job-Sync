@@ -149,6 +149,7 @@ export interface FilterReasonDimensions {
 }
 
 export interface AiPostCollectionJudgement {
+  status?: "pending_review" | "processing" | "passed" | "rejected" | "pending_confirmation" | "failed" | string;
   bucket?: "recommended" | "pending_confirmation" | "filtered" | string;
   confidence?: number;
   summary?: string;
@@ -354,6 +355,7 @@ export function parseFilterReasonJson(json: string | null | undefined): FilterRe
     missing_preferences: asStringArray(parsed.missing_preferences),
     ai_judgement: parsed.ai_judgement
       ? {
+          status: asString(parsed.ai_judgement.status) ?? undefined,
           bucket: asString(parsed.ai_judgement.bucket) ?? undefined,
           confidence: asFiniteNumber(parsed.ai_judgement.confidence) ?? undefined,
           summary: asString(parsed.ai_judgement.summary) ?? undefined,
@@ -402,10 +404,32 @@ export function filterBucketLabel(bucket?: string | null): string {
 }
 
 export function aiAuditStatusLabel(bucket?: string | null): string {
+  if (bucket === "pending_review") return "待审核";
+  if (bucket === "processing") return "审核中";
+  if (bucket === "passed") return "通过";
+  if (bucket === "rejected") return "不通过";
+  if (bucket === "failed") return "审核失败";
   if (bucket === "recommended") return "通过";
   if (bucket === "pending_confirmation") return "待确认";
   if (bucket === "filtered") return "不通过";
-  return "待判断";
+  return "待审核";
+}
+
+export function resolveAiAuditStatus(
+  judgement: AiPostCollectionJudgement | null | undefined,
+  fallbackBucket?: string | null,
+  filterEligible?: boolean | null,
+  overrideStatus?: string | null,
+): string {
+  if (overrideStatus) return overrideStatus;
+  const status = judgement?.status?.trim();
+  if (status) return status;
+  const bucket = judgement?.bucket ?? fallbackBucket;
+  if (bucket === "recommended") return "passed";
+  if (bucket === "pending_confirmation") return "pending_confirmation";
+  if (bucket === "filtered") return "rejected";
+  if (filterEligible === false) return "rejected";
+  return "pending_review";
 }
 
 export function sourcePlatformLabel(platform?: string | null): string {
@@ -417,8 +441,8 @@ export function sourcePlatformLabel(platform?: string | null): string {
 }
 
 export function formatAiPostCollectionJudgement(judgement: AiPostCollectionJudgement | null | undefined): string {
-  if (!judgement) return "AI 审核：待判断";
-  const parts: string[] = [`AI 审核：${aiAuditStatusLabel(judgement.bucket)}`];
+  if (!judgement) return "AI 结果：待审核";
+  const parts: string[] = [`AI 审核：${aiAuditStatusLabel(resolveAiAuditStatus(judgement))}`];
   if (typeof judgement.confidence === "number") {
     parts.push(`置信度 ${Math.round(judgement.confidence * 100)}%`);
   }

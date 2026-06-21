@@ -31,20 +31,20 @@ function close(): void {
 <template>
   <div
     data-tauri-drag-region
-    class="flex h-11 shrink-0 select-none items-center justify-between border-b border-border/10 bg-surface/95 px-4 backdrop-blur-xl"
+    class="flex h-11 shrink-0 select-none items-center justify-between border-b border-border/90 bg-white px-4"
   >
     <div data-tauri-drag-region class="flex min-w-0 items-center gap-3">
       <span class="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-border-glow/80" />
       <span data-tauri-drag-region class="truncate text-xs font-semibold tracking-[0.24em] text-content-primary">
         JOB SYNC
       </span>
-      <span class="rounded-full bg-white/[0.04] px-2 py-0.5 text-[10px] font-medium text-content-muted ring-1 ring-border/10">
+      <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-content-secondary ring-1 ring-border/90">
         Desktop Workspace
       </span>
     </div>
     <div class="flex items-center gap-1">
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-content-muted transition-colors duration-200 hover:border-border/10 hover:bg-card-hover/75 hover:text-content-primary"
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-content-muted transition-colors duration-200 hover:border-border/90 hover:bg-slate-50 hover:text-content-primary"
         @click="minimize"
       >
         <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -52,7 +52,7 @@ function close(): void {
         </svg>
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-content-muted transition-colors duration-200 hover:border-border/10 hover:bg-card-hover/75 hover:text-content-primary"
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-content-muted transition-colors duration-200 hover:border-border/90 hover:bg-slate-50 hover:text-content-primary"
         @click="toggleMaximize"
       >
         <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -60,7 +60,7 @@ function close(): void {
         </svg>
       </button>
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-content-muted transition-colors duration-200 hover:border-red-400/15 hover:bg-red-500/15 hover:text-red-200"
+        class="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-content-muted transition-colors duration-200 hover:border-red-400/20 hover:bg-red-500/15 hover:text-red-600"
         @click="close"
       >
         <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">

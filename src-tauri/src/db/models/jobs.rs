@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::db::Result;
 
@@ -232,12 +232,74 @@ pub(crate) fn upsert_job_from_normalized(
         &source,
         &last_seen_at,
     )?;
+    if let Some(detail_json) = build_normalized_job_detail_json(input, &fields, &source) {
+        upsert_job_detail_raw(conn, &input.encrypt_job_id, &detail_json)?;
+    }
     let score_source = source
         .jd_text
         .as_deref()
         .unwrap_or(source.raw_payload_json.as_str());
     upsert_company_score_for_fields(conn, &fields, score_source)?;
     Ok(())
+}
+
+fn build_normalized_job_detail_json(
+    input: &NormalizedJobInput,
+    fields: &JobFields,
+    source: &NormalizedJobSource,
+) -> Option<String> {
+    let post_description = normalized_post_description(input, source)?;
+    serde_json::to_string(&json!({
+        "sourcePlatform": source.source_platform,
+        "sourceUrl": source.source_url,
+        "dedupKey": source.dedup_key,
+        "jobInfo": {
+            "positionName": fields.position_name,
+            "postDescription": post_description,
+            "cityName": fields.city_name,
+            "salaryDesc": fields.salary_desc,
+            "experienceName": fields.experience_name,
+            "degreeName": fields.degree_name,
+        },
+        "bossInfo": {
+            "name": fields.boss_name,
+        },
+        "brandInfo": {
+            "brandName": fields.brand_name,
+        },
+        "rawPayload": input.raw_payload,
+    }))
+    .ok()
+}
+
+fn normalized_post_description(
+    input: &NormalizedJobInput,
+    source: &NormalizedJobSource,
+) -> Option<String> {
+    input
+        .raw_payload
+        .get("contentHtml")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| {
+            source
+                .jd_text
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            input
+                .raw_payload
+                .get("contentText")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+        })
 }
 
 pub(crate) fn upsert_job_from_normalized_with_outcome(

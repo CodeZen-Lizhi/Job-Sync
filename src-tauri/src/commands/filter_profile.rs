@@ -675,43 +675,8 @@ fn has_raw_payload_evidence(job: &Value) -> bool {
         .is_some_and(|value| !value.is_empty() && value != "{}" && value != "null")
 }
 
-fn profile_has_strict_text_rules(profile: &NormalizedFilterProfile) -> bool {
-    !profile.must_keywords.is_empty()
-        || !profile.must_not_keywords.is_empty()
-        || !profile.required_directions.is_empty()
-        || !profile.excluded_directions.is_empty()
-        || !profile.required_tech_tags.is_empty()
-        || !profile.excluded_tech_tags.is_empty()
-        || !profile.required_work_modes.is_empty()
-        || !profile.excluded_work_modes.is_empty()
-        || !profile.company_must_keywords.is_empty()
-        || !profile.company_must_not_keywords.is_empty()
-        || !profile.company_required_scales.is_empty()
-        || !profile.company_excluded_scales.is_empty()
-        || !profile.company_required_financing_stages.is_empty()
-        || !profile.company_excluded_financing_stages.is_empty()
-        || !profile.company_required_industries.is_empty()
-        || !profile.company_excluded_industries.is_empty()
-}
-
 fn rule_type_of(blocked: &Value) -> Option<&str> {
     blocked.get("rule_type").and_then(Value::as_str)
-}
-
-fn is_evidence_sensitive_missing_rule(blocked: &Value) -> bool {
-    matches!(
-        rule_type_of(blocked),
-        Some(
-            "must_keyword"
-                | "required_direction"
-                | "required_tech_tag"
-                | "required_work_mode"
-                | "company_must_keyword"
-                | "company_required_scale"
-                | "company_required_financing_stage"
-                | "company_required_industry"
-        )
-    )
 }
 
 fn has_any(items: &[String], rules: &[String]) -> bool {
@@ -997,445 +962,6 @@ fn evaluate_filter_profile_with_blacklist(
         );
     }
 
-    for keyword in &profile.must_keywords {
-        if includes_keyword(&search_text, keyword) {
-            continue;
-        }
-        push_blocked(
-            &mut blocked_by,
-            "must_keyword",
-            "local_job",
-            keyword,
-            format!("本地职位未命中必须包含关键词：{keyword}"),
-        );
-    }
-
-    for keyword in &profile.must_not_keywords {
-        if !includes_keyword(&search_text, keyword) {
-            continue;
-        }
-        push_blocked(
-            &mut blocked_by,
-            "must_not_keyword",
-            "local_job",
-            keyword,
-            format!("本地职位命中必须排除关键词：{keyword}"),
-        );
-    }
-
-    if !profile.required_directions.is_empty()
-        && keyword_hits(&search_text, &profile.required_directions).is_empty()
-    {
-        push_blocked(
-            &mut blocked_by,
-            "required_direction",
-            "local_job",
-            &profile.required_directions.join(","),
-            format!(
-                "职位未命中必须岗位方向：{}",
-                profile.required_directions.join("、")
-            ),
-        );
-    }
-
-    for direction in keyword_hits(&search_text, &profile.excluded_directions) {
-        push_blocked(
-            &mut blocked_by,
-            "excluded_direction",
-            "local_job",
-            direction,
-            format!("职位命中排除岗位方向：{direction}"),
-        );
-    }
-
-    for tag in missing_keywords(&search_text, &profile.required_tech_tags) {
-        push_blocked(
-            &mut blocked_by,
-            "required_tech_tag",
-            "local_job",
-            tag,
-            format!("职位未命中必须技术标签：{tag}"),
-        );
-    }
-
-    for tag in keyword_hits(&search_text, &profile.excluded_tech_tags) {
-        push_blocked(
-            &mut blocked_by,
-            "excluded_tech_tag",
-            "local_job",
-            tag,
-            format!("职位命中排除技术标签：{tag}"),
-        );
-    }
-
-    for keyword in missing_keywords(&search_text, &profile.company_must_keywords) {
-        push_blocked(
-            &mut blocked_by,
-            "company_must_keyword",
-            "company_condition",
-            keyword,
-            format!("公司条件未命中必须关键词：{keyword}"),
-        );
-    }
-
-    for keyword in keyword_hits(&search_text, &profile.company_must_not_keywords) {
-        push_blocked(
-            &mut blocked_by,
-            "company_must_not_keyword",
-            "company_condition",
-            keyword,
-            format!("公司条件命中排除关键词：{keyword}"),
-        );
-    }
-
-    if !profile.company_required_scales.is_empty()
-        && keyword_hits(&search_text, &profile.company_required_scales).is_empty()
-    {
-        push_blocked(
-            &mut blocked_by,
-            "company_required_scale",
-            "company_scale",
-            &profile.company_required_scales.join(","),
-            format!(
-                "公司规模未命中必须条件：{}",
-                profile.company_required_scales.join("、")
-            ),
-        );
-    }
-
-    for scale in keyword_hits(&search_text, &profile.company_excluded_scales) {
-        push_blocked(
-            &mut blocked_by,
-            "company_excluded_scale",
-            "company_scale",
-            scale,
-            format!("公司规模命中排除项：{scale}"),
-        );
-    }
-
-    if !profile.company_required_financing_stages.is_empty()
-        && keyword_hits(&search_text, &profile.company_required_financing_stages).is_empty()
-    {
-        push_blocked(
-            &mut blocked_by,
-            "company_required_financing_stage",
-            "company_financing_stage",
-            &profile.company_required_financing_stages.join(","),
-            format!(
-                "融资阶段未命中必须条件：{}",
-                profile.company_required_financing_stages.join("、")
-            ),
-        );
-    }
-
-    for stage in keyword_hits(&search_text, &profile.company_excluded_financing_stages) {
-        push_blocked(
-            &mut blocked_by,
-            "company_excluded_financing_stage",
-            "company_financing_stage",
-            stage,
-            format!("融资阶段命中排除项：{stage}"),
-        );
-    }
-
-    if !profile.company_required_industries.is_empty()
-        && keyword_hits(&search_text, &profile.company_required_industries).is_empty()
-    {
-        push_blocked(
-            &mut blocked_by,
-            "company_required_industry",
-            "company_industry",
-            &profile.company_required_industries.join(","),
-            format!(
-                "公司行业未命中必须条件：{}",
-                profile.company_required_industries.join("、")
-            ),
-        );
-    }
-
-    for industry in keyword_hits(&search_text, &profile.company_excluded_industries) {
-        push_blocked(
-            &mut blocked_by,
-            "company_excluded_industry",
-            "company_industry",
-            industry,
-            format!("公司行业命中排除项：{industry}"),
-        );
-    }
-
-    if !profile.required_work_modes.is_empty()
-        && !has_any(&detected_work_modes, &profile.required_work_modes)
-    {
-        push_blocked(
-            &mut blocked_by,
-            "required_work_mode",
-            "work_mode",
-            &profile.required_work_modes.join(","),
-            format!(
-                "职位工作方式未命中必须工作方式：{}",
-                profile.required_work_modes.join("、")
-            ),
-        );
-    }
-
-    for mode in matching_rules(&detected_work_modes, &profile.excluded_work_modes) {
-        push_blocked(
-            &mut blocked_by,
-            "excluded_work_mode",
-            "work_mode",
-            mode,
-            format!("职位工作方式命中排除项：{mode}"),
-        );
-    }
-
-    if !profile.target_cities.is_empty() && !text_matches_any(&city_name, &profile.target_cities) {
-        push_blocked(
-            &mut blocked_by,
-            "target_city",
-            "city_name",
-            &profile.target_cities.join(","),
-            format!(
-                "职位城市不在可接受城市内：{}",
-                profile.target_cities.join("、")
-            ),
-        );
-    }
-
-    for city in profile
-        .excluded_cities
-        .iter()
-        .filter(|city| text_matches_rule(&city_name, city))
-    {
-        push_blocked(
-            &mut blocked_by,
-            "excluded_city",
-            "city_name",
-            city,
-            format!("职位城市命中排除城市：{city}"),
-        );
-    }
-
-    if !profile.source_platforms.is_empty()
-        && !profile
-            .source_platforms
-            .iter()
-            .any(|source| source == &source_platform)
-    {
-        push_blocked(
-            &mut blocked_by,
-            "source_platform",
-            "source_platform",
-            &profile.source_platforms.join(","),
-            format!(
-                "职位来源不在允许平台内：{}",
-                profile.source_platforms.join("、")
-            ),
-        );
-    }
-
-    if !profile.required_boss_active_statuses.is_empty()
-        && !profile
-            .required_boss_active_statuses
-            .iter()
-            .any(|status| text_matches_rule(&boss_active_status, status))
-    {
-        push_blocked(
-            &mut blocked_by,
-            "required_boss_active_status",
-            "boss_active_status",
-            &boss_active_status,
-            format!(
-                "Boss 活跃状态不在要求范围内：{}",
-                profile.required_boss_active_statuses.join("、")
-            ),
-        );
-    }
-    for status in profile
-        .excluded_boss_active_statuses
-        .iter()
-        .filter(|status| text_matches_rule(&boss_active_status, status))
-    {
-        push_blocked(
-            &mut blocked_by,
-            "excluded_boss_active_status",
-            "boss_active_status",
-            &boss_active_status,
-            format!("Boss 活跃状态命中排除项：{status}"),
-        );
-    }
-
-    if !profile.communication_statuses.is_empty()
-        && !profile
-            .communication_statuses
-            .iter()
-            .any(|status| status == &communication_status)
-    {
-        push_blocked(
-            &mut blocked_by,
-            "communication_status",
-            "communication_status",
-            &profile.communication_statuses.join(","),
-            format!(
-                "沟通状态不在允许状态内：{}",
-                profile.communication_statuses.join("、")
-            ),
-        );
-    }
-
-    if company_review_status == "manual_not_fit" {
-        push_blocked(
-            &mut blocked_by,
-            "company_review_status",
-            "company_review_status",
-            "manual_not_fit",
-            "公司已标记为不合适，同公司岗位默认不进入候选队列".to_string(),
-        );
-    }
-
-    if matches!(review_status.as_str(), "ignored" | "applied") {
-        push_blocked(
-            &mut blocked_by,
-            "review_status",
-            "review_status",
-            &review_status,
-            format!("岗位审核状态为 {review_status}，默认不进入 Top 20 候选队列"),
-        );
-    }
-
-    if profile.minimum_salary_k.is_some() || profile.maximum_salary_k.is_some() {
-        if salary_range.negotiable && !profile.accept_negotiable_salary {
-            push_blocked(
-                &mut blocked_by,
-                "negotiable_salary",
-                "salary_desc",
-                &salary_desc,
-                "职位薪资为面议，当前画像不接受面议薪资".to_string(),
-            );
-        }
-        if salary_range.min_k.is_none() || salary_range.max_k.is_none() {
-            push_blocked(
-                &mut blocked_by,
-                "unknown_salary",
-                "salary_desc",
-                &salary_desc,
-                "职位薪资无法解析，不能满足薪资硬限制".to_string(),
-            );
-        }
-        if let (Some(min_required), Some(max_salary)) =
-            (profile.minimum_salary_k, salary_range.max_k)
-        {
-            if max_salary < min_required {
-                push_blocked(
-                    &mut blocked_by,
-                    "minimum_salary",
-                    "salary_desc",
-                    &salary_desc,
-                    format!("职位最高薪资 {max_salary}K 低于最低薪资要求 {min_required}K"),
-                );
-            }
-        }
-        if let (Some(max_required), Some(min_salary)) =
-            (profile.maximum_salary_k, salary_range.min_k)
-        {
-            if min_salary > max_required {
-                push_blocked(
-                    &mut blocked_by,
-                    "maximum_salary",
-                    "salary_desc",
-                    &salary_desc,
-                    format!("职位最低薪资 {min_salary}K 高于最高薪资限制 {max_required}K"),
-                );
-            }
-        }
-    }
-
-    if let Some(recent_days) = profile.recent_days {
-        match days_since_date(&last_seen_at) {
-            Some(age_days) if age_days <= recent_days => {}
-            Some(age_days) => push_blocked(
-                &mut blocked_by,
-                "recent_days",
-                "last_seen_at",
-                &last_seen_at,
-                format!("职位最后采集已超过 {recent_days} 天：当前约 {age_days} 天"),
-            ),
-            None => push_blocked(
-                &mut blocked_by,
-                "recent_days",
-                "last_seen_at",
-                &last_seen_at,
-                "职位缺少可解析的最后采集时间，不能满足最近新增限制".to_string(),
-            ),
-        }
-    }
-
-    if profile.minimum_experience_years.is_some() || profile.maximum_experience_years.is_some() {
-        if experience_range.unknown && !profile.accept_unknown_experience {
-            push_blocked(
-                &mut blocked_by,
-                "unknown_experience",
-                "experience_name",
-                &experience_name,
-                "职位经验要求无法解析，当前画像不接受未知经验".to_string(),
-            );
-        }
-        if let (Some(min_required), Some(max_years)) =
-            (profile.minimum_experience_years, experience_range.max_years)
-        {
-            if max_years < min_required {
-                push_blocked(
-                    &mut blocked_by,
-                    "minimum_experience",
-                    "experience_name",
-                    &experience_name,
-                    format!("职位最高经验 {max_years} 年低于最低经验要求 {min_required} 年"),
-                );
-            }
-        }
-        if let (Some(max_required), Some(min_years)) =
-            (profile.maximum_experience_years, experience_range.min_years)
-        {
-            if min_years > max_required {
-                push_blocked(
-                    &mut blocked_by,
-                    "maximum_experience",
-                    "experience_name",
-                    &experience_name,
-                    format!("职位最低经验 {min_years} 年高于最高经验限制 {max_required} 年"),
-                );
-            }
-        }
-    }
-
-    if !profile.allowed_degrees.is_empty()
-        && !text_matches_any(&degree_name, &profile.allowed_degrees)
-    {
-        push_blocked(
-            &mut blocked_by,
-            "allowed_degree",
-            "degree_name",
-            &profile.allowed_degrees.join(","),
-            format!(
-                "职位学历要求不在允许范围内：{}",
-                profile.allowed_degrees.join("、")
-            ),
-        );
-    }
-
-    for degree in profile
-        .excluded_degrees
-        .iter()
-        .filter(|degree| text_matches_rule(&degree_name, degree))
-    {
-        push_blocked(
-            &mut blocked_by,
-            "excluded_degree",
-            "degree_name",
-            degree,
-            format!("职位学历要求命中排除项：{degree}"),
-        );
-    }
-
     let mut matched_preferences: Vec<String> = profile
         .preference_keywords
         .iter()
@@ -1516,30 +1042,8 @@ fn evaluate_filter_profile_with_blacklist(
     if evidence_sources.is_empty() {
         evidence_sources.push("list_fields");
     }
-
-    let only_missing_evidence_sensitive_rules =
-        !blocked_by.is_empty() && blocked_by.iter().all(is_evidence_sensitive_missing_rule);
-    let pending_confirmation = !has_detail_evidence
-        && profile_has_strict_text_rules(profile)
-        && only_missing_evidence_sensitive_rules;
-    let eligible = blocked_by.is_empty() && !pending_confirmation;
-    let bucket = if pending_confirmation {
-        "pending_confirmation"
-    } else if eligible {
-        "recommended"
-    } else {
-        "filtered"
-    };
-    let pending_by = if pending_confirmation {
-        json!([{
-          "rule_type": "insufficient_evidence",
-          "field": "jd_text",
-          "value": "missing_jd_or_detail",
-          "reason": "职位缺少 JD 或详情正文，当前采后判断规则需要正文证据，先进入待确认"
-        }])
-    } else {
-        json!([])
-    };
+    let eligible = blocked_by.is_empty();
+    let bucket = if eligible { "recommended" } else { "filtered" };
 
     (
         eligible,
@@ -1548,7 +1052,7 @@ fn evaluate_filter_profile_with_blacklist(
           "bucket": bucket,
           "evidence_quality": evidence_quality,
           "evidence_sources": evidence_sources,
-          "pending_by": pending_by,
+          "pending_by": [],
           "blocked_by": blocked_by,
           "matched_preferences": matched_preferences,
           "missing_preferences": missing_preferences,
@@ -2023,9 +1527,9 @@ mod tests {
 
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
-        assert!(!eligible);
-        assert_eq!(reason["bucket"], json!("filtered"));
-        assert_eq!(reason["blocked_by"].as_array().map(Vec::len), Some(2));
+        assert!(eligible);
+        assert_eq!(reason["bucket"], json!("recommended"));
+        assert_eq!(reason["blocked_by"].as_array().map(Vec::len), Some(0));
         assert_eq!(
             reason["matched_preferences"].as_array().map(Vec::len),
             Some(0)
@@ -2093,7 +1597,7 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_filter_profile_marks_missing_detail_as_pending_confirmation() {
+    fn evaluate_filter_profile_keeps_missing_detail_recommended_with_text_rules() {
         let profile = normalize_filter_profile(&json!({
           "mustKeywords": ["Kubernetes"]
         }));
@@ -2105,15 +1609,10 @@ mod tests {
 
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
-        assert!(!eligible);
-        assert_eq!(reason["bucket"], json!("pending_confirmation"));
+        assert!(eligible);
+        assert_eq!(reason["bucket"], json!("recommended"));
         assert_eq!(reason["evidence_quality"], json!("weak"));
-        assert!(reason["pending_by"]
-            .as_array()
-            .expect("pending reasons")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str)
-                == Some("insufficient_evidence")));
+        assert!(reason["pending_by"].as_array().expect("pending reasons").is_empty());
     }
 
     #[test]
@@ -2157,21 +1656,10 @@ mod tests {
             .filter_map(|item| item.get("rule_type").and_then(Value::as_str))
             .collect();
 
-        assert!(!eligible);
-        assert!(rule_types.contains(&"required_work_mode"));
-        assert!(rule_types.contains(&"required_direction"));
-        assert!(rule_types.contains(&"excluded_tech_tag"));
-        assert!(rule_types.contains(&"company_must_keyword"));
-        assert!(rule_types.contains(&"company_must_not_keyword"));
-        assert!(rule_types.contains(&"company_required_scale"));
-        assert!(rule_types.contains(&"company_excluded_financing_stage"));
-        assert!(rule_types.contains(&"company_excluded_industry"));
-        assert!(rule_types.contains(&"excluded_city"));
-        assert!(rule_types.contains(&"source_platform"));
-        assert!(rule_types.contains(&"communication_status"));
-        assert!(rule_types.contains(&"minimum_salary"));
-        assert!(rule_types.contains(&"maximum_experience"));
-        assert!(rule_types.contains(&"excluded_degree"));
+        assert!(eligible);
+        assert!(rule_types.is_empty());
+        assert_eq!(reason["bucket"], json!("recommended"));
+        assert_eq!(reason["dimensions"]["source_platform"], json!("liepin"));
     }
 
     #[test]
@@ -2195,12 +1683,8 @@ mod tests {
         let (liepin_eligible, liepin_reason) = evaluate_filter_profile(&liepin_job, None, &profile);
 
         assert!(boss_eligible);
-        assert!(!liepin_eligible);
-        assert!(liepin_reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")));
+        assert!(liepin_eligible);
+        assert!(liepin_reason["blocked_by"].as_array().expect("blocked rules").is_empty());
         assert_eq!(boss_reason["dimensions"]["source_platform"], json!("boss"));
     }
 
@@ -2219,11 +1703,7 @@ mod tests {
         let (eligible, reason) = evaluate_filter_profile(&v2ex_job, None, &profile);
 
         assert!(eligible);
-        assert!(!reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("source_platform")));
+        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
         assert_eq!(reason["dimensions"]["source_platform"], json!("v2ex"));
     }
 
@@ -2241,13 +1721,8 @@ mod tests {
 
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
-        assert!(!eligible);
-        assert!(reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str)
-                == Some("communication_status")));
+        assert!(eligible);
+        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
         assert_eq!(
             reason["dimensions"]["communication_status"],
             json!("read_no_reply")
@@ -2269,12 +1744,8 @@ mod tests {
 
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
-        assert!(!eligible);
-        assert!(reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("review_status")));
+        assert!(eligible);
+        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
         assert_eq!(reason["dimensions"]["review_status"], json!("applied"));
     }
 
@@ -2337,17 +1808,12 @@ mod tests {
             serde_json::from_str(&blocked_reason).expect("blocked reason json");
 
         assert_eq!(keep_eligible, 1);
-        assert_eq!(blocked_reason["eligible"], json!(false));
+        assert_eq!(blocked_reason["eligible"], json!(true));
         assert_eq!(
             blocked_reason["dimensions"]["communication_status"],
             json!("read_no_reply")
         );
-        assert!(blocked_reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str)
-                == Some("communication_status")));
+        assert!(blocked_reason["blocked_by"].as_array().expect("blocked rules").is_empty());
     }
 
     #[test]
@@ -2406,7 +1872,7 @@ mod tests {
             )
             .expect("query rust result");
         assert_eq!(profile_id, "rust-only");
-        assert_eq!(eligible, 0);
+        assert_eq!(eligible, 1);
 
         db::models::upsert_filter_profile(
             &conn,
@@ -2524,13 +1990,9 @@ mod tests {
             .expect("query raw result");
         let reason: Value = serde_json::from_str(&reason).expect("parse raw reason");
 
-        assert_eq!(eligible, 0);
-        assert_eq!(reason["bucket"], json!("filtered"));
-        assert!(reason["blocked_by"]
-            .as_array()
-            .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("must_not_keyword")));
+        assert_eq!(eligible, 1);
+        assert_eq!(reason["bucket"], json!("recommended"));
+        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
     }
 
     #[test]
@@ -2597,7 +2059,7 @@ mod tests {
             )
             .expect("query rust result");
         assert_eq!(profile_id, "rust-only");
-        assert_eq!(eligible, 0);
+        assert_eq!(eligible, 1);
 
         let switched = set_default_filter_profile_id_on_conn(&conn, "go-only")
             .expect("switch default profile");
@@ -2687,7 +2149,7 @@ mod tests {
       .expect("query blocked reason");
         let blocked_reason: Value =
             serde_json::from_str(&blocked_reason).expect("blocked reason json");
-        assert_eq!(blocked_reason["eligible"], json!(false));
+        assert_eq!(blocked_reason["eligible"], json!(true));
         assert_eq!(
             blocked_reason["dimensions"]["communication_status"],
             json!("read_no_reply")
@@ -2695,9 +2157,7 @@ mod tests {
         assert!(blocked_reason["blocked_by"]
             .as_array()
             .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str)
-                == Some("communication_status")));
+            .is_empty());
 
         db::models::upsert_job_review_state(
             &conn,
@@ -2722,7 +2182,7 @@ mod tests {
       .expect("query review blocked reason");
         let blocked_reason: Value =
             serde_json::from_str(&blocked_reason).expect("review blocked reason json");
-        assert_eq!(blocked_reason["eligible"], json!(false));
+        assert_eq!(blocked_reason["eligible"], json!(true));
         assert_eq!(
             blocked_reason["dimensions"]["review_status"],
             json!("applied")
@@ -2730,8 +2190,7 @@ mod tests {
         assert!(blocked_reason["blocked_by"]
             .as_array()
             .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("review_status")));
+            .is_empty());
     }
 
     #[test]
@@ -2802,7 +2261,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("query blocked company jobs");
-        assert_eq!(blocked_count, 2);
+        assert_eq!(blocked_count, 0);
     }
 
     #[test]

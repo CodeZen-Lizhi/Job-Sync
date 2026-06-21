@@ -16,7 +16,7 @@ export const runtime = reactive({
   },
   sidecarTask: {
     running: false,
-    type: undefined as "login" | "meta_sync" | "chat_sync" | "crawl_manual" | "crawl_auto" | undefined,
+    type: undefined as "login" | "meta_sync" | "chat_sync" | "crawl_auto" | undefined,
   },
   bossMeta: undefined as
     | {
@@ -109,6 +109,11 @@ export function applySidecarEvent(evt: SidecarEvent): void {
     case "JOB_NORMALIZED_CAPTURED":
       runtime.progress.captured_job_detail += 1;
       runtime.lastDetailCapturedId = evt.payload.encrypt_job_id;
+      pushLog({
+        ts: nowIso(),
+        level: "info",
+        message: `已入库：${evt.payload.position_name ?? evt.payload.encrypt_job_id}`,
+      });
       return;
     case "JOB_FILTERED": {
       runtime.progress.filtered_job += 1;

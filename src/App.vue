@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import type { Component } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
-import { Database, FileSliders, FileText, Scan, Settings } from "lucide-vue-next";
+import { Bot, Database, FileSliders, FileText, Scan, Settings } from "lucide-vue-next";
 
 import TitleBar from "./components/layout/TitleBar.vue";
 
@@ -40,10 +40,10 @@ const navGroups: NavGroup[] = [
 ];
 
 const navItemClass =
-  "group relative flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm text-content-secondary transition-colors duration-200 hover:border-border/10 hover:bg-card-hover/70 hover:text-content-primary focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10 before:content-[''] before:absolute before:left-1.5 before:top-1/2 before:h-6 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-border-glow/80 before:opacity-0 before:transition-opacity";
+  "group relative flex items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm font-medium text-content-secondary transition-colors duration-150 hover:border-border/90 hover:bg-slate-50 hover:text-content-primary focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10 before:content-[''] before:absolute before:left-1.5 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-border-glow before:opacity-0 before:transition-opacity";
 
 const navItemExactActiveClass =
-  "border-border-glow/20 bg-card-hover/90 text-content-primary shadow-sm before:opacity-100 [&_.nav-icon]:text-cyan-300 [&_.nav-label]:font-semibold";
+  "border-slate-900 bg-slate-900 !text-white hover:!border-slate-900 hover:!bg-slate-900 hover:!text-white before:!opacity-100 [&_.nav-icon]:!text-white [&_.nav-label]:font-semibold";
 
 const route = useRoute();
 const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || route.path === "/jobs" || route.path === "/crawl-config" ? "max-w-6xl" : "max-w-5xl"));
@@ -54,31 +54,15 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
     <TitleBar />
 
     <div class="relative flex-1 overflow-hidden">
-      <div class="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/70 via-transparent to-sky-100/50" />
-
-      <!-- Ambient orbs -->
-      <div
-        class="ambient-orb left-[-12%] top-[-18%] h-[460px] w-[460px] animate-orb-1 opacity-[0.16]"
-        style="background: radial-gradient(circle, rgb(var(--color-orb-indigo)) 0%, transparent 70%)"
-      />
-      <div
-        class="ambient-orb bottom-[-14%] right-[-8%] h-[420px] w-[420px] animate-orb-2 opacity-[0.14]"
-        style="background: radial-gradient(circle, rgb(var(--color-orb-cyan)) 0%, transparent 70%)"
-      />
-      <div
-        class="ambient-orb right-[12%] top-[42%] h-[320px] w-[320px] animate-orb-3 opacity-[0.08]"
-        style="background: radial-gradient(circle, rgb(var(--color-orb-amber)) 0%, transparent 70%)"
-      />
-
       <!-- Content -->
       <div class="relative z-10 flex h-full flex-col gap-0 lg:flex-row">
         <!-- Sidebar -->
         <aside
-          class="flex shrink-0 flex-col border-b border-border/20 bg-surface/92 backdrop-blur-xl lg:w-64 lg:border-b-0 lg:border-r"
+          class="flex shrink-0 flex-col border-b border-border/90 bg-white lg:w-64 lg:border-b-0 lg:border-r"
         >
           <header class="px-4 pb-3 pt-4 lg:pb-4 lg:pt-5">
             <div class="ui-panel-muted flex items-center gap-3 px-3 py-3">
-              <div class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-600 ring-1 ring-sky-200" aria-hidden="true">
+              <div class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-content-primary ring-1 ring-border/90" aria-hidden="true">
                 <Bot class="h-5 w-5" />
               </div>
               <div class="min-w-0">
@@ -110,9 +94,7 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
         </aside>
 
         <!-- Main content -->
-        <main
-          class="min-w-0 flex-1 overflow-y-auto bg-sky-50/70 px-3 py-4 sm:px-6 sm:py-6"
-        >
+        <main class="min-w-0 flex-1 overflow-y-auto bg-white px-3 py-4 sm:px-6 sm:py-6">
           <div :class="['ui-panel mx-auto w-full p-4 sm:p-6', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
               <KeepAlive>
