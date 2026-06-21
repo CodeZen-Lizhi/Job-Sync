@@ -607,7 +607,7 @@ fn build_telegram_overview_message(
     passed_jobs: u64,
 ) -> String {
     vec![
-        "【Job Sync AI 采后判断】".to_string(),
+        "【职脉 AI 采后判断】".to_string(),
         format!("更新：{updated} 个岗位，AI 判断：{ai_judged} 个，硬规则跳过：{hard_skipped} 个，失败：{failed} 个"),
         format!(
             "通过：{passed_jobs} 个；推荐 {} / 待确认 {} / 已过滤 {} / 已处理 {} / 全部 {}",

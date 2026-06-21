@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "job-sync",
+  "productName": "职脉",
   "version": "0.1.0",
-  "identifier": "com.administrator.job-sync",
+  "identifier": "com.administrator.zhimai",
   "build": {
     "beforeDevCommand": "npm run build:worker && npm run dev",
     "devUrl": "http://localhost:1430",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "job-sync",
+        "title": "职脉",
         "width": 1200,
         "minWidth": 1100,
         "height": 800,
