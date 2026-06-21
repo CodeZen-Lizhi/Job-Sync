@@ -1,4 +1,3 @@
-export type CrawlMode = "manual" | "auto";
 export type BossOption = { code: number; name: string };
 export type BossCityGroup = { firstChar: string; cityList: BossOption[] };
 export type BossIndustryGroup = { name: string; options: BossOption[] };
@@ -122,12 +121,8 @@ export type CollectionFailure = {
   created_at: string;
 };
 
-export const DEFAULT_CRAWL_MODE: CrawlMode = "manual";
-export const DEFAULT_MAX_PAGES = 3;
-export const DEFAULT_MAX_JOBS = 50;
 export const DEFAULT_DELAY_MS = 800;
 export const BOSS_META_SYNC_TIMEOUT_MS = 20_000;
-export const CRAWL_TASK_TYPE_MANUAL = "crawl_manual";
 export const CRAWL_TASK_TYPE_AUTO = "crawl_auto";
 export const CRAWL_TASK_TYPE_LOGIN = "login";
 export const CRAWL_TASK_TYPE_META_SYNC = "meta_sync";
@@ -154,7 +149,8 @@ export const BOSS_SOURCE_PLATFORM: JobSourcePlatform = "boss";
 export const V2EX_SOURCE_PLATFORM: JobSourcePlatform = "v2ex";
 export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "zhilian", "maimai", "linuxdo"] as const;
 export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM] as const;
-export const DEFAULT_V2EX_FEED_URL = "https://www.v2ex.com/feed/tab/jobs.xml";
+export const DEFAULT_V2EX_FEED_URL = "";
+export const DEFAULT_V2EX_MAX_PAGES = 5;
 export const JOB_SOURCE_PLATFORM_OPTIONS: JobSourcePlatformOption[] = [
   { value: BOSS_SOURCE_PLATFORM, label: "Boss 直聘", adapterKind: "boss" },
   { value: "liepin", label: "猎聘", adapterKind: "manual_import" },

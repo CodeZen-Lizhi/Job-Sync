@@ -9,12 +9,9 @@ import {
   BOSS_SOURCE_PLATFORM,
   COLLECTABLE_SOURCE_PLATFORMS,
   CRAWL_TASK_TYPE_AUTO,
-  CRAWL_TASK_TYPE_MANUAL,
   CRAWL_TASK_TYPE_META_SYNC,
-  DEFAULT_CRAWL_MODE,
   DEFAULT_DELAY_MS,
-  DEFAULT_MAX_JOBS,
-  DEFAULT_MAX_PAGES,
+  DEFAULT_V2EX_MAX_PAGES,
   DEFAULT_V2EX_FEED_URL,
   filterBossOptions,
   JOB_SOURCE_PLATFORM_OPTIONS,
@@ -27,7 +24,6 @@ import {
   type CollectionFailure,
   type CollectionRun,
   type JobSourcePlatform,
-  type CrawlMode,
 } from "./crawl";
 import { useFilterProfile } from "./filterProfile";
 import { appendRuntimeLog, clearLogs, resetCrawlProgress, runtime } from "./runtime";
@@ -56,6 +52,8 @@ type CollectionConfigPayload = {
   v2exKeywordsText?: string;
   v2exFeedSortBy?: string;
   v2exRecentDays?: number | null;
+  v2exMaxPages?: number | null;
+  v2exMaxEntries?: number | null;
   bossKeywordsText?: string;
   cityText?: string;
   salaryText?: string;
@@ -71,8 +69,6 @@ type CollectionConfigPayload = {
   selectedIndustry?: string;
   selectedScale?: string;
   selectedBossFilterConditions?: Record<string, string>;
-  maxPages?: number;
-  maxJobs?: number;
   delayMs?: number;
 };
 
@@ -98,7 +94,6 @@ export function useCrawlPage(): CrawlPageState {
 function createCrawlPageState() {
   const tauri = isTauri();
   const initialized = ref(false);
-  const mode = ref<CrawlMode>(DEFAULT_CRAWL_MODE);
   const collectionKeywordsText = ref("");
   const collectionTargetCitiesText = ref("");
   const collectionWorkModesText = ref("");
@@ -110,16 +105,18 @@ function createCrawlPageState() {
   const collectionMinimumExperienceYears = ref<number | null>(null);
   const collectionMaximumExperienceYears = ref<number | null>(null);
   const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
-  const bossCollectionEnabled = ref(true);
+  const bossCollectionEnabled = ref(false);
+  const collectionSourcesLoaded = ref(false);
   const collectionSourceRegistry = ref<Array<{ platform: string; display_name?: string; adapter_kind: string; enabled: boolean }>>([]);
   const collectionRuns = ref<CollectionRun[]>([]);
   const collectionFailures = ref<CollectionFailure[]>([]);
   const collectionSummaryLoading = ref(false);
-  const v2exFeedSettingsOpen = ref(true);
+  const v2exFeedSettingsOpen = ref(false);
   const v2exFeedUrl = ref(DEFAULT_V2EX_FEED_URL);
   const v2exKeywordsText = ref("");
   const v2exFeedSortBy = ref<V2exFeedSortBy>("published_desc");
   const v2exRecentDays = ref<number | null>(null);
+  const v2exMaxPages = ref(DEFAULT_V2EX_MAX_PAGES);
   const bossKeywordsText = ref("");
   const cityText = ref("");
   const salaryText = ref("");
@@ -135,8 +132,6 @@ function createCrawlPageState() {
   const selectedIndustry = ref("");
   const selectedScale = ref("");
   const selectedBossFilterConditions = ref<Record<string, string>>({});
-  const maxPages = ref(DEFAULT_MAX_PAGES);
-  const maxJobs = ref(DEFAULT_MAX_JOBS);
   const delayMs = ref(DEFAULT_DELAY_MS);
   const actionBusy = ref(false);
   const stopRequested = ref(false);
@@ -148,7 +143,7 @@ function createCrawlPageState() {
   const filterRecomputeMessage = ref<string | null>(null);
   const collectionConfigSaving = ref(false);
   const collectionConfigMessage = ref<string | null>(null);
-  const bossSettingsOpen = ref(true);
+  const bossSettingsOpen = ref(false);
   const filterProfileOpen = ref(false);
   const bossSyncMappedFields = ref<string[]>([]);
   const bossSyncUnmappedFields = ref<string[]>([]);
@@ -166,6 +161,7 @@ function createCrawlPageState() {
   const bossAdditionalFilterGroups = computed<BossFilterConditionGroup[]>(() => buildBossFilterConditionGroups(runtime.bossMeta));
   const bossIndustryGroups = computed<BossIndustryGroup[]>(() => buildBossIndustryGroups(runtime.bossMeta));
   const bossMetaReady = computed(() => bossCityGroups.value.length > 0 && bossSalaryOptions.value.length > 0);
+  const bossSourceAvailable = computed(() => collectionSourcesLoaded.value && collectableSourceOptions.value.some((source) => source.value === BOSS_SOURCE_PLATFORM));
   const bossFilterConditionCount = computed(
     () => 5 + (bossIndustryGroups.value.length > 0 ? 1 : 0) + bossAdditionalFilterGroups.value.length,
   );
@@ -233,11 +229,12 @@ function createCrawlPageState() {
   });
   function buildTaskForSource(sourcePlatform: JobSourcePlatform) {
     if (sourcePlatform === V2EX_SOURCE_PLATFORM) {
+      const feedUrls = splitUrlList(v2exFeedUrl.value);
       return {
         keywords: v2exTaskKeywords.value,
         source_platform: V2EX_SOURCE_PLATFORM,
         filters: {
-          feed_url: v2exFeedUrl.value.trim() || DEFAULT_V2EX_FEED_URL,
+          feed_urls: feedUrls,
           sort_by: v2exFeedSortBy.value,
           recent_days: optionalNumber(v2exRecentDays.value),
           excluded_keywords: collectionExcludedKeywords.value,
@@ -253,9 +250,8 @@ function createCrawlPageState() {
           },
         },
         limits: {
-          maxEntries: Math.max(1, maxPages.value * 20),
-          maxJobs: maxJobs.value,
           delayMs: delayMs.value,
+          maxPages: optionalNumber(v2exMaxPages.value) ?? DEFAULT_V2EX_MAX_PAGES,
         },
         mode: "auto",
       };
@@ -264,7 +260,7 @@ function createCrawlPageState() {
       keywords: bossKeywords.value,
       source_platform: BOSS_SOURCE_PLATFORM,
       filters: filters.value,
-      limits: { maxPages: maxPages.value, maxJobs: maxJobs.value, delayMs: delayMs.value },
+      limits: { delayMs: delayMs.value },
       mode: "auto",
     };
   }
@@ -278,11 +274,27 @@ function createCrawlPageState() {
     if (source === BOSS_SOURCE_PLATFORM && bossKeywords.value.length === 0) {
       return "Boss 搜索关键词为空。请填写采集意图并同步到 Boss，或在 Boss 配置中输入至少 1 个关键词。";
     }
+    if (source === V2EX_SOURCE_PLATFORM && splitUrlList(v2exFeedUrl.value).length === 0) {
+      return "V2EX URL 为空。请填写至少 1 个 feed 或节点 URL。";
+    }
     return null;
   }
 
   function normalizeToken(value: string): string {
     return value.trim().toLowerCase();
+  }
+
+  function splitUrlList(text: string): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const part of text.split(/[\n,，、]+/g)) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+    return out;
   }
 
   function uniqueList(items: readonly string[]): string[] {
@@ -321,18 +333,6 @@ function createCrawlPageState() {
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
   }
 
-  function positiveInteger(value: unknown, fallback: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed) || parsed < 1) return fallback;
-    return Math.floor(parsed);
-  }
-
-  function nonNegativeInteger(value: unknown, fallback: number): number {
-    const parsed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-    return Math.floor(parsed);
-  }
-
   function textValue(value: unknown): string {
     return typeof value === "string" ? value : "";
   }
@@ -364,6 +364,7 @@ function createCrawlPageState() {
       v2exKeywordsText: v2exKeywordsText.value,
       v2exFeedSortBy: v2exFeedSortBy.value,
       v2exRecentDays: optionalNumber(v2exRecentDays.value),
+      v2exMaxPages: optionalNumber(v2exMaxPages.value) ?? DEFAULT_V2EX_MAX_PAGES,
       bossKeywordsText: bossKeywordsText.value,
       cityText: cityText.value,
       salaryText: salaryText.value,
@@ -379,9 +380,9 @@ function createCrawlPageState() {
       selectedIndustry: selectedIndustry.value,
       selectedScale: selectedScale.value,
       selectedBossFilterConditions: selectedBossFilterConditions.value,
-      maxPages: positiveInteger(maxPages.value, DEFAULT_MAX_PAGES),
-      maxJobs: positiveInteger(maxJobs.value, DEFAULT_MAX_JOBS),
-      delayMs: nonNegativeInteger(delayMs.value, DEFAULT_DELAY_MS),
+      delayMs: typeof delayMs.value === "number" && Number.isFinite(delayMs.value) && delayMs.value >= 0
+        ? Math.floor(delayMs.value)
+        : DEFAULT_DELAY_MS,
     };
   }
 
@@ -403,10 +404,11 @@ function createCrawlPageState() {
       );
       selectedCollectionSources.value = selected.length > 0 ? Array.from(new Set(selected)) : selectedCollectionSources.value;
     }
-    v2exFeedUrl.value = textValue(config.v2exFeedUrl) || DEFAULT_V2EX_FEED_URL;
+    v2exFeedUrl.value = textValue(config.v2exFeedUrl);
     v2exKeywordsText.value = textValue(config.v2exKeywordsText);
     v2exFeedSortBy.value = sanitizeV2exFeedSortBy(config.v2exFeedSortBy);
     v2exRecentDays.value = optionalNumber(config.v2exRecentDays);
+    v2exMaxPages.value = optionalNumber(config.v2exMaxPages ?? config.v2exMaxEntries) ?? DEFAULT_V2EX_MAX_PAGES;
     bossKeywordsText.value = textValue(config.bossKeywordsText);
     cityText.value = textValue(config.cityText);
     salaryText.value = textValue(config.salaryText);
@@ -425,9 +427,9 @@ function createCrawlPageState() {
     selectedIndustry.value = textValue(config.selectedIndustry);
     selectedScale.value = textValue(config.selectedScale);
     selectedBossFilterConditions.value = sanitizeBossFilterConditionSelection(config.selectedBossFilterConditions);
-    maxPages.value = positiveInteger(config.maxPages, DEFAULT_MAX_PAGES);
-    maxJobs.value = positiveInteger(config.maxJobs, DEFAULT_MAX_JOBS);
-    delayMs.value = nonNegativeInteger(config.delayMs, DEFAULT_DELAY_MS);
+    delayMs.value = typeof config.delayMs === "number" && Number.isFinite(config.delayMs) && config.delayMs >= 0
+      ? Math.floor(config.delayMs)
+      : DEFAULT_DELAY_MS;
   }
 
   function allBossCities(): BossOption[] {
@@ -617,6 +619,7 @@ function createCrawlPageState() {
       collectionSourceRegistry.value = sources;
       const boss = sources.find((source) => source.platform === BOSS_SOURCE_PLATFORM && source.adapter_kind === "boss");
       bossCollectionEnabled.value = boss?.enabled !== false;
+      collectionSourcesLoaded.value = true;
       const availableValues = new Set(collectableSourceOptions.value.map((source) => source.value));
       selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => availableValues.has(source));
       if (selectedCollectionSources.value.length === 0 && collectableSourceOptions.value[0]) {
@@ -626,7 +629,8 @@ function createCrawlPageState() {
         selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => source !== BOSS_SOURCE_PLATFORM);
       }
     } catch {
-      bossCollectionEnabled.value = true;
+      bossCollectionEnabled.value = false;
+      collectionSourcesLoaded.value = true;
       collectionSourceRegistry.value = [];
     }
   }
@@ -700,12 +704,6 @@ function createCrawlPageState() {
     stopRequested.value = false;
     try {
       resetCrawlProgress();
-      if (mode.value === "manual") {
-        runtime.sidecarTask.running = true;
-        runtime.sidecarTask.type = CRAWL_TASK_TYPE_MANUAL;
-        await invoke<void>("crawl_manual_start");
-        return;
-      }
       await persistCollectionConfig();
       const selectedSources = selectedCollectionSources.value.filter((source) =>
         collectableSourceOptions.value.some((option) => option.value === source),
@@ -762,7 +760,7 @@ function createCrawlPageState() {
       }
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
-      if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_MANUAL || runtime.sidecarTask.type === CRAWL_TASK_TYPE_AUTO) {
+      if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_AUTO) {
         runtime.sidecarTask.running = false;
         runtime.sidecarTask.type = undefined;
       }
@@ -828,7 +826,6 @@ function createCrawlPageState() {
     tauri,
     runtime,
     clearLogs,
-    mode,
     collectionKeywordsText,
     collectionTargetCitiesText,
     collectionWorkModesText,
@@ -849,11 +846,13 @@ function createCrawlPageState() {
     bossSelected,
     v2exSelected,
     collectableSourceOptions,
+    collectionSourcesLoaded,
     v2exFeedSettingsOpen,
     v2exFeedUrl,
     v2exKeywordsText,
     v2exFeedSortBy,
     v2exRecentDays,
+    v2exMaxPages,
     v2exKeywords,
     bossKeywordsText,
     cityText,
@@ -871,8 +870,6 @@ function createCrawlPageState() {
     selectedIndustry,
     selectedScale,
     selectedBossFilterConditions,
-    maxPages,
-    maxJobs,
     delayMs,
     actionBusy,
     error,
@@ -899,6 +896,7 @@ function createCrawlPageState() {
     bossIndustryGroups,
     bossFilterConditionCount,
     bossMetaReady,
+    bossSourceAvailable,
     sidecarRunning,
     loadBossMeta,
     syncBossMeta,

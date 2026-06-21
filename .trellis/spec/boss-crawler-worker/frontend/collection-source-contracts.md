@@ -18,7 +18,7 @@
   - `source_platform: "boss" | "v2ex" | string`
   - `filters: object`
     - Boss: `city`, `salary`, `experience`, `degree`, `industry`, `scale`, `stage`, and `jobType` are the user-facing platform filters known to map to `/wapi/zpgeek/search/joblist.json`; `position`, `multiSubway`, and `multiBusinessDistrict` may pass through internally if available, but must not be surfaced as generic unknown filters.
-    - V2EX: `feed_url?: string`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
+    - V2EX: `feed_urls?: string[]`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -32,6 +32,7 @@
   - `job.dedup_key`
   - unified display fields
   - `job.raw_payload_json`
+  - `job_detail_raw.zp_data_json` for normalized non-Boss detail display
 
 ### 3. Contracts
 
@@ -45,15 +46,33 @@
 - V2EX:
   - `source_platform = "v2ex"`
   - does not require Boss session
-  - uses `filters.feed_url`, defaulting to `https://www.v2ex.com/feed/tab/jobs.xml`
+  - only uses user-configured `filters.feed_urls`; empty or missing URLs must skip V2EX collection instead of falling back to a built-in default source
+  - frontend URL input may contain multiple URLs split by newline, comma, Chinese comma, or Chinese enumeration comma
+  - `feed/*.json` and `feed/*.xml` URLs are feed sources and must be fetched once without pagination parameters
+  - `/go/*` node URLs and `/?tab=jobs` URLs are page sources and may paginate with `p=N` until the configured page cap or an empty page
+  - `jobs`, `remote`, `meet`, `career`, `cv`, and `outsourcing` are all treated as job or collaboration information sources, without separate business buckets
+  - results from all configured URLs are deduplicated by `topicId`, keeping the more complete parsed entry when duplicates appear
+  - jobs-list pagination should prefer V2EX embedded `application/ld+json` `datePublished` as the post publish time; visible list timestamps may reflect recent activity/replies and must not silently replace publish time
   - supports `filters.sort_by = "published_desc" | "updated_desc"`; missing or invalid values default to `published_desc`
   - supports `filters.recent_days` as a positive day window applied to the same timestamp field selected by `sort_by`; null, missing, or non-positive values mean no time pre-filter
-  - sorts parsed feed entries before applying `limits.maxEntries` so old threads bumped by replies do not crowd out newer postings when `published_desc` is selected
+  - supports `limits.maxPages` as the optional positive page cap for V2EX jobs-list pagination; missing or non-positive values fall back to the frontend default
+  - sorts parsed V2EX entries before recent-day filtering and optional entry limiting so old threads bumped by replies do not crowd out newer postings when `published_desc` is selected
   - emits `JOB_NORMALIZED_CAPTURED`
   - stores `encrypt_job_id = "v2ex:<topicId>"`
   - stores `dedup_key = <topicId>`
+  - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains the fetched topic detail body so `get_job_detail` can render the V2EX post without a Boss detail fetch
   - only uses positive hiring signals before writing to `job`; default discussion/exclusion keywords must not pre-filter V2EX entries
   - post-collection profile and AI judgement own soft exclusion decisions after V2EX entries are written
+- Collection limits:
+  - `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates
+  - the sidecar may stop a worker after counting an inserted job, and duplicate or updated rows must not consume the limit
+- Post-collection AI judgement:
+  - after Boss or V2EX automatic collection finishes, the sidecar may trigger `recompute_ai_post_collection_judgement`
+  - persisted `reason_json.ai_judgement.status` is the UI status source when present: `passed`, `rejected`, `pending_confirmation`, or `failed`
+  - missing `reason_json.ai_judgement` means the UI status is `pending_review`; in-flight frontend recompute may temporarily show `processing`
+  - automatic AI judgement success must emit a runtime `LOG` summary with updated, AI-judged, hard-skipped, and fallback-failed counts
+  - automatic AI judgement failure must emit a runtime `LOG` error with the failure reason; do not swallow background errors silently
+  - every attempted job judgement should emit runtime `LOG` entries for start, skip, success, or failure with the job title/id
 - Source registry:
   - Boss adapter kind is `boss`
   - V2EX adapter kind is `feed`
@@ -77,19 +96,28 @@
 
 - Boss selected without stored session -> `crawl_auto_start` returns login/session error.
 - V2EX selected without stored Boss session -> command still starts with an empty session payload.
+- V2EX selected with an empty URL input -> frontend blocks start with a clear URL-required message; if an empty payload reaches the worker, the worker logs that no URL was provided and skips collection.
 - Boss + V2EX selected -> Boss validates keywords/session; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
 - V2EX feed entry lacks stable topic id or title -> skip that entry.
 - V2EX feed entry timestamp is missing or invalid while `recent_days` is active -> it is not considered recent for that selected time field.
 - Unknown V2EX `sort_by` values -> worker falls back to `published_desc`.
+- Missing or invalid V2EX `limits.maxPages` -> worker falls back to the default V2EX page cap; do not use a hidden fixed job-count ceiling such as 50.
+- V2EX feed URL -> worker must request only the feed URL once and must not append `p=N` or rewrite it to a node URL.
+- V2EX page URL -> worker may append/update `p=N` and stop at the page cap or first empty parsed page.
 - V2EX entry lacks positive hiring signals -> emit `JOB_FILTERED` with `缺少招聘信号词`; do not insert `job`.
 - V2EX entry matches default discussion words, collection excluded keywords, or profile `mustNotKeywords` -> do not pre-filter at feed stage; let post-collection rules and AI judgement decide after ingest.
 - Worker emits malformed normalized payload -> Rust IPC deserialization rejects it before DB write.
+- Automatic post-collection AI request returns provider/model/network error -> runtime log shows `AI 采后判断失败：...` so the user can distinguish "not run" from "AI provider failed".
+- Per-job AI provider/output failure -> persist `ai_judgement.status = "failed"` and show the job badge as `审核失败`; do not collapse this into ordinary `待确认`.
 
 ### 5. Good/Base/Bad Cases
 
 - Good: user selects V2EX, worker reads Atom entries, classifies clear hiring posts, emits normalized jobs, sidecar upserts `source_platform = "v2ex"`, and default filter profile recomputes candidate eligibility.
+- Good: user sets V2EX max pages to 3, and the worker can process all qualifying jobs from those pages instead of stopping at a hidden fixed count.
+- Good: user enters `https://www.v2ex.com/feed/jobs.json` and `https://www.v2ex.com/go/meet`; the feed is fetched once, the page URL is paginated, and duplicated topic ids are inserted once.
+- Good: AI provider fails after collection, and the run log shows the provider error instead of leaving only `AI 结果：未判定` in the job list.
 - Good: user selects Boss + V2EX, frontend runs Boss then V2EX sequentially while each source keeps its adapter contract.
 - Base: user selects Boss, existing Boss payload and browser-session collection keep working.
 - Bad: UI shows V2EX as collectable but `crawl_auto_start` still requires Boss cookies.
@@ -97,12 +125,22 @@
 - Bad: Feed entries are written as Boss jobs or without a topic-based dedup key.
 - Bad: filter profile allowed candidate sources are used as a pre-ingest collection gate.
 - Bad: default filter profile allows only Boss while V2EX is an enabled automatic source; users see collected V2EX jobs blocked by "source not allowed".
+- Bad: V2EX collection runs `https://www.v2ex.com/go/jobs` when the URL input is empty.
+- Bad: a V2EX feed URL is rewritten into a paginated node URL.
 
 ### 6. Tests Required
 
 - Worker unit tests:
   - Atom parser extracts title, normalized topic URL, topic id, author, and text content.
+  - Jobs-list parser extracts paged topic links, authors, timestamps, and fetches topic detail text before normalized job capture.
   - V2EX sorting and time-window filtering distinguish `published_desc` from `updated_desc`, including old posts bumped by recent replies.
+  - V2EX jobs-list structured `datePublished` wins over visible activity timestamps for publish-time sorting and recent-day filtering.
+  - V2EX `limits.maxPages` should bound page requests, while qualifying job count should come from the fetched pages instead of a hidden fixed cap.
+  - V2EX empty URL input should not start collection.
+  - V2EX multiple URL input should split by newline, comma, Chinese comma, and Chinese enumeration comma.
+  - V2EX feed URLs should be fetched once without pagination.
+  - V2EX page URLs should paginate to the page cap or empty page.
+  - V2EX multi-source results should deduplicate by `topicId`.
   - HTML entity decoding handles `&nbsp;`.
   - classifier accepts clear hiring posts from positive signals only.
   - classifier does not let search keywords alone make a feed entry a job posting.
@@ -110,12 +148,12 @@
   - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
 - Rust tests:
   - `job_sources` seeds Boss as `boss`, V2EX as `feed`, and reserved platforms as `manual_import`.
-  - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, and `jd_text`.
+  - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, `jd_text`, and `job_detail_raw.zp_data_json` with `jobInfo.postDescription`.
   - default filter profile includes V2EX and legacy Boss-only default profile upgrades to Boss + V2EX.
 - Frontend/browser smoke:
   - collection config source selector can select Boss and V2EX together.
   - Boss city selector supports multiple selected dictionary cities and explains that collection runs city variants sequentially.
-  - V2EX Feed section appears when V2EX is selected among selected sources.
+  - V2EX pagination section appears when V2EX is selected among selected sources.
   - execution page labels V2EX as the automatic source.
   - settings page shows V2EX automatic collection and no-login capability.
 
@@ -304,7 +342,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 
 ### 5. Good/Base/Bad Cases
 
-- Good: automatic collection page shows max pages, max jobs, and delay, with no post-collection rule chooser.
+- Good: automatic collection page shows the runtime delay, with no post-collection rule chooser.
 - Good: config page shows "默认采后规则", "保存配置", and "保存并重算已有职位".
 - Base: existing profile commands still compile and old default profile records load.
 - Bad: UI restores "当前规则集", "新建规则集", or "设为默认".
