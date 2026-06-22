@@ -77,7 +77,7 @@
   - Boss adapter kind is `boss`
   - V2EX adapter kind is `feed`
   - other non-Boss platforms remain `manual_import` until their automatic adapter exists
-  - LinuxDo may expose platform login/session management while it remains `manual_import`; login capability and automatic collection capability are separate UI concepts
+  - LinuxDo remains `manual_import` and must not use the Puppeteer login worker; open the normal system browser instead because Cloudflare challenges automated browser sessions
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`

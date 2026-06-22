@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import UiSelect from "../components/ui/UiSelect.vue";
 import AiProfileInputs from "../components/ai/AiProfileInputs.vue";
@@ -132,6 +133,7 @@ const previewJobSources = JOB_SOURCE_PLATFORM_OPTIONS.map((source) => ({
 }));
 const visibleJobSources = computed(() => (jobSources.value.length > 0 ? jobSources.value : previewJobSources));
 const loginCapablePlatforms = new Set(["boss", "linuxdo"]);
+const automatedLoginPlatforms = new Set(["boss"]);
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -242,7 +244,7 @@ function platformCapabilityHint(source: JobSourceEntry): string {
     return "启用后可在采集配置中作为本次自动采集来源；登录态在本页按平台管理。";
   }
   if (source.platform === "linuxdo") {
-    return "启用后可作为职位来源管理；登录态在本页按平台管理。";
+    return "LinuxDo 受 Cloudflare 保护；请用本机浏览器登录，避免自动化浏览器触发人机验证。";
   }
   if (source.adapter_kind === "feed") {
     return "启用后可在采集配置中作为公开 Feed 自动采集来源；无需平台登录。";
@@ -253,6 +255,7 @@ function platformCapabilityHint(source: JobSourceEntry): string {
 function platformLoginLabel(source: JobSourceEntry): string {
   if (source.adapter_kind === "feed") return "无需登录";
   if (!loginCapablePlatforms.has(source.platform)) return "登录预留";
+  if (source.platform === "linuxdo") return "浏览器登录";
   const platformName = source.display_name || source.platform;
   const status = loginStatusByPlatform.value[source.platform] ?? null;
   if (status === true) return `${platformName} 已登录`;
@@ -263,6 +266,7 @@ function platformLoginLabel(source: JobSourceEntry): string {
 function platformLoginBadgeClass(source: JobSourceEntry): string {
   if (source.adapter_kind === "feed") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
   if (!loginCapablePlatforms.has(source.platform)) return "bg-slate-400/10 text-slate-300 ring-slate-400/20";
+  if (source.platform === "linuxdo") return "bg-cyan-400/10 text-cyan-300 ring-cyan-400/20";
   const status = loginStatusByPlatform.value[source.platform] ?? null;
   if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
   if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
@@ -333,13 +337,26 @@ async function refreshPlatformLogin(sourcePlatform = "boss"): Promise<void> {
 }
 
 async function refreshSupportedLoginStatuses(): Promise<void> {
-  await Promise.all(Array.from(loginCapablePlatforms).map((platform) => refreshPlatformLogin(platform)));
+  await Promise.all(Array.from(automatedLoginPlatforms).map((platform) => refreshPlatformLogin(platform)));
 }
 
 async function startPlatformLogin(source: JobSourceEntry): Promise<void> {
   loginError.value = null;
   if (!loginCapablePlatforms.has(source.platform)) return;
   if (!tauri) return;
+
+  if (source.platform === "linuxdo") {
+    loginLoadingPlatform.value = source.platform;
+    try {
+      await openUrl("https://linux.do/");
+    } catch (e) {
+      loginError.value = e instanceof Error ? e.message : String(e);
+    } finally {
+      loginLoadingPlatform.value = null;
+    }
+    return;
+  }
+
   loginLoadingPlatform.value = source.platform;
   loginLoading.value = true;
   try {
@@ -588,9 +605,15 @@ watch(
                   :disabled="!tauri || !source.enabled || loginLoading || sidecarRunning"
                   @click="startPlatformLogin(source)"
                 >
-                  {{ loginLoadingPlatform === source.platform ? "打开中…" : "登录" }}
+                  {{ loginLoadingPlatform === source.platform ? "打开中…" : source.platform === "linuxdo" ? "打开" : "登录" }}
                 </button>
-                <button class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!tauri || !source.enabled" @click="refreshPlatformLogin(source.platform)">
+                <button
+                  v-if="automatedLoginPlatforms.has(source.platform)"
+                  class="ui-btn-secondary px-3 py-1.5 text-xs"
+                  type="button"
+                  :disabled="!tauri || !source.enabled"
+                  @click="refreshPlatformLogin(source.platform)"
+                >
                   刷新登录
                 </button>
               </template>
