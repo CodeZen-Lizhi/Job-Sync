@@ -36,7 +36,7 @@ function close(): void {
     <div data-tauri-drag-region class="flex min-w-0 items-center gap-3">
       <span class="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-border-glow/80" />
       <span data-tauri-drag-region class="truncate text-xs font-semibold tracking-[0.24em] text-content-primary">
-        职脉
+        JobPilot
       </span>
       <span class="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-content-secondary ring-1 ring-border/90">
         Desktop Workspace

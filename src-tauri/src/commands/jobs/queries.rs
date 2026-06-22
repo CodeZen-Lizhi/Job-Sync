@@ -2218,7 +2218,7 @@ fn format_daily_intelligence_brief(
     applied_jobs: i64,
 ) -> String {
     format!(
-    "每日岗位情报（{report_date}）\n今日新增岗位：{today_new_jobs}\n高匹配：{high_match_jobs} 个\n满足关键限制：{eligible_jobs} 个\n推荐投递候选：{recommended_jobs} 个\n已确认准备投递：{ready_to_apply_jobs} 个\n已投递记录：{applied_jobs} 个\n入口：打开职脉查看 Top 20 人工审核队列；不会自动投递。"
+    "每日岗位情报（{report_date}）\n今日新增岗位：{today_new_jobs}\n高匹配：{high_match_jobs} 个\n满足关键限制：{eligible_jobs} 个\n推荐投递候选：{recommended_jobs} 个\n已确认准备投递：{ready_to_apply_jobs} 个\n已投递记录：{applied_jobs} 个\n入口：打开 JobPilot 查看 Top 20 人工审核队列；不会自动投递。"
   )
 }
 
@@ -4399,7 +4399,7 @@ mod tests {
         assert!(summary.notification_text.contains("已投递记录：1 个"));
         assert!(summary
             .notification_text
-            .contains("打开职脉查看 Top 20 人工审核队列"));
+            .contains("打开 JobPilot 查看 Top 20 人工审核队列"));
         assert!(summary.notification_text.contains("不会自动投递"));
         assert!(summary.notification_brief_text.contains("今日新增岗位：4"));
         assert!(summary
@@ -4407,7 +4407,7 @@ mod tests {
             .contains("推荐投递候选：1 个"));
         assert!(summary
             .notification_brief_text
-            .contains("打开职脉查看 Top 20 人工审核队列"));
+            .contains("打开 JobPilot 查看 Top 20 人工审核队列"));
         assert!(summary.notification_brief_text.contains("不会自动投递"));
         assert!(!summary.notification_brief_text.contains("推荐候选预览"));
         assert!(!summary

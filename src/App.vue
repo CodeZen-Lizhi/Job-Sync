@@ -66,7 +66,7 @@ const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || rou
                 <Bot class="h-5 w-5" />
               </div>
               <div class="min-w-0">
-                <div class="truncate text-sm font-semibold tracking-wide text-content-primary">职脉</div>
+                <div class="truncate text-sm font-semibold tracking-wide text-content-primary">JobPilot</div>
                 <div class="mt-1 truncate text-xs text-content-muted">精准求职工作台</div>
               </div>
             </div>

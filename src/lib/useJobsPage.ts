@@ -452,7 +452,7 @@ function buildApplicationPacket(
   const checklist = buildApplicationChecklist(job, trimmedGreeting, resumeWorkspaceStatus).map((item) => `- ${item}`).join("\n");
   const readinessPreflight = formatApplicationReadinessPreflight(job, trimmedGreeting, resumeWorkspaceStatus);
   return [
-    "【职脉投递材料包】",
+    "【JobPilot 投递材料包】",
     `岗位：${job.position_name ?? job.encrypt_job_id}`,
     `公司：${job.brand_name ?? "未知"}`,
     `城市/薪资：${job.city_name ?? "未知"} / ${job.salary_desc ?? "未知"}`,
@@ -534,7 +534,7 @@ function buildApplicationReadyJobsSummary(entries: ApplicationReadySummaryEntry[
     .map((entry, index) => `#${index + 1}\n${buildApplicationReadyJobSummary(entry)}`)
     .join("\n\n");
   return [
-    "【职脉投递准备清单】",
+    "【JobPilot 投递准备清单】",
     "这些岗位已由用户人工标记为准备投递；请逐项核对简历、PDF、打招呼文案和外部平台动作。",
     items,
     "使用边界：仅供人工复制、核对和手动投递；不会自动发送、开聊或投递。",
@@ -565,7 +565,7 @@ function buildReviewCandidatesSummary(jobs: JobRow[]): string {
     .map((job, index) => `#${index + 1}\n${buildReviewCandidateSummary(job)}`)
     .join("\n\n");
   return [
-    "【职脉 Top 20 人工审核摘要】",
+    "【JobPilot Top 20 人工审核摘要】",
     "这些岗位已通过当前采后规则、黑名单和沟通状态过滤，并按综合评分排序；仅供人工研究和确认。",
     items,
     "使用边界：复制后人工查看、编辑和决定，不会自动发送、开聊或投递。",
@@ -605,7 +605,7 @@ function buildFilteredJobsSummary(jobs: JobRow[]): string {
     .map((job, index) => `#${index + 1}\n${buildFilteredJobSummary(job)}`)
     .join("\n\n");
   return [
-    "【职脉最近过滤解释】",
+    "【JobPilot 最近过滤解释】",
     "这些岗位当前不会进入 Top 20；可调整采后规则、沟通状态或黑名单后重新计算。",
     items,
     "使用边界：仅用于人工复盘筛选结果；不会自动发送或投递。",
@@ -644,7 +644,7 @@ function buildCommunicationFollowupJobsSummary(jobs: JobRow[]): string {
     .map((job, index) => `#${index + 1}\n${buildCommunicationFollowupJobSummary(job)}`)
     .join("\n\n");
   return [
-    "【职脉沟通回溯摘要】",
+    "【JobPilot 沟通回溯摘要】",
     "这些岗位已产生沟通、投递或备注记录；用于人工复盘后续处理，不会自动开聊、发送或投递。",
     items,
     "使用边界：仅供人工复制、核对和本地记录；不会自动发送、开聊或投递。",
@@ -1491,7 +1491,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
   const sourceUrl = candidate.source_url?.trim();
   const resumeMatchEvidence = buildResumeMatchEvidenceTrace(candidate.score_reason_json);
   return [
-    "【职脉推荐候选摘要】",
+    "【JobPilot 推荐候选摘要】",
     `岗位：${candidate.position_name ?? candidate.encrypt_job_id}`,
     `公司：${candidate.brand_name ?? "未知公司"}`,
     `城市：${candidate.city_name ?? "未知城市"}`,
@@ -1500,7 +1500,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     `判断：Final ${formatPacketScore(candidate.final_score)}，Resume ${formatPacketScore(candidate.resume_match_score)}，Preference ${formatPacketScore(candidate.preference_score)}，Company ${formatPacketScore(candidate.company_score)}`,
     `推荐原因：${candidate.recommendation_reason || "达到当前推荐阈值"}`,
     `Resume Match 证据：\n${resumeMatchEvidence}`,
-    `入口：打开职脉查看 Top 20 人工审核队列并人工确认 ${candidate.encrypt_job_id}`,
+    `入口：打开 JobPilot 查看 Top 20 人工审核队列并人工确认 ${candidate.encrypt_job_id}`,
     "使用边界：仅供人工复制、研究和确认；不会自动发送或投递。",
   ]
     .filter((line): line is string => typeof line === "string" && line.length > 0)
@@ -1513,7 +1513,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     }
   }
   function buildDailyIntelligenceMailtoUrl(summary: JobDailyIntelligence): string {
-    const subject = `职脉每日岗位情报 ${summary.report_date}`;
+    const subject = `JobPilot 每日岗位情报 ${summary.report_date}`;
     const body = dailyIntelligenceNotificationBrief(summary);
     return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
