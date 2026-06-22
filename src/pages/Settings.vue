@@ -108,7 +108,11 @@ const diagnostics = ref<ExternalDependencyDiagnostics | null>(null);
 const modelsLoading = ref(false);
 const sourcesLoading = ref(false);
 const sourceUpdatingPlatform = ref<string | null>(null);
-const loginExists = ref<boolean | null>(null);
+const loginStatusByPlatform = ref<Record<string, boolean | null>>({
+  boss: null,
+  linuxdo: null,
+});
+const loginLoadingPlatform = ref<string | null>(null);
 const loginLoading = ref(false);
 const loginError = ref<string | null>(null);
 const sidecarRunning = computed(() => runtime.sidecarTask.running);
@@ -127,6 +131,7 @@ const previewJobSources = JOB_SOURCE_PLATFORM_OPTIONS.map((source) => ({
   updated_at: "预览",
 }));
 const visibleJobSources = computed(() => (jobSources.value.length > 0 ? jobSources.value : previewJobSources));
+const loginCapablePlatforms = new Set(["boss", "linuxdo"]);
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -236,6 +241,9 @@ function platformCapabilityHint(source: JobSourceEntry): string {
   if (source.adapter_kind === "boss") {
     return "启用后可在采集配置中作为本次自动采集来源；登录态在本页按平台管理。";
   }
+  if (source.platform === "linuxdo") {
+    return "启用后可作为职位来源管理；登录态在本页按平台管理。";
+  }
   if (source.adapter_kind === "feed") {
     return "启用后可在采集配置中作为公开 Feed 自动采集来源；无需平台登录。";
   }
@@ -244,17 +252,20 @@ function platformCapabilityHint(source: JobSourceEntry): string {
 
 function platformLoginLabel(source: JobSourceEntry): string {
   if (source.adapter_kind === "feed") return "无需登录";
-  if (source.adapter_kind !== "boss") return "登录预留";
-  if (loginExists.value === true) return "Boss 已登录";
-  if (loginExists.value === false) return "Boss 未登录";
-  return "Boss 登录状态未知";
+  if (!loginCapablePlatforms.has(source.platform)) return "登录预留";
+  const platformName = source.display_name || source.platform;
+  const status = loginStatusByPlatform.value[source.platform] ?? null;
+  if (status === true) return `${platformName} 已登录`;
+  if (status === false) return `${platformName} 未登录`;
+  return `${platformName} 登录状态未知`;
 }
 
 function platformLoginBadgeClass(source: JobSourceEntry): string {
   if (source.adapter_kind === "feed") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
-  if (source.adapter_kind !== "boss") return "bg-slate-400/10 text-slate-300 ring-slate-400/20";
-  if (loginExists.value === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
-  if (loginExists.value === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
+  if (!loginCapablePlatforms.has(source.platform)) return "bg-slate-400/10 text-slate-300 ring-slate-400/20";
+  const status = loginStatusByPlatform.value[source.platform] ?? null;
+  if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
+  if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
   return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
 }
 
@@ -306,27 +317,35 @@ async function setJobSourceEnabled(source: JobSourceEntry, enabled: boolean): Pr
   }
 }
 
-async function refreshBossLogin(): Promise<void> {
+async function refreshPlatformLogin(sourcePlatform = "boss"): Promise<void> {
   loginError.value = null;
+  const platform = sourcePlatform.trim().toLowerCase() || "boss";
   if (!tauri) {
-    loginExists.value = null;
+    loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: null };
     return;
   }
   try {
-    loginExists.value = await invoke<boolean>("get_login_status");
+    const status = await invoke<boolean>("get_login_status", { sourcePlatform: platform });
+    loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: status };
   } catch (e) {
     loginError.value = e instanceof Error ? e.message : String(e);
   }
 }
 
-async function startBossLogin(): Promise<void> {
+async function refreshSupportedLoginStatuses(): Promise<void> {
+  await Promise.all(Array.from(loginCapablePlatforms).map((platform) => refreshPlatformLogin(platform)));
+}
+
+async function startPlatformLogin(source: JobSourceEntry): Promise<void> {
   loginError.value = null;
+  if (!loginCapablePlatforms.has(source.platform)) return;
   if (!tauri) return;
+  loginLoadingPlatform.value = source.platform;
   loginLoading.value = true;
   try {
     runtime.sidecarTask.running = true;
     runtime.sidecarTask.type = CRAWL_TASK_TYPE_LOGIN;
-    await invoke<void>("start_login");
+    await invoke<void>("start_login", { sourcePlatform: source.platform });
   } catch (e) {
     loginError.value = e instanceof Error ? e.message : String(e);
     if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_LOGIN) {
@@ -335,6 +354,7 @@ async function startBossLogin(): Promise<void> {
     }
   } finally {
     loginLoading.value = false;
+    loginLoadingPlatform.value = null;
   }
 }
 
@@ -468,20 +488,22 @@ function diagnosticStatusLabel(status?: string): string {
 onMounted(() => {
   void loadSettings();
   void loadJobSources();
-  void refreshBossLogin();
+  void refreshSupportedLoginStatuses();
 });
 
 watch(
   () => diagnostics.value?.boss_session.ready,
   (ready) => {
-    if (typeof ready === "boolean") loginExists.value = ready;
+    if (typeof ready === "boolean") {
+      loginStatusByPlatform.value = { ...loginStatusByPlatform.value, boss: ready };
+    }
   },
 );
 
 watch(
   () => runtime.lastCookieCollectedAt,
   () => {
-    void refreshBossLogin();
+    void refreshSupportedLoginStatuses();
   },
 );
 </script>
@@ -559,16 +581,16 @@ watch(
                 </span>
                 <span>{{ sourceUpdatingPlatform === source.platform ? "保存中…" : source.enabled ? "禁用" : "启用" }}</span>
               </button>
-              <template v-if="source.adapter_kind === 'boss'">
+              <template v-if="loginCapablePlatforms.has(source.platform)">
                 <button
                   class="ui-btn-primary px-3 py-1.5 text-xs"
                   type="button"
                   :disabled="!tauri || !source.enabled || loginLoading || sidecarRunning"
-                  @click="startBossLogin"
+                  @click="startPlatformLogin(source)"
                 >
-                  {{ loginLoading ? "打开中…" : "登录" }}
+                  {{ loginLoadingPlatform === source.platform ? "打开中…" : "登录" }}
                 </button>
-                <button class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!tauri || !source.enabled" @click="refreshBossLogin">
+                <button class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!tauri || !source.enabled" @click="refreshPlatformLogin(source.platform)">
                   刷新登录
                 </button>
               </template>

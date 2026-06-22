@@ -47,3 +47,11 @@ pub fn boss_local_storage_path(app_data_dir: &Path) -> PathBuf {
 pub fn boss_meta_path(app_data_dir: &Path) -> PathBuf {
     storage_dir(app_data_dir).join("boss-meta.json")
 }
+
+pub fn linuxdo_cookies_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("linuxdo-cookies.json")
+}
+
+pub fn linuxdo_local_storage_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("linuxdo-local-storage.json")
+}

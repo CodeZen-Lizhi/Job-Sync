@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const LoginStartPayloadSchema = z.object({
+  source_platform: z.string().optional(),
   executable_path: z.string().optional(),
   user_data_dir: z.string().optional(),
 });
@@ -158,6 +159,7 @@ export const LoginStatusPayloadSchema = z.object({
 });
 
 export const CookieCollectedPayloadSchema = z.object({
+  source_platform: z.string().optional(),
   cookies: z.any(),
   local_storage: z.any(),
 });

@@ -5,6 +5,9 @@ use serde_json::Value;
 pub struct LoginStartPayload {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_platform: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_path: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -255,6 +258,9 @@ pub struct LoginStatusPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CookieCollectedPayload {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_platform: Option<String>,
     pub cookies: Value,
     pub local_storage: Value,
 }

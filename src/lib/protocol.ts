@@ -19,7 +19,7 @@ export type SidecarEvent =
     }
   | {
       type: "COOKIE_COLLECTED";
-      payload: { cookies: unknown; local_storage: unknown };
+      payload: { source_platform?: string; cookies: unknown; local_storage: unknown };
     }
   | {
       type: "JOB_LIST_CAPTURED";
