@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import http from "node:http";
 import { describe, it } from "node:test";
 
 import {
   buildLinuxDoNormalizedPayload,
   classifyLinuxDoTopic,
+  fetchLinuxDoCategoryEntries,
+  fetchLinuxDoTopicDetail,
   isLinuxDoCloudflareChallengeText,
   linuxDoHtmlToText,
   parseLinuxDoCategoryJson,
@@ -11,6 +14,13 @@ import {
   parseLinuxDoTopicJson,
   type LinuxDoTopicEntry,
 } from "../src/linuxdo/feed.js";
+
+async function listen(server: http.Server): Promise<number> {
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return address.port;
+}
 
 describe("LinuxDo feed collector", () => {
   it("parses Discourse category JSON topics", () => {
@@ -125,5 +135,84 @@ describe("LinuxDo feed collector", () => {
 
   it("converts cooked html to readable text", () => {
     assert.equal(linuxDoHtmlToText("<p>招聘 Go 后端</p><p>远程&nbsp;/ 全职</p>"), "招聘 Go 后端\n远程 / 全职");
+  });
+
+  it("fetches category and topic data through direct Discourse API requests", async () => {
+    const requests: string[] = [];
+    const server = http.createServer((req, res) => {
+      requests.push(`${req.method ?? "GET"} ${req.url ?? ""} ${req.headers.cookie ?? ""}`);
+      const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (requestUrl.pathname === "/c/job/27.json") {
+        assert.match(req.headers.cookie ?? "", /_t=linuxdo-token/);
+        res.writeHead(200, { "content-type": "application/json;charset=UTF-8" });
+        res.end(JSON.stringify({
+          users: [{ id: 7, username: "alice" }],
+          topic_list: {
+            topics: [
+              {
+                id: 1220440,
+                title: "招聘 Go 后端工程师",
+                slug: "go-backend",
+                created_at: "2026-06-22T08:00:00.000Z",
+                bumped_at: "2026-06-22T09:00:00.000Z",
+                excerpt: "<p>远程，全职，投递邮箱 jobs@example.com</p>",
+                posters: [{ user_id: 7 }],
+              },
+            ],
+          },
+        }));
+        return;
+      }
+      if (requestUrl.pathname === "/t/1220440.json") {
+        assert.match(req.headers.cookie ?? "", /_t=linuxdo-token/);
+        res.writeHead(200, { "content-type": "application/json;charset=UTF-8" });
+        res.end(JSON.stringify({
+          id: 1220440,
+          title: "招聘 Go 后端工程师",
+          post_stream: {
+            posts: [
+              {
+                username: "alice",
+                created_at: "2026-06-22T08:00:00.000Z",
+                cooked: "<p>负责 Kubernetes 平台建设<br>远程全职</p>",
+              },
+            ],
+          },
+        }));
+        return;
+      }
+      res.writeHead(404);
+      res.end("not found");
+    });
+    const port = await listen(server);
+    const signal = new AbortController().signal;
+    try {
+      const category = await fetchLinuxDoCategoryEntries(
+        `http://127.0.0.1:${port}/c/job/27`,
+        1,
+        signal,
+        { cookieHeader: "_t=linuxdo-token" },
+      );
+      assert.equal(category.blocked, false);
+      assert.equal(category.entries.length, 1);
+      assert.equal(category.entries[0]?.author, "alice");
+
+      const detail = await fetchLinuxDoTopicDetail(
+        {
+          topicId: "1220440",
+          title: "招聘 Go 后端工程师",
+          url: `http://127.0.0.1:${port}/t/1220440`,
+          author: "alice",
+        },
+        signal,
+        { cookieHeader: "_t=linuxdo-token" },
+      );
+      assert.equal(detail.detailStatus, "ok");
+      assert.match(detail.contentText ?? "", /Kubernetes 平台建设/);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    }
+
+    assert.deepEqual(requests.map((line) => line.split(" ")[1]), ["/c/job/27.json", "/t/1220440.json"]);
   });
 });

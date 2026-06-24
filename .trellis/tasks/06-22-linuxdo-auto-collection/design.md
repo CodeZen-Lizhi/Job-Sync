@@ -4,7 +4,7 @@
 
 新增 LinuxDo 自动采集适配器，首期只覆盖 LinuxDo「非我莫属」分类的职位/求职相关话题采集。实现完整链路：
 
-采集配置页 -> Tauri `crawl_auto_start` -> worker LinuxDo visible-browser mode -> `JOB_NORMALIZED_CAPTURED` -> SQLite unified job model -> 默认采后规则/AI 采后判断 -> 职位库展示。
+采集配置页 -> Tauri `crawl_auto_start` -> worker LinuxDo Discourse API mode -> `JOB_NORMALIZED_CAPTURED` -> SQLite unified job model -> 默认采后规则/AI 采后判断 -> 职位库展示。
 
 ## Existing Architecture
 
@@ -23,13 +23,13 @@
 
 ## Product Model
 
-LinuxDo 是“可见浏览器自动采集”平台：
+LinuxDo 是“Discourse API-first 自动采集”平台：
 
 - Settings 中启用/禁用 LinuxDo 控制采集配置页是否显示 LinuxDo。
 - 采集配置页选择 LinuxDo 后显示专属配置区。
-- 点击采集时打开可见 Chromium 到 LinuxDo 页面。
-- 如果 Cloudflare 出现，用户在窗口内手动完成验证。
-- 验证通过后 worker 从页面上下文采集列表和详情。
+- 点击采集时 worker 直接请求 LinuxDo Discourse 分类 JSON 和话题详情 JSON。
+- 如果已保存 LinuxDo 登录快照，worker 在 API 请求中携带 LinuxDo cookies。
+- 如果 Cloudflare / 429 拦截 API，worker 发出明确运行日志和错误，不恢复旧自动化浏览器登录或隐蔽绕过。
 
 ## Frontend Contract
 
@@ -64,14 +64,14 @@ if (payload.task.source_platform === "linuxdo") {
 
 `runLinuxDoMode` 行为：
 
-1. 启动可见浏览器，限制导航域为 `linux.do`。
-2. 打开 configured category URL，默认 `https://linux.do/c/job/27`。
-3. 等待页面不是 Cloudflare challenge；期间定期 emit `LOG` 提示用户完成验证。
-4. 在页面上下文中优先请求 Discourse JSON：
+1. 读取 configured category URL，默认 `https://linux.do/c/job/27`。
+2. 根据 category URL 派生 Discourse JSON：
    - category list: `/c/job/27.json` 或 configured URL + `.json`
    - pagination: `?page=N`
    - detail: `/t/<topicId>.json`
-5. 如果 JSON 请求失败但 DOM 已加载，降级解析页面 topic links，再逐条打开详情页面抓正文。
+3. 通过 Node HTTP 请求直接访问 Discourse API，并继承本机 proxy-agent 环境。
+4. 如果 LinuxDo cookie snapshot 存在，请求携带 LinuxDo cookie header；不要误用 Boss cookies。
+5. 如果 JSON 请求失败但返回可解析 HTML，可降级解析 topic links / 详情 HTML；Cloudflare / 403 / 429 视为 blocked。
 6. 如果列表项已经有 topic id / title / link，但详情抓取失败，MVP 仍允许标题级入库；`raw_payload.detail_status` 标记为 `missing` 或 `blocked`，`jd_text` 至少包含标题和详情缺失说明。
 7. 归一化并 emit `JOB_NORMALIZED_CAPTURED`：
    - `encrypt_job_id = "linuxdo:<topicId>"`
@@ -112,7 +112,7 @@ MVP prioritizes non-zero collection over perfect detail completeness.
 
 ## Rust / Sidecar Contract
 
-- `crawl_auto_start` 对 `source_platform = "linuxdo"` 使用 optional session，不要求 Boss cookies。
+- `crawl_auto_start` 对 `source_platform = "linuxdo"` 使用 optional session，读取 LinuxDo cookies/localStorage 快照，不要求 Boss cookies。
 - `EventOut::Finished` 对 `linuxdo` 也触发 `auto_recompute_ai_after_collection`。
 - normalized job 入库不需要新 Rust event 类型，复用 V2EX 的统一入库路径。
 - collection run `source_platform = "linuxdo"`。
@@ -120,15 +120,9 @@ MVP prioritizes non-zero collection over perfect detail completeness.
 ## Cloudflare Handling
 
 - 不实现隐蔽绕过。
-- 可见浏览器是用户主动验证路径。
-- Worker 检测 challenge 页面：
-  - title 包含 `Just a moment`
-  - DOM 包含 `Verify you are human`
-  - Cloudflare challenge scripts / `cf-mitigated`
-- 等待策略：
-  - 每 2 秒检查一次。
-  - 默认最多等待 180 秒，可由 limits 扩展。
-  - 超时后 emit `ERROR`：提示用户验证未完成或 LinuxDo 阻止采集。
+- 直接 API 请求如果返回 challenge HTML、HTTP 403 或 HTTP 429，worker 标记为 blocked。
+- 列表第一页被 blocked 且没有已收集话题时 emit `ERROR`：提示 LinuxDo Discourse API 被 Cloudflare 或限流拦截。
+- 详情 API 被 blocked 时允许标题级入库，并记录 `detail_status = "blocked"`。
 
 ## Compatibility
 

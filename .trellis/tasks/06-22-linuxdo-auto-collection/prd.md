@@ -22,7 +22,7 @@
 - LinuxDo 招聘/求职分类是 `非我莫属`，公开分类元数据中看到 `id = 27`、`slug = job`。
 - `https://linux.do/categories.json` 曾成功返回公开 JSON，并能看到分类列表；之后同类请求也可能被 Cloudflare challenge。
 - `https://linux.do/c/job/27.json`、`https://linux.do/c/job/27/l/latest.json`、`https://linux.do/search.json?...` 在当前命令行环境容易返回 Cloudflare challenge 或 429。
-- 因 Cloudflare，LinuxDo 不能简单照搬 V2EX 的纯 HTTP feed 采集模型；需要规划反风控边界。
+- 因 Cloudflare，LinuxDo 的直接 API 请求仍可能被 challenge / 429 拦截；采集器必须明确暴露 API 被拦截的原因，不做隐蔽绕过。
 - 前一轮已把 LinuxDo 从 Puppeteer 登录流程移除，原因是自动化浏览器登录触发 Cloudflare 人机验证。
 
 ## Requirements
@@ -43,7 +43,8 @@
   - LinuxDo 采集失败必须在运行日志中明确说明是 Cloudflare、限流、网络错误、解析失败还是无匹配结果。
 - 反风控与登录态：
   - 不恢复“自动化浏览器登录 LinuxDo”的旧流程。
-  - MVP 采用可见浏览器采集模式处理 Cloudflare：点击 LinuxDo 自动采集时打开可见 Chromium，用户可手动完成 Cloudflare/登录验证，worker 在同一页面上下文中采集。
+  - MVP 采用 Discourse API-first 采集：worker 直接请求分类 JSON 和话题详情 JSON；如果存在 LinuxDo 登录快照，请求携带 LinuxDo cookies。
+  - 如果 Discourse API 被 Cloudflare / 429 拦截，运行日志必须明确说明 API 被拦截，而不是静默失败或恢复旧自动化浏览器登录。
 - 兼容性：
   - Boss 和 V2EX 现有采集行为不能回退。
   - 已保存的采集配置需要兼容新增 LinuxDo 字段。
@@ -56,7 +57,7 @@
 - [ ] LinuxDo 专属配置保存后重启页面仍能恢复。
 - [ ] 点击自动采集时，LinuxDo adapter 会执行并产生 collection run。
 - [ ] 至少能从 LinuxDo「非我莫属」范围抓到可解析的话题列表或给出明确 Cloudflare/限流错误。
-- [ ] 如果 LinuxDo 页面停在 Cloudflare 验证，运行日志提示用户在浏览器窗口完成验证，而不是静默失败。
+- [ ] 如果 LinuxDo Discourse API 被 Cloudflare / 429 拦截，运行日志给出明确拦截/限流错误，而不是静默失败。
 - [ ] 成功抓到的 LinuxDo 岗位帖以 `source_platform = "linuxdo"` 写入统一职位库。
 - [ ] LinuxDo 详情抓取失败但列表信息足够时，岗位仍可入库，并在 `raw_payload` / `jd_text` 中体现详情缺失状态。
 - [ ] LinuxDo 入库岗位能显示来源、链接、详情正文，并参与默认采后规则和 AI 判断。
@@ -72,5 +73,5 @@
 
 ## Decisions
 
-- LinuxDo MVP 采用可见浏览器采集模式，而不是纯 HTTP 后台抓取。
+- LinuxDo MVP 改为 Discourse API-first 采集，而不是可见浏览器页面采集。
 - LinuxDo MVP 允许标题级岗位入库：列表抓到标题和链接即可写入；详情缺失时进入低信息/待确认路径，不因详情失败导致 0 入库。

@@ -80,9 +80,10 @@
 - LinuxDo:
   - `source_platform = "linuxdo"`
   - does not require Boss session
-  - uses visible-browser collection mode because LinuxDo can present Cloudflare / login checks
+  - uses direct Discourse API collection by default; worker requests category JSON such as `/c/job/27.json` and topic detail JSON such as `/t/<topicId>.json`
+  - when a LinuxDo login snapshot exists, API requests should carry the saved LinuxDo cookies, not Boss cookies
   - must not restore the old automated Puppeteer login flow or attempt hidden Cloudflare bypass
-  - opens the configured category URL, default `https://linux.do/c/job/27`
+  - reads the configured category URL, default `https://linux.do/c/job/27`, and derives the matching Discourse JSON endpoint
   - supports `filters.sort_by = "latest" | "created"`; missing or invalid values default to `latest`
   - supports `filters.recent_days` as a positive day window applied to the selected timestamp field; null, missing, or non-positive values mean no time pre-filter
   - supports `limits.maxPages` as a positive category pagination cap and `limits.maxJobs` as inserted job cap
@@ -138,7 +139,7 @@
 - V2EX selected without stored Boss session -> command still starts with an empty session payload.
 - V2EX selected with an empty URL input -> frontend blocks start with a clear URL-required message; if an empty payload reaches the worker, the worker logs that no URL was provided and skips collection.
 - LinuxDo selected with an empty or non-linux.do category URL -> frontend blocks start with a clear URL-required message.
-- LinuxDo Cloudflare challenge -> worker logs that the user should complete verification in the visible browser; timeout emits an explicit error.
+- LinuxDo Discourse API Cloudflare challenge / 403 / 429 -> worker logs that the API request was blocked or rate-limited and emits an explicit error when no stable topic list was collected.
 - LinuxDo detail blocked but list topic data is stable -> worker may write a title-level normalized job with missing-detail evidence.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
@@ -162,7 +163,7 @@
 - Good: user enters `https://www.v2ex.com/feed/jobs.json` and `https://www.v2ex.com/go/meet`; the feed is fetched once, the page URL is paginated, and duplicated topic ids are inserted once.
 - Good: AI provider fails after collection, and the run log shows the provider error instead of leaving only `AI 结果：未判定` in the job list.
 - Good: user selects Boss + V2EX, frontend runs Boss then V2EX sequentially while each source keeps its adapter contract.
-- Good: user selects LinuxDo, visible Chromium opens `https://linux.do/c/job/27`, the user completes any verification, worker emits normalized `linuxdo:<topicId>` jobs, and post-collection AI judgement runs.
+- Good: user selects LinuxDo, worker requests `https://linux.do/c/job/27.json` through the Discourse API, carries saved LinuxDo cookies when available, emits normalized `linuxdo:<topicId>` jobs, and post-collection AI judgement runs.
 - Good: user selects only LinuxDo in collection config, the page shows the LinuxDo dedicated config panel with category URL/sort/page/job limits, and hides Boss-only dictionary/filter controls.
 - Good: LinuxDo detail JSON is blocked after list parse, and the job is still inserted with a clear missing-detail marker for AI/pending confirmation.
 - Base: user selects Boss, existing Boss payload and browser-session collection keep working.
@@ -195,6 +196,7 @@
   - classifier does not let search keywords alone make a feed entry a job posting.
   - classifier ignores excluded keywords at feed stage so post-collection rules and AI judgement can handle soft exclusion.
   - LinuxDo category JSON parser extracts topic id, title, topic URL, author, excerpt, and timestamps.
+  - LinuxDo direct API requester fetches category and topic JSON without launching a browser and carries the saved LinuxDo cookie header when provided.
   - LinuxDo topic JSON parser extracts first-post cooked text.
   - LinuxDo Cloudflare challenge detection recognizes common challenge HTML/text.
   - LinuxDo classifier accepts clear hiring posts and rejects keyword-only discussions.

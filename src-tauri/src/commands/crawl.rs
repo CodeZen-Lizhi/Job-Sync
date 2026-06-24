@@ -11,6 +11,22 @@ use crate::{
     storage,
 };
 
+fn session_storage_paths(
+    app_data_dir: &std::path::Path,
+    source_platform: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    match normalize_collection_platform(Some(source_platform)).as_str() {
+        "linuxdo" => (
+            storage::linuxdo_cookies_path(app_data_dir),
+            storage::linuxdo_local_storage_path(app_data_dir),
+        ),
+        _ => (
+            storage::boss_cookies_path(app_data_dir),
+            storage::boss_local_storage_path(app_data_dir),
+        ),
+    }
+}
+
 #[derive(Debug, serde::Serialize)]
 pub struct PendingEvidenceRefreshResult {
     pub encrypt_job_id: String,
@@ -35,9 +51,11 @@ fn load_session(app_data_dir: &std::path::Path) -> Result<SessionStatePayload, S
     })
 }
 
-fn load_session_optional(app_data_dir: &std::path::Path) -> SessionStatePayload {
-    let cookies_path = storage::boss_cookies_path(app_data_dir);
-    let local_storage_path = storage::boss_local_storage_path(app_data_dir);
+fn load_session_optional(
+    app_data_dir: &std::path::Path,
+    source_platform: &str,
+) -> SessionStatePayload {
+    let (cookies_path, local_storage_path) = session_storage_paths(app_data_dir, source_platform);
 
     let cookies = storage::read_json(&cookies_path)
         .ok()
@@ -104,7 +122,10 @@ pub fn crawl_auto_start(
     .map_err(|e| e.to_string())?;
 
     let session = match if collection_uses_optional_session(&source_platform) {
-        Ok(load_session_optional(sidecar.app_data_dir()))
+        Ok(load_session_optional(
+            sidecar.app_data_dir(),
+            &source_platform,
+        ))
     } else {
         load_session(sidecar.app_data_dir())
     } {
@@ -231,6 +252,29 @@ mod tests {
         assert!(collection_uses_optional_session(" LinuxDo "));
         assert!(!collection_uses_optional_session("liepin"));
     }
+
+    #[test]
+    fn linuxdo_optional_session_reads_linuxdo_cookie_snapshot() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        storage::write_json(
+            &storage::boss_cookies_path(app_data_dir),
+            &serde_json::json!([{ "name": "boss", "value": "wrong" }]),
+        )
+        .expect("write boss cookies");
+        storage::write_json(
+            &storage::linuxdo_cookies_path(app_data_dir),
+            &serde_json::json!([{ "name": "_t", "value": "linuxdo-token", "domain": "linux.do" }]),
+        )
+        .expect("write linuxdo cookies");
+
+        let session = load_session_optional(app_data_dir, "linuxdo");
+
+        assert_eq!(
+            session.cookies,
+            serde_json::json!([{ "name": "_t", "value": "linuxdo-token", "domain": "linux.do" }])
+        );
+    }
 }
 
 #[tauri::command]
@@ -249,7 +293,7 @@ pub fn get_boss_meta(sidecar: State<SidecarManager>) -> Result<Option<serde_json
 
 #[tauri::command]
 pub fn sync_boss_meta(sidecar: State<SidecarManager>) -> Result<(), String> {
-    let session = load_session_optional(sidecar.app_data_dir());
+    let session = load_session_optional(sidecar.app_data_dir(), "boss");
     sidecar
         .send(&CommandIn::BossMetaSync(BossMetaSyncPayload { session }))
         .map_err(|e| e.to_string())?;
@@ -343,7 +387,7 @@ pub fn refresh_pending_job_evidence(
         return Err(message);
     }
 
-    let session = load_session_optional(sidecar.app_data_dir());
+    let session = load_session_optional(sidecar.app_data_dir(), "boss");
 
     let raw_payload = raw_payload_json
         .as_deref()

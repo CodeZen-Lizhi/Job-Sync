@@ -1,7 +1,8 @@
-import type { Page } from "puppeteer";
+import * as http from "node:http";
+import * as https from "node:https";
 
-import { launchBrowser } from "../browser/launch.js";
-import { blockNavigation } from "../browser/navigationLock.js";
+import { ProxyAgent } from "proxy-agent";
+
 import type { EventOut } from "../protocol.js";
 import { delayWithJitter } from "../utils/delay.js";
 import type { CrawlAutoStartPayload, ModeContext } from "../modes/auto/types.js";
@@ -38,10 +39,27 @@ type PageFetchResult = {
   error?: string;
 };
 
+type LinuxDoHttpResponse = {
+  status: number;
+  body: string;
+  contentType: string;
+};
+
+type LinuxDoRequestOptions = {
+  label?: string;
+  retries?: number;
+  retryDelayMs?: number;
+  timeoutMs?: number;
+  cookieHeader?: string;
+  referer?: string;
+  onRetry?: (attempt: number, error: Error) => void;
+};
+
 const DEFAULT_CATEGORY_URL = "https://linux.do/c/job/27";
 const DEFAULT_MAX_PAGES = 3;
-const DEFAULT_CHALLENGE_WAIT_MS = 180_000;
+const API_REQUEST_TIMEOUT_MS = 45_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const linuxDoProxyAgent = new ProxyAgent();
 const STRONG_HIRING_TERMS = [
   "招聘",
   "招人",
@@ -349,6 +367,22 @@ function normalizeCategoryUrl(value: unknown): string {
   }
 }
 
+function buildCookieHeader(cookies: unknown, hostname = "linux.do"): string {
+  if (!Array.isArray(cookies)) return "";
+  const pairs: string[] = [];
+  for (const cookie of cookies) {
+    if (!cookie || typeof cookie !== "object") continue;
+    const item = cookie as Record<string, unknown>;
+    const name = asString(item.name);
+    const value = typeof item.value === "string" ? item.value : undefined;
+    if (!name || value === undefined) continue;
+    const domain = asString(item.domain)?.replace(/^\./, "");
+    if (domain && hostname !== domain && !hostname.endsWith(`.${domain}`)) continue;
+    pairs.push(`${name}=${value}`);
+  }
+  return pairs.join("; ");
+}
+
 function categoryJsonUrl(categoryUrl: string, page: number): string {
   const url = new URL(categoryUrl);
   url.hash = "";
@@ -359,8 +393,21 @@ function categoryJsonUrl(categoryUrl: string, page: number): string {
   return url.toString();
 }
 
+function categoryPageUrl(categoryUrl: string, page: number): string {
+  const url = new URL(categoryUrl);
+  url.hash = "";
+  if (page > 1) url.searchParams.set("page", String(page));
+  return url.toString();
+}
+
 function topicJsonUrl(entry: LinuxDoTopicEntry): string {
-  return `https://linux.do/t/${entry.topicId}.json`;
+  let origin = "https://linux.do";
+  try {
+    origin = new URL(entry.url).origin;
+  } catch {
+    // Keep the production default for malformed title-level fallback URLs.
+  }
+  return `${origin}/t/${entry.topicId}.json`;
 }
 
 function timestampMs(entry: LinuxDoTopicEntry, sortBy: LinuxDoSortBy): number {
@@ -394,93 +441,196 @@ function dedupeEntries(entries: readonly LinuxDoTopicEntry[]): LinuxDoTopicEntry
   return [...byTopicId.values()];
 }
 
-async function fetchFromPage(page: Page, url: string, timeoutMs = 30_000): Promise<PageFetchResult> {
-  return await page.evaluate(
-    async (u, timeout) => {
-      const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), timeout);
-      try {
-        const res = await fetch(u, {
-          credentials: "include",
-          headers: {
-            accept: "application/json, text/html;q=0.9, */*;q=0.8",
-            "x-requested-with": "XMLHttpRequest",
-          },
-          signal: controller.signal,
+function readNestedError(err: Error): string {
+  const cause = (err as Error & { cause?: unknown }).cause;
+  if (!cause) return "";
+  if (cause instanceof Error) {
+    const maybeCode = (cause as Error & { code?: unknown }).code;
+    const code = typeof maybeCode === "string" ? ` ${maybeCode}` : "";
+    return `${cause.name}${code}: ${cause.message}`;
+  }
+  return String(cause);
+}
+
+function formatLinuxDoRequestError(err: unknown, label = "LinuxDo API"): Error {
+  if (err instanceof Error) {
+    const nested = readNestedError(err);
+    const detail = nested ? `${err.message}；${nested}` : err.message;
+    return new Error(`${label} 请求失败：${detail}`);
+  }
+  return new Error(`${label} 请求失败：${String(err)}`);
+}
+
+async function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal.aborted) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(new Error("LinuxDo API 请求已取消"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function fetchLinuxDoUrlOnce(urlText: string, signal: AbortSignal, options: LinuxDoRequestOptions = {}): Promise<LinuxDoHttpResponse> {
+  const url = new URL(urlText);
+  const client = url.protocol === "https:" ? https : http;
+  const timeoutMs = typeof options.timeoutMs === "number" ? options.timeoutMs : API_REQUEST_TIMEOUT_MS;
+
+  return await new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("LinuxDo API 请求已取消"));
+      return;
+    }
+
+    const headers: Record<string, string> = {
+      accept: "application/json, text/html;q=0.9, */*;q=0.8",
+      "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "user-agent": "Job-Sync/0.1 LinuxDo Discourse API collector",
+      "x-requested-with": "XMLHttpRequest",
+    };
+    if (options.cookieHeader) headers.cookie = options.cookieHeader;
+    if (options.referer) headers.referer = options.referer;
+
+    const req = client.request(
+      url,
+      {
+        agent: linuxDoProxyAgent,
+        headers,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        res.setEncoding("utf8");
+        let body = "";
+        res.on("data", (chunk: string) => {
+          body += chunk;
         });
-        const contentType = res.headers.get("content-type") ?? "";
-        const text = await res.text();
-        let json: unknown | null = null;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          json = null;
-        }
-        return { status: res.status, json, text, contentType } as PageFetchResult;
-      } catch (err) {
-        return { status: 0, json: null, text: "", contentType: "", error: String(err) } as PageFetchResult;
-      } finally {
-        window.clearTimeout(timer);
-      }
-    },
-    url,
-    timeoutMs,
-  );
+        res.on("end", () => {
+          cleanup();
+          resolve({
+            status: res.statusCode ?? 0,
+            body,
+            contentType: Array.isArray(res.headers["content-type"])
+              ? res.headers["content-type"].join(";")
+              : res.headers["content-type"] ?? "",
+          });
+        });
+      },
+    );
+
+    const cleanup = (): void => {
+      signal.removeEventListener("abort", onAbort);
+      req.removeListener("timeout", onTimeout);
+      req.removeListener("error", onError);
+    };
+    const onAbort = (): void => {
+      cleanup();
+      req.destroy(new Error("LinuxDo API 请求已取消"));
+      reject(new Error("LinuxDo API 请求已取消"));
+    };
+    const onTimeout = (): void => {
+      cleanup();
+      req.destroy(new Error(`LinuxDo API 请求超时：${timeoutMs}ms`));
+      reject(new Error(`LinuxDo API 请求超时：${timeoutMs}ms`));
+    };
+    const onError = (err: Error): void => {
+      cleanup();
+      reject(formatLinuxDoRequestError(err, options.label));
+    };
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    req.on("timeout", onTimeout);
+    req.on("error", onError);
+    req.end();
+  });
 }
 
-async function pageLooksLikeChallenge(page: Page): Promise<boolean> {
+async function fetchLinuxDoUrl(url: string, signal: AbortSignal, options: LinuxDoRequestOptions = {}): Promise<LinuxDoHttpResponse> {
+  const label = options.label ?? "LinuxDo API";
+  const retries =
+    typeof options.retries === "number" && Number.isFinite(options.retries) && options.retries >= 0
+      ? Math.floor(options.retries)
+      : 2;
+  const retryDelayMs =
+    typeof options.retryDelayMs === "number" && Number.isFinite(options.retryDelayMs) && options.retryDelayMs >= 0
+      ? Math.floor(options.retryDelayMs)
+      : 800;
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    if (signal.aborted) throw new Error(`${label} 请求已取消`);
+    try {
+      return await fetchLinuxDoUrlOnce(url, signal, options);
+    } catch (err) {
+      const error = formatLinuxDoRequestError(err, label);
+      lastError = error;
+      if (signal.aborted || attempt >= retries) throw error;
+      options.onRetry?.(attempt + 1, error);
+      await sleep(retryDelayMs * (attempt + 1), signal);
+    }
+  }
+  throw lastError ?? new Error(`${label} 请求失败`);
+}
+
+function responseToPageFetchResult(response: LinuxDoHttpResponse): PageFetchResult {
+  let json: unknown | null = null;
   try {
-    const title = await page.title();
-    const text = await page.evaluate(() => document.documentElement.innerText.slice(0, 4000));
-    const html = await page.evaluate(() => document.documentElement.innerHTML.slice(0, 8000));
-    return isLinuxDoCloudflareChallengeText(`${title}\n${text}\n${html}`);
+    json = JSON.parse(response.body);
   } catch {
-    return false;
+    json = null;
   }
+  return {
+    status: response.status,
+    json,
+    text: response.body,
+    contentType: response.contentType,
+  };
 }
 
-async function waitForChallengeToClear(page: Page, ctx: ModeContext, timeoutMs: number): Promise<void> {
-  const started = Date.now();
-  let logged = false;
-  while (!ctx.signal.aborted) {
-    const isChallenge = await pageLooksLikeChallenge(page);
-    if (!isChallenge) return;
-    if (!logged) {
-      logged = true;
-      ctx.emit({
-        type: "LOG",
-        payload: {
-          level: "warn",
-          message: "LinuxDo 正在进行 Cloudflare / 登录验证，请在打开的浏览器窗口完成验证，完成后会自动继续采集。",
-        },
-      });
-    }
-    if (Date.now() - started > timeoutMs) {
-      throw new Error("LinuxDo 验证超时：请确认浏览器窗口内已完成 Cloudflare/登录验证。");
-    }
-    await delayWithJitter(2000, ctx.signal, 1000);
-  }
-}
-
-async function fetchCategoryEntries(page: Page, categoryUrl: string, pageIndex: number): Promise<{ entries: LinuxDoTopicEntry[]; blocked: boolean; status: number }> {
+export async function fetchLinuxDoCategoryEntries(
+  categoryUrl: string,
+  pageIndex: number,
+  signal: AbortSignal,
+  options: LinuxDoRequestOptions = {},
+): Promise<{ entries: LinuxDoTopicEntry[]; blocked: boolean; status: number }> {
   const jsonUrl = categoryJsonUrl(categoryUrl, pageIndex);
-  const jsonResult = await fetchFromPage(page, jsonUrl, 45_000);
+  const jsonResult = responseToPageFetchResult(await fetchLinuxDoUrl(jsonUrl, signal, {
+    ...options,
+    label: options.label ?? `LinuxDo 第 ${pageIndex} 页 API`,
+    referer: options.referer ?? categoryUrl,
+  }));
   if (jsonResult.json) {
     return { entries: parseLinuxDoCategoryJson(jsonResult.json, new URL(categoryUrl).origin), blocked: false, status: jsonResult.status };
   }
   if (isLinuxDoCloudflareChallengeText(jsonResult.text) || jsonResult.status === 403 || jsonResult.status === 429) {
     return { entries: [], blocked: true, status: jsonResult.status };
   }
-  const listUrl = pageIndex === 1 ? categoryUrl : `${categoryUrl.replace(/\/$/, "")}?page=${pageIndex}`;
-  const htmlResult = await fetchFromPage(page, listUrl, 45_000);
+  const listUrl = categoryPageUrl(categoryUrl, pageIndex);
+  const htmlResult = responseToPageFetchResult(await fetchLinuxDoUrl(listUrl, signal, {
+    ...options,
+    label: options.label ?? `LinuxDo 第 ${pageIndex} 页 HTML`,
+    referer: options.referer ?? categoryUrl,
+  }));
   if (htmlResult.text && !isLinuxDoCloudflareChallengeText(htmlResult.text)) {
     return { entries: parseLinuxDoCategoryPage(htmlResult.text, new URL(categoryUrl).origin), blocked: false, status: htmlResult.status };
   }
   return { entries: [], blocked: htmlResult.status === 403 || htmlResult.status === 429 || isLinuxDoCloudflareChallengeText(htmlResult.text), status: htmlResult.status };
 }
 
-async function fetchTopicDetail(page: Page, entry: LinuxDoTopicEntry): Promise<LinuxDoTopicEntry> {
-  const jsonResult = await fetchFromPage(page, topicJsonUrl(entry), 45_000);
+export async function fetchLinuxDoTopicDetail(
+  entry: LinuxDoTopicEntry,
+  signal: AbortSignal,
+  options: LinuxDoRequestOptions = {},
+): Promise<LinuxDoTopicEntry> {
+  const jsonResult = responseToPageFetchResult(await fetchLinuxDoUrl(topicJsonUrl(entry), signal, {
+    ...options,
+    label: options.label ?? "LinuxDo 详情 API",
+    referer: options.referer ?? entry.url,
+  }));
   if (jsonResult.json) {
     const parsed = parseLinuxDoTopicJson(jsonResult.json, entry);
     if (parsed) return parsed;
@@ -488,7 +638,11 @@ async function fetchTopicDetail(page: Page, entry: LinuxDoTopicEntry): Promise<L
   if (isLinuxDoCloudflareChallengeText(jsonResult.text) || jsonResult.status === 403 || jsonResult.status === 429) {
     return { ...entry, detailStatus: "blocked", detailError: `HTTP ${jsonResult.status || 0}` };
   }
-  const htmlResult = await fetchFromPage(page, entry.url, 45_000);
+  const htmlResult = responseToPageFetchResult(await fetchLinuxDoUrl(entry.url, signal, {
+    ...options,
+    label: options.label ?? "LinuxDo 详情 HTML",
+    referer: options.referer ?? entry.url,
+  }));
   if (htmlResult.text && !isLinuxDoCloudflareChallengeText(htmlResult.text)) {
     const parsed = parseLinuxDoTopicPage(htmlResult.text, entry);
     return parsed.detailStatus === "ok" ? parsed : { ...parsed, detailError: "详情正文缺失" };
@@ -547,126 +701,144 @@ export async function runLinuxDoMode(payload: CrawlAutoStartPayload, ctx: ModeCo
   const maxPages = normalizePositiveInteger(DEFAULT_MAX_PAGES, limits.maxPages, limits.max_pages);
   const maxJobs = normalizeOptionalPositiveInteger(limits.maxJobs, limits.max_jobs) ?? Number.POSITIVE_INFINITY;
   const delayMs = normalizePositiveInteger(0, limits.delayMs, limits.delay_ms);
-  const challengeWaitMs = normalizePositiveInteger(DEFAULT_CHALLENGE_WAIT_MS, limits.challengeWaitMs, limits.challenge_wait_ms);
   const sortBy = normalizeSortBy(filters.sort_by ?? filters.sortBy);
   const recentDays = normalizeOptionalPositiveInteger(filters.recent_days, filters.recentDays);
   const logKeyword = keywords[0] ?? "LinuxDo";
+  const cookieHeader = buildCookieHeader(payload.session?.cookies, new URL(categoryUrl).hostname);
 
   ctx.emit({
     type: "LOG",
-    payload: { level: "info", message: `开始 LinuxDo 可见浏览器采集：${categoryUrl}，最多 ${maxPages} 页。` },
+    payload: { level: "info", message: `开始 LinuxDo Discourse API 采集：${categoryUrl}，最多 ${maxPages} 页。` },
   });
+  if (cookieHeader) {
+    ctx.emit({ type: "LOG", payload: { level: "info", message: "LinuxDo API 请求将携带已保存的 LinuxDo 登录 Cookie。" } });
+  }
 
-  const { browser, page } = await launchBrowser({ headless: false, user_data_dir: payload.user_data_dir });
-  try {
-    await blockNavigation(page, { allow_domain_suffixes: ["linux.do"] });
-    await page.goto(categoryUrl, { waitUntil: "domcontentloaded" });
-    await waitForChallengeToClear(page, ctx, challengeWaitMs);
-
-    const collected: LinuxDoTopicEntry[] = [];
-    const seen = new Set<string>();
-    for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
-      if (ctx.signal.aborted) break;
-      ctx.emit({
-        type: "PROGRESS",
-        payload: { keyword: logKeyword, current_page: pageIndex, captured_job_list: pageIndex - 1, captured_job_detail: 0, filtered_job: 0 },
-      });
-      const result = await fetchCategoryEntries(page, categoryUrl, pageIndex);
-      if (result.blocked) {
-        ctx.emit({
-          type: "LOG",
-          payload: { level: "warn", message: `LinuxDo 第 ${pageIndex} 页被验证/限流拦截（HTTP ${result.status || 0}），请在浏览器完成验证后重试。` },
-        });
-        if (collected.length === 0) throw new Error("LinuxDo 列表被 Cloudflare 或限流拦截，未抓到可入库话题。");
-        break;
-      }
-      const fresh = result.entries
-        .map((entry) => ({ ...entry, sourcePage: pageIndex }))
-        .filter((entry) => {
-          if (seen.has(entry.topicId)) return false;
-          seen.add(entry.topicId);
-          return true;
-        });
-      ctx.emit({
-        type: "LOG",
-        payload: { level: "info", message: `LinuxDo 第 ${pageIndex} 页解析：${fresh.length} 条。` },
-      });
-      if (fresh.length === 0) break;
-      collected.push(...fresh);
-      ctx.emit({
-        type: "PROGRESS",
-        payload: { keyword: logKeyword, current_page: pageIndex, captured_job_list: pageIndex, captured_job_detail: 0, filtered_job: 0 },
-      });
-      await delayWithJitter(delayMs, ctx.signal, 300);
-    }
-
-    const preparedEntries = prepareEntries(dedupeEntries(collected), { sortBy, recentDays });
+  const collected: LinuxDoTopicEntry[] = [];
+  const seen = new Set<string>();
+  for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
+    if (ctx.signal.aborted) break;
     ctx.emit({
-      type: "LOG",
-      payload: {
-        level: "info",
-        message: `LinuxDo 列表解析完成：源 ${collected.length} 条，候选 ${preparedEntries.length} 条${
-          recentDays === null ? "" : `，最近 ${recentDays} 天`
-        }，目标入库 ${Number.isFinite(maxJobs) ? maxJobs : "不限"} 条。`,
-      },
+      type: "PROGRESS",
+      payload: { keyword: logKeyword, current_page: pageIndex, captured_job_list: pageIndex - 1, captured_job_detail: 0, filtered_job: 0 },
     });
-
-    let captured = 0;
-    let filtered = 0;
-    for (const entry of preparedEntries) {
-      if (ctx.signal.aborted || captured >= maxJobs) break;
-      const detailedEntry = await fetchTopicDetail(page, entry);
-      if (detailedEntry.detailStatus !== "ok") {
+    const result = await fetchLinuxDoCategoryEntries(categoryUrl, pageIndex, ctx.signal, {
+      cookieHeader,
+      referer: categoryUrl,
+      onRetry: (attempt, error) => {
         ctx.emit({
           type: "LOG",
           payload: {
             level: "warn",
-            message: `LinuxDo 详情未完整抓取，按标题级入库判断：${detailedEntry.title}（${detailedEntry.detailStatus ?? "missing"}）`,
+            message: `LinuxDo 第 ${pageIndex} 页 API 请求失败，准备重试第 ${attempt} 次：${error.message}`,
           },
         });
-      }
-      const classification = classifyLinuxDoTopic(detailedEntry, keywords);
-      if (!classification.isJobPosting) {
-        filtered += 1;
-        const reason = buildSkipReason(classification);
-        ctx.emit({
-          type: "JOB_FILTERED",
-          payload: {
-            encrypt_job_id: `linuxdo:${detailedEntry.topicId}`,
-            keyword: logKeyword,
-            filters,
-            reason: {
-              eligible: false,
-              blocked_by: [
-                {
-                  rule_type: "linuxdo_topic_classification",
-                  field: "positive_terms",
-                  value: "",
-                  reason,
-                },
-              ],
-              matched_preferences: classification.matched,
-              missing_preferences: [],
-            },
-          },
-        });
-        ctx.emit({ type: "LOG", payload: { level: "info", message: `跳过 LinuxDo：${detailedEntry.title}（${reason}）` } });
-        continue;
-      }
-      captured += 1;
+      },
+    });
+    if (result.blocked) {
       ctx.emit({
-        type: "JOB_NORMALIZED_CAPTURED",
-        payload: buildLinuxDoNormalizedPayload(detailedEntry, { keywords, filters, classification }),
+        type: "LOG",
+        payload: { level: "warn", message: `LinuxDo 第 ${pageIndex} 页 Discourse API 被 Cloudflare/限流拦截（HTTP ${result.status || 0}）。` },
       });
-      ctx.emit({
-        type: "PROGRESS",
-        payload: { keyword: logKeyword, captured_job_detail: captured, filtered_job: filtered },
-      });
-      await delayWithJitter(delayMs, ctx.signal, 300);
+      if (collected.length === 0) throw new Error("LinuxDo Discourse API 被 Cloudflare 或限流拦截，未抓到可入库话题。");
+      break;
     }
-
-    ctx.emit({ type: "LOG", payload: { level: "info", message: `LinuxDo 采集完成：入库 ${captured} 条，跳过 ${filtered} 条。` } });
-  } finally {
-    await browser.close().catch(() => undefined);
+    const fresh = result.entries
+      .map((entry) => ({ ...entry, sourcePage: pageIndex }))
+      .filter((entry) => {
+        if (seen.has(entry.topicId)) return false;
+        seen.add(entry.topicId);
+        return true;
+      });
+    ctx.emit({
+      type: "LOG",
+      payload: { level: "info", message: `LinuxDo 第 ${pageIndex} 页解析：${fresh.length} 条。` },
+    });
+    if (fresh.length === 0) break;
+    collected.push(...fresh);
+    ctx.emit({
+      type: "PROGRESS",
+      payload: { keyword: logKeyword, current_page: pageIndex, captured_job_list: pageIndex, captured_job_detail: 0, filtered_job: 0 },
+    });
+    await delayWithJitter(delayMs, ctx.signal, 300);
   }
+
+  const preparedEntries = prepareEntries(dedupeEntries(collected), { sortBy, recentDays });
+  ctx.emit({
+    type: "LOG",
+    payload: {
+      level: "info",
+      message: `LinuxDo 列表解析完成：源 ${collected.length} 条，候选 ${preparedEntries.length} 条${
+        recentDays === null ? "" : `，最近 ${recentDays} 天`
+      }，目标入库 ${Number.isFinite(maxJobs) ? maxJobs : "不限"} 条。`,
+    },
+  });
+
+  let captured = 0;
+  let filtered = 0;
+  for (const entry of preparedEntries) {
+    if (ctx.signal.aborted || captured >= maxJobs) break;
+    const detailedEntry = await fetchLinuxDoTopicDetail(entry, ctx.signal, {
+      cookieHeader,
+      referer: entry.url,
+      onRetry: (attempt, error) => {
+        ctx.emit({
+          type: "LOG",
+          payload: {
+            level: "warn",
+            message: `LinuxDo 详情 API 请求失败，准备重试第 ${attempt} 次：${entry.title}：${error.message}`,
+          },
+        });
+      },
+    });
+    if (detailedEntry.detailStatus !== "ok") {
+      ctx.emit({
+        type: "LOG",
+        payload: {
+          level: "warn",
+          message: `LinuxDo 详情未完整抓取，按标题级入库判断：${detailedEntry.title}（${detailedEntry.detailStatus ?? "missing"}）`,
+        },
+      });
+    }
+    const classification = classifyLinuxDoTopic(detailedEntry, keywords);
+    if (!classification.isJobPosting) {
+      filtered += 1;
+      const reason = buildSkipReason(classification);
+      ctx.emit({
+        type: "JOB_FILTERED",
+        payload: {
+          encrypt_job_id: `linuxdo:${detailedEntry.topicId}`,
+          keyword: logKeyword,
+          filters,
+          reason: {
+            eligible: false,
+            blocked_by: [
+              {
+                rule_type: "linuxdo_topic_classification",
+                field: "positive_terms",
+                value: "",
+                reason,
+              },
+            ],
+            matched_preferences: classification.matched,
+            missing_preferences: [],
+          },
+        },
+      });
+      ctx.emit({ type: "LOG", payload: { level: "info", message: `跳过 LinuxDo：${detailedEntry.title}（${reason}）` } });
+      continue;
+    }
+    captured += 1;
+    ctx.emit({
+      type: "JOB_NORMALIZED_CAPTURED",
+      payload: buildLinuxDoNormalizedPayload(detailedEntry, { keywords, filters, classification }),
+    });
+    ctx.emit({
+      type: "PROGRESS",
+      payload: { keyword: logKeyword, captured_job_detail: captured, filtered_job: filtered },
+    });
+    await delayWithJitter(delayMs, ctx.signal, 300);
+  }
+
+  ctx.emit({ type: "LOG", payload: { level: "info", message: `LinuxDo 采集完成：入库 ${captured} 条，跳过 ${filtered} 条。` } });
 }
