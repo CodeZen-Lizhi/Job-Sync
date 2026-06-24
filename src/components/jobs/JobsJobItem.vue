@@ -84,7 +84,7 @@ const aiAuditReasonText = computed(() => {
   if (aiAuditStatus.value === "pending_confirmation") return summary || "AI 待确认";
   if (aiAuditStatus.value === "failed") return summary || "AI 审核失败";
   if (aiAuditStatus.value === "rejected") return summary || formatFilterReasonSummary(filterReason.value);
-  return summary || "待 AI 审核";
+  return summary || "待 AI 判断";
 });
 const aiPostCollectionJudgementText = computed(() => {
   if (props.aiAuditStatusOverride) return `AI 审核：${aiAuditStatusLabel(props.aiAuditStatusOverride)}`;
@@ -153,7 +153,7 @@ watch(
           <span class="font-medium text-content-secondary">岗位状态：{{ reviewStatusLabel(job.review_status) }}</span>
           <span>平台：{{ sourcePlatformLabel(job.source_platform) }}</span>
           <span>AI 结果：{{ aiAuditStatusLabel(aiAuditStatus) }}</span>
-          <span v-if="aiAuditStatus !== 'pending_review'" :class="aiAuditStatus === 'failed' || aiAuditStatus === 'rejected' ? 'text-rose-700' : 'text-content-muted'">
+          <span v-if="aiAuditStatus !== 'not_judged'" :class="aiAuditStatus === 'failed' || aiAuditStatus === 'rejected' ? 'text-rose-700' : 'text-content-muted'">
             原因：{{ aiAuditReasonText }}
           </span>
           <span

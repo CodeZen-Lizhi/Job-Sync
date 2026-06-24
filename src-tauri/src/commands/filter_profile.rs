@@ -1835,6 +1835,84 @@ mod tests {
     }
 
     #[test]
+    fn recompute_default_filter_profile_preserves_existing_ai_judgement() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        conn.execute(
+            r#"
+        INSERT INTO job (
+          encrypt_job_id,
+          source_platform,
+          position_name,
+          boss_name,
+          brand_name,
+          city_name,
+          salary_desc,
+          experience_name,
+          degree_name,
+          last_seen_at
+        )
+        VALUES (
+          'job_ai_filtered',
+          'v2ex',
+          '全栈开发在线接单',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '2026-06-13T00:00:00Z'
+        )
+        "#,
+            [],
+        )
+        .expect("seed job");
+        db::models::upsert_job_filter_result(
+            &conn,
+            "job_ai_filtered",
+            db::models::DEFAULT_FILTER_PROFILE_ID,
+            false,
+            &json!({
+              "eligible": false,
+              "bucket": "filtered",
+              "ai_judgement": {
+                "status": "rejected",
+                "bucket": "filtered",
+                "confidence": 0.98,
+                "summary": "接单帖，不是招聘岗位",
+                "evidence": ["标题写明在线接单"],
+                "risks": []
+              }
+            }),
+        )
+        .expect("seed ai result");
+
+        let recomputed = recompute_default_filter_profile_for_job_on_conn(&conn, "job_ai_filtered")
+            .expect("recompute");
+
+        let row = conn
+            .query_row(
+                "SELECT eligible, reason_json FROM job_filter_result WHERE encrypt_job_id = 'job_ai_filtered'",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .expect("query filter result");
+        let reason: Value = serde_json::from_str(&row.1).expect("reason json");
+
+        assert!(recomputed);
+        assert_eq!(row.0, 0);
+        assert_eq!(reason["bucket"], json!("filtered"));
+        assert_eq!(reason["ai_judgement"]["bucket"], json!("filtered"));
+        assert_eq!(
+            reason["ai_judgement"]["summary"],
+            json!("接单帖，不是招聘岗位")
+        );
+    }
+
+    #[test]
     fn recompute_default_filter_profile_uses_selected_profile_id_and_rules() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let app_data_dir = tmp.path().join("app-data");

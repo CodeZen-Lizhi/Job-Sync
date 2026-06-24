@@ -607,7 +607,7 @@ function createCrawlPageState() {
     try {
       const result = await filterProfileState.recomputeDefaultFilterProfile();
       if (result) {
-        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
+        filterRecomputeMessage.value = `已重算普通规则 ${result.updated} 个职位，并沿用已有 AI 结论；当前分区：推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
         runtime.finishedCounter += 1;
       }
       await loadCollectionSummary();

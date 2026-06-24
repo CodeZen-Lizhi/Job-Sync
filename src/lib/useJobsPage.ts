@@ -1118,7 +1118,7 @@ export function useJobsPage() {
       const profile = await filterProfileState.setActiveFilterProfileAsDefault();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
       const result = await invoke<RecomputeFilterProfileResult>("recompute_default_filter_profile");
-      filterRecomputeMessage.value = `已设为默认规则，并重算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}`;
+      filterRecomputeMessage.value = `已设为默认规则，并重算普通规则 ${result.updated} 个职位，沿用已有 AI 结论；当前分区：推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}`;
       await refreshAfterJobStateChange(false);
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -1135,7 +1135,7 @@ export function useJobsPage() {
     try {
       const result = await filterProfileState.recomputeDefaultFilterProfile();
       if (result) {
-        filterRecomputeMessage.value = `已重新计算 ${result.updated} 个职位；推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
+        filterRecomputeMessage.value = `已重算普通规则 ${result.updated} 个职位，并沿用已有 AI 结论；当前分区：推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
       }
       const profile = await loadDefaultFilterProfile();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;

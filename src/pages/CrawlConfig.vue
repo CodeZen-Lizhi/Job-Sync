@@ -403,7 +403,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
               <div class="flex flex-wrap items-center gap-2">
                 <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning" @click="saveActiveFilterProfile">保存配置</button>
                 <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || filterRecomputing || sidecarRunning" @click="recomputeDefaultFilterProfile">
-                  {{ filterRecomputing ? "重算中…" : "保存并重算" }}
+                  {{ filterRecomputing ? "重算中…" : "保存并重算规则" }}
                 </button>
               </div>
             </div>

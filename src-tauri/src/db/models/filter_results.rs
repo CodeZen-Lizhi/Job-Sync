@@ -12,6 +12,9 @@ const DEFAULT_AI_PREFERRED_TEXT: &str = "优先看 Go / Infra / DevOps / SRE / �
 const DEFAULT_AI_REJECTED_TEXT: &str = "明显外包、驻场、培训机构、销售导向、纯实施交付、电话销售、低代码搭建、重复客服支持类岗位。\n标题写技术但正文主要是售前销售、客户驻场、人力外派、拉新获客、课程销售、招转培。\n技术栈与目标方向明显无关，或 JD 缺少真实研发/平台工程职责。";
 const DEFAULT_AI_RISK_TEXT: &str = "信息太少、职责含糊、公司业务不清楚、薪资/经验/城市描述矛盾时不要直接推荐。\n软排除只有隐约迹象但证据不够时，放入待确认并说明需要人工看的点。";
 const DEFAULT_AI_UNCERTAIN_STRATEGY: &str = "pending_confirmation";
+const FILTER_BUCKET_RECOMMENDED: &str = "recommended";
+const FILTER_BUCKET_PENDING_CONFIRMATION: &str = "pending_confirmation";
+const FILTER_BUCKET_FILTERED: &str = "filtered";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilterProfile {
@@ -424,7 +427,9 @@ pub(crate) fn upsert_job_filter_result(
     reason: &Value,
 ) -> Result<()> {
     let updated_at = now_rfc3339();
-    let reason_text = serde_json::to_string(reason)?;
+    let (eligible, reason) =
+        merge_existing_ai_filter_result(conn, encrypt_job_id, eligible, reason)?;
+    let reason_text = serde_json::to_string(&reason)?;
     conn.execute(
         r#"
     INSERT INTO job_filter_result (encrypt_job_id, profile_id, eligible, reason_json, updated_at)
@@ -444,6 +449,108 @@ pub(crate) fn upsert_job_filter_result(
         ],
     )?;
     Ok(())
+}
+
+fn merge_existing_ai_filter_result(
+    conn: &Connection,
+    encrypt_job_id: &str,
+    next_eligible: bool,
+    next_reason: &Value,
+) -> Result<(bool, Value)> {
+    if has_ai_judgement(next_reason) {
+        return Ok((next_eligible, next_reason.clone()));
+    }
+
+    let existing_reason = conn
+        .query_row(
+            "SELECT reason_json FROM job_filter_result WHERE encrypt_job_id = ?1",
+            params![encrypt_job_id],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    let Some(existing_reason) = existing_reason else {
+        return Ok((next_eligible, next_reason.clone()));
+    };
+    if !has_ai_judgement(&existing_reason) {
+        return Ok((next_eligible, next_reason.clone()));
+    }
+
+    let Some(ai_judgement) = existing_reason.get("ai_judgement") else {
+        return Ok((next_eligible, next_reason.clone()));
+    };
+    let ai_bucket = ai_judgement_bucket(ai_judgement);
+    let next_bucket = filter_reason_bucket(next_reason, next_eligible);
+    let (merged_eligible, merged_bucket) =
+        merge_filter_bucket_with_ai(next_eligible, next_bucket, ai_bucket);
+
+    let mut merged = next_reason.clone();
+    if let Some(object) = merged.as_object_mut() {
+        object.insert("ai_judgement".to_string(), ai_judgement.clone());
+        object.insert("eligible".to_string(), Value::Bool(merged_eligible));
+        object.insert(
+            "bucket".to_string(),
+            Value::String(merged_bucket.to_string()),
+        );
+    }
+
+    Ok((merged_eligible, merged))
+}
+
+fn has_ai_judgement(reason: &Value) -> bool {
+    reason
+        .get("ai_judgement")
+        .and_then(Value::as_object)
+        .is_some()
+}
+
+fn filter_reason_bucket(reason: &Value, eligible: bool) -> &str {
+    reason
+        .get("bucket")
+        .and_then(Value::as_str)
+        .unwrap_or(if eligible {
+            FILTER_BUCKET_RECOMMENDED
+        } else {
+            FILTER_BUCKET_FILTERED
+        })
+}
+
+fn ai_judgement_bucket(judgement: &Value) -> Option<&str> {
+    let bucket = judgement.get("bucket").and_then(Value::as_str);
+    if matches!(
+        bucket,
+        Some(
+            FILTER_BUCKET_RECOMMENDED | FILTER_BUCKET_PENDING_CONFIRMATION | FILTER_BUCKET_FILTERED
+        )
+    ) {
+        return bucket;
+    }
+
+    match judgement.get("status").and_then(Value::as_str) {
+        Some("passed") => Some(FILTER_BUCKET_RECOMMENDED),
+        Some("rejected") => Some(FILTER_BUCKET_FILTERED),
+        Some("pending_confirmation") | Some("failed") => Some(FILTER_BUCKET_PENDING_CONFIRMATION),
+        _ => None,
+    }
+}
+
+fn merge_filter_bucket_with_ai<'a>(
+    next_eligible: bool,
+    next_bucket: &'a str,
+    ai_bucket: Option<&'a str>,
+) -> (bool, &'a str) {
+    if !next_eligible || next_bucket == FILTER_BUCKET_FILTERED {
+        return (false, FILTER_BUCKET_FILTERED);
+    }
+    if next_bucket == FILTER_BUCKET_PENDING_CONFIRMATION {
+        return (false, FILTER_BUCKET_PENDING_CONFIRMATION);
+    }
+
+    match ai_bucket {
+        Some(FILTER_BUCKET_FILTERED) => (false, FILTER_BUCKET_FILTERED),
+        Some(FILTER_BUCKET_PENDING_CONFIRMATION) => (false, FILTER_BUCKET_PENDING_CONFIRMATION),
+        _ => (true, FILTER_BUCKET_RECOMMENDED),
+    }
 }
 
 fn map_filter_profile(row: &rusqlite::Row) -> rusqlite::Result<FilterProfile> {

@@ -149,7 +149,7 @@ export interface FilterReasonDimensions {
 }
 
 export interface AiPostCollectionJudgement {
-  status?: "pending_review" | "processing" | "passed" | "rejected" | "pending_confirmation" | "failed" | string;
+  status?: "not_judged" | "processing" | "passed" | "rejected" | "pending_confirmation" | "failed" | string;
   bucket?: "recommended" | "pending_confirmation" | "filtered" | string;
   confidence?: number;
   summary?: string;
@@ -404,7 +404,7 @@ export function filterBucketLabel(bucket?: string | null): string {
 }
 
 export function aiAuditStatusLabel(bucket?: string | null): string {
-  if (bucket === "pending_review") return "待审核";
+  if (bucket === "not_judged" || bucket === "pending_review") return "未判断";
   if (bucket === "processing") return "审核中";
   if (bucket === "passed") return "通过";
   if (bucket === "rejected") return "不通过";
@@ -412,7 +412,7 @@ export function aiAuditStatusLabel(bucket?: string | null): string {
   if (bucket === "recommended") return "通过";
   if (bucket === "pending_confirmation") return "待确认";
   if (bucket === "filtered") return "不通过";
-  return "待审核";
+  return "未判断";
 }
 
 export function resolveAiAuditStatus(
@@ -429,7 +429,7 @@ export function resolveAiAuditStatus(
   if (bucket === "pending_confirmation") return "pending_confirmation";
   if (bucket === "filtered") return "rejected";
   if (filterEligible === false) return "rejected";
-  return "pending_review";
+  return "not_judged";
 }
 
 export function sourcePlatformLabel(platform?: string | null): string {
@@ -441,7 +441,7 @@ export function sourcePlatformLabel(platform?: string | null): string {
 }
 
 export function formatAiPostCollectionJudgement(judgement: AiPostCollectionJudgement | null | undefined): string {
-  if (!judgement) return "AI 结果：待审核";
+  if (!judgement) return "AI 结果：未判断";
   const parts: string[] = [`AI 审核：${aiAuditStatusLabel(resolveAiAuditStatus(judgement))}`];
   if (typeof judgement.confidence === "number") {
     parts.push(`置信度 ${Math.round(judgement.confidence * 100)}%`);
