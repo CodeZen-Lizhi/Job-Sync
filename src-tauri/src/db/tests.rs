@@ -896,6 +896,103 @@ fn upsert_job_from_normalized_writes_v2ex_unified_source_fields() {
 }
 
 #[test]
+fn upsert_job_from_normalized_writes_linuxdo_unified_source_fields() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    let input = models::NormalizedJobInput {
+        encrypt_job_id: "linuxdo:2467891".to_string(),
+        source_platform: "linuxdo".to_string(),
+        source_url: Some("https://linux.do/t/2467891".to_string()),
+        dedup_key: "2467891".to_string(),
+        position_name: Some("贵阳某省属国企子公司招聘劳务人员——全栈".to_string()),
+        boss_name: Some("neo".to_string()),
+        brand_name: Some("LinuxDo".to_string()),
+        city_name: Some("贵阳".to_string()),
+        salary_desc: Some("面议".to_string()),
+        experience_name: None,
+        degree_name: None,
+        jd_text: Some(
+            "贵阳某省属国企子公司招聘劳务人员——全栈\n详情暂未抓取，需打开原帖确认。".to_string(),
+        ),
+        raw_payload: json!({
+          "topicId": "2467891",
+          "title": "贵阳某省属国企子公司招聘劳务人员——全栈",
+          "url": "https://linux.do/t/2467891",
+          "contentText": "详情暂未抓取，需打开原帖确认。",
+          "detail_status": "blocked",
+          "classification": { "isJobPosting": true }
+        }),
+    };
+
+    models::upsert_job_from_normalized(&conn, &input).expect("upsert normalized job");
+
+    let row: (
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = conn
+        .query_row(
+            r#"
+      SELECT
+        source_platform,
+        source_url,
+        dedup_key,
+        position_name,
+        boss_name,
+        jd_text
+      FROM job
+      WHERE encrypt_job_id = ?1
+      "#,
+            ["linuxdo:2467891"],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .expect("query normalized job");
+
+    assert_eq!(row.0, "linuxdo");
+    assert_eq!(row.1.as_deref(), Some("https://linux.do/t/2467891"));
+    assert_eq!(row.2.as_deref(), Some("2467891"));
+    assert_eq!(
+        row.3.as_deref(),
+        Some("贵阳某省属国企子公司招聘劳务人员——全栈")
+    );
+    assert_eq!(row.4.as_deref(), Some("neo"));
+    assert_eq!(
+        row.5.as_deref(),
+        Some("贵阳某省属国企子公司招聘劳务人员——全栈\n详情暂未抓取，需打开原帖确认。")
+    );
+
+    let detail_json: String = conn
+        .query_row(
+            "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+            ["linuxdo:2467891"],
+            |row| row.get(0),
+        )
+        .expect("query normalized job detail");
+    let detail: Value = serde_json::from_str(&detail_json).expect("parse normalized job detail");
+    assert_eq!(
+        detail
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("postDescription"))
+            .and_then(Value::as_str),
+        Some("贵阳某省属国企子公司招聘劳务人员——全栈\n详情暂未抓取，需打开原帖确认。")
+    );
+}
+
+#[test]
 fn init_db_backfills_missing_v2ex_job_detail_raw() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");
