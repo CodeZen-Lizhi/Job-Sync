@@ -81,6 +81,8 @@
   - `source_platform = "linuxdo"`
   - does not require Boss session
   - uses direct Discourse API collection by default; worker requests category JSON such as `/c/job/27.json` and topic detail JSON such as `/t/<topicId>.json`
+  - if direct Node HTTP is blocked by Cloudflare / rate limiting and the LinuxDo browser profile path is available, worker may reuse the visible LinuxDo browser profile and request the same Discourse JSON from page context with `credentials: "include"`
+  - browser-profile fallback must prove the page context can read Discourse JSON before continuing; a visible page alone is not a successful collection signal
   - when a LinuxDo login snapshot exists, API requests should carry the saved LinuxDo cookies, not Boss cookies
   - must not restore the old automated Puppeteer login flow or attempt hidden Cloudflare bypass
   - reads the configured category URL, default `https://linux.do/c/job/27`, and derives the matching Discourse JSON endpoint
@@ -140,6 +142,8 @@
 - V2EX selected with an empty URL input -> frontend blocks start with a clear URL-required message; if an empty payload reaches the worker, the worker logs that no URL was provided and skips collection.
 - LinuxDo selected with an empty or non-linux.do category URL -> frontend blocks start with a clear URL-required message.
 - LinuxDo Discourse API Cloudflare challenge / 403 / 429 -> worker logs that the API request was blocked or rate-limited and emits an explicit error when no stable topic list was collected.
+- LinuxDo direct API 403 / 429 with a reusable LinuxDo browser profile -> worker retries the same Discourse JSON API from browser page context; success requires `JOB_NORMALIZED_CAPTURED`, not only `FINISHED`.
+- LinuxDo browser profile still on Cloudflare / login verification or unable to read JSON -> worker logs that the user must finish verification in the opened browser and times out with an explicit error instead of reporting success.
 - LinuxDo detail blocked but list topic data is stable -> worker may write a title-level normalized job with missing-detail evidence.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
