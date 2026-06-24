@@ -281,7 +281,6 @@ fn normalize_job_ids(job_ids: Option<Vec<String>>) -> Option<Vec<String>> {
         .map(|id| id.trim().to_string())
         .filter(|id| !id.is_empty())
         .filter(|id| seen.insert(id.clone()))
-        .take(MAX_POST_COLLECTION_JUDGE_LIMIT as usize)
         .collect();
     if ids.is_empty() {
         None

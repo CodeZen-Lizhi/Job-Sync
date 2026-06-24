@@ -4,6 +4,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useRoute, useRouter } from "vue-router";
 
 import { CRAWL_TASK_TYPE_CHAT_SYNC, type RecomputeFilterProfileResult } from "./crawl";
+import {
+  formatAiPostCollectionJudgeSummary,
+  recomputeAiPostCollectionJudgementForAllJobs,
+  type AiPostCollectionJudgeResult,
+} from "./aiRecompute";
 import { useFilterProfile } from "./filterProfile";
 import {
   companyReviewStatusLabel,
@@ -51,15 +56,6 @@ import {
 } from "./jobsPageHelpers";
 import { runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
-
-interface AiPostCollectionJudgeResult {
-  updated: number;
-  ai_judged: number;
-  hard_skipped: number;
-  failed: number;
-  telegram_sent?: boolean;
-  telegram_error?: string | null;
-}
 
 interface ConfirmDialogState {
   visible: boolean;
@@ -1118,7 +1114,8 @@ export function useJobsPage() {
       const profile = await filterProfileState.setActiveFilterProfileAsDefault();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
       const result = await invoke<RecomputeFilterProfileResult>("recompute_default_filter_profile");
-      filterRecomputeMessage.value = `已设为默认规则，并重算普通规则 ${result.updated} 个职位，沿用已有 AI 结论；当前分区：推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}`;
+      const aiResult = await recomputeAiPostCollectionJudgementForAllJobs();
+      filterRecomputeMessage.value = `已设为默认规则，并重算普通+AI：普通规则 ${result.updated} 个职位；${formatAiPostCollectionJudgeSummary(aiResult)}`;
       await refreshAfterJobStateChange(false);
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -1135,7 +1132,8 @@ export function useJobsPage() {
     try {
       const result = await filterProfileState.recomputeDefaultFilterProfile();
       if (result) {
-        filterRecomputeMessage.value = `已重算普通规则 ${result.updated} 个职位，并沿用已有 AI 结论；当前分区：推荐 ${result.counts.recommended}，待确认 ${result.counts.pending}，已过滤 ${result.counts.filtered}，已处理 ${result.counts.processed}，全部 ${result.counts.all}`;
+        const aiResult = await recomputeAiPostCollectionJudgementForAllJobs();
+        filterRecomputeMessage.value = `已重算普通+AI：普通规则 ${result.updated} 个职位；${formatAiPostCollectionJudgeSummary(aiResult)}`;
       }
       const profile = await loadDefaultFilterProfile();
       filterProfileUpdatedAt.value = profile?.updated_at ?? filterProfileUpdatedAt.value;
