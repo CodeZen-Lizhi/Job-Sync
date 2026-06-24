@@ -1,8 +1,32 @@
-use std::path::Path;
+use std::{path::Path, thread, time::Duration};
 
 use serde_json::json;
 
 use crate::{paths, settings, storage};
+
+const TELEGRAM_SEND_MAX_ATTEMPTS: usize = 4;
+const TELEGRAM_RETRY_INITIAL_DELAY_MS: u64 = 600;
+const TELEGRAM_RETRY_MAX_DELAY_MS: u64 = 8_000;
+
+#[derive(Clone, Copy)]
+struct TelegramSendRetryPolicy {
+    max_attempts: usize,
+    initial_delay: Duration,
+}
+
+impl Default for TelegramSendRetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: TELEGRAM_SEND_MAX_ATTEMPTS,
+            initial_delay: Duration::from_millis(TELEGRAM_RETRY_INITIAL_DELAY_MS),
+        }
+    }
+}
+
+enum TelegramSendAttemptError {
+    Retryable(String),
+    Permanent(String),
+}
 
 #[derive(Debug, serde::Serialize)]
 pub struct PublicAppSettings {
@@ -390,6 +414,20 @@ pub(crate) fn send_telegram_message_from_settings_with_format(
     content: &str,
     parse_mode: Option<&str>,
 ) -> Result<(), String> {
+    send_telegram_message_from_settings_with_policy(
+        settings,
+        content,
+        parse_mode,
+        TelegramSendRetryPolicy::default(),
+    )
+}
+
+fn send_telegram_message_from_settings_with_policy(
+    settings: &settings::AppSettings,
+    content: &str,
+    parse_mode: Option<&str>,
+    retry_policy: TelegramSendRetryPolicy,
+) -> Result<(), String> {
     let bot_token = settings
         .telegram_bot_token
         .as_deref()
@@ -418,36 +456,88 @@ pub(crate) fn send_telegram_message_from_settings_with_format(
     }
 
     let agent = telegram_agent(settings)?;
+    let url = format!("{}/sendMessage", telegram_bot_api_base(bot_token));
+    let max_attempts = retry_policy.max_attempts.max(1);
+    let mut last_retryable_error = None::<String>;
+    for attempt in 1..=max_attempts {
+        match send_telegram_message_once(&agent, &url, &payload) {
+            Ok(()) => return Ok(()),
+            Err(TelegramSendAttemptError::Permanent(err)) => return Err(err),
+            Err(TelegramSendAttemptError::Retryable(err)) => {
+                last_retryable_error = Some(err);
+                if attempt < max_attempts {
+                    thread::sleep(telegram_retry_delay(retry_policy.initial_delay, attempt));
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Telegram 通知发送失败（共尝试 {max_attempts} 次仍失败）：{}",
+        last_retryable_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
+}
+
+fn telegram_retry_delay(initial_delay: Duration, failed_attempt: usize) -> Duration {
+    let base_ms = initial_delay.as_millis().min(u128::from(u64::MAX)) as u64;
+    let multiplier = 1_u64
+        .checked_shl(failed_attempt.saturating_sub(1) as u32)
+        .unwrap_or(u64::MAX);
+    Duration::from_millis(
+        base_ms
+            .saturating_mul(multiplier)
+            .min(TELEGRAM_RETRY_MAX_DELAY_MS),
+    )
+}
+
+fn send_telegram_message_once(
+    agent: &ureq::Agent,
+    url: &str,
+    payload: &serde_json::Value,
+) -> Result<(), TelegramSendAttemptError> {
     let response = agent
-        .post(&format!("{}/sendMessage", telegram_bot_api_base(bot_token)))
+        .post(url)
         .set("Content-Type", "application/json")
-        .send_json(payload);
+        .send_json(payload.clone());
 
     let response = match response {
         Ok(response) => response,
         Err(ureq::Error::Status(status, response)) => {
             let body = response.into_string().unwrap_or_default();
-            return Err(format!("Telegram 通知发送失败：HTTP {status} {body}"));
+            let message = format!("Telegram 通知发送失败：HTTP {status} {body}");
+            if status == 429 || status >= 500 {
+                return Err(TelegramSendAttemptError::Retryable(message));
+            }
+            return Err(TelegramSendAttemptError::Permanent(message));
         }
         Err(err) => {
-            return Err(format!("Telegram 通知发送失败：{err}"));
+            return Err(TelegramSendAttemptError::Retryable(format!(
+                "Telegram 通知发送失败：{err}"
+            )));
         }
     };
 
     let body: serde_json::Value = response
         .into_json()
-        .map_err(|e| format!("解析 Telegram 响应失败：{e}"))?;
+        .map_err(|e| TelegramSendAttemptError::Permanent(format!("解析 Telegram 响应失败：{e}")))?;
     let ok = body
         .get("ok")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
     if !ok {
-        return Err(format!(
-            "Telegram 通知发送失败：{}",
-            body.get("description")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("unknown error")
-        ));
+        let description = body
+            .get("description")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown error");
+        let message = format!("Telegram 通知发送失败：{description}");
+        let error_code = body
+            .get("error_code")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default();
+        if error_code == 429 || error_code >= 500 {
+            return Err(TelegramSendAttemptError::Retryable(message));
+        }
+        return Err(TelegramSendAttemptError::Permanent(message));
     }
 
     Ok(())
@@ -697,8 +787,15 @@ mod tests {
         settings.telegram_chat_id = Some("987654321".to_string());
         settings.proxy_url = Some(format!("http://{proxy_addr}"));
 
-        let result =
-            send_telegram_message_from_settings_with_format(&settings, "hello", Some("HTML"));
+        let result = send_telegram_message_from_settings_with_policy(
+            &settings,
+            "hello",
+            Some("HTML"),
+            TelegramSendRetryPolicy {
+                max_attempts: 1,
+                initial_delay: Duration::ZERO,
+            },
+        );
 
         assert!(result.is_err());
         let request = rx
@@ -708,6 +805,78 @@ mod tests {
         assert!(
             request.starts_with("CONNECT api.telegram.org:443 "),
             "unexpected proxy request: {request:?}"
+        );
+    }
+
+    #[test]
+    fn telegram_sender_retries_retryable_transport_errors() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("proxy listener");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking listener");
+        let proxy_addr = listener.local_addr().expect("proxy addr");
+        let expected_attempts = 3;
+        let (tx, rx) = mpsc::channel();
+
+        let proxy = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut accepted = 0;
+            while accepted < expected_attempts {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let mut buffer = [0_u8; 512];
+                        let n = stream.read(&mut buffer).unwrap_or_default();
+                        let request = String::from_utf8_lossy(&buffer[..n]).to_string();
+                        let _ = tx.send(request);
+                        let _ = stream
+                            .write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+                        accepted += 1;
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return;
+                        }
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(_) => return,
+                }
+            }
+        });
+
+        let mut settings = settings::AppSettings::platform_default();
+        settings.telegram_bot_token = Some("123:secret".to_string());
+        settings.telegram_chat_id = Some("987654321".to_string());
+        settings.proxy_url = Some(format!("http://{proxy_addr}"));
+
+        let result = send_telegram_message_from_settings_with_policy(
+            &settings,
+            "hello",
+            Some("HTML"),
+            TelegramSendRetryPolicy {
+                max_attempts: expected_attempts,
+                initial_delay: Duration::ZERO,
+            },
+        );
+
+        assert!(result.is_err());
+        let error = result.expect_err("retryable proxy error");
+        assert!(
+            error.contains("共尝试 3 次仍失败"),
+            "unexpected error: {error}"
+        );
+        let requests = (0..expected_attempts)
+            .map(|_| {
+                rx.recv_timeout(Duration::from_secs(6))
+                    .expect("proxy request")
+            })
+            .collect::<Vec<_>>();
+        proxy.join().expect("proxy thread");
+        assert_eq!(requests.len(), expected_attempts);
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.starts_with("CONNECT api.telegram.org:443 ")),
+            "unexpected proxy requests: {requests:?}"
         );
     }
 }
