@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { describe, it } from "node:test";
 import { dirname, resolve } from "node:path";
@@ -74,7 +75,16 @@ function isLogMessage(message: RegExp): (event: WorkerEvent) => boolean {
 }
 
 describe("worker stdio lifecycle", () => {
-  it("starts with local Node, receives STOP, and emits lifecycle events", async () => {
+  it("keeps FINISHED ownership in main lifecycle instead of stdio parsing", () => {
+    const mainSource = readFileSync(resolve(__dirname, "../../src/main.ts"), "utf8");
+    const stdioSource = readFileSync(resolve(__dirname, "../../src/stdio.ts"), "utf8");
+
+    assert.match(mainSource, /await done;\s*if \(running\?\.done === done\) running = null;\s*finishIfNeeded\(\);/);
+    assert.match(mainSource, /readCommands\([\s\S]*finishIfNeeded\(\);[\s\S]*\);/);
+    assert.doesNotMatch(stdioSource, /emitEvent\(\{\s*type:\s*"FINISHED"/);
+  });
+
+  it("starts with local Node, receives STOP with unicode separators, and emits lifecycle events", async () => {
     const workerEntry = resolve(__dirname, "../../dist/main.js");
     const workerRoot = resolve(__dirname, "../..");
     const events: WorkerEvent[] = [];
@@ -122,7 +132,13 @@ describe("worker stdio lifecycle", () => {
     try {
       await waitForEvent(events, isLogMessage(/boss-crawler-worker started/), "worker started");
 
-      child.stdin.write(`${JSON.stringify({ type: "STOP" })}\n`);
+      const unicodeLineSeparator = String.fromCharCode(0x2028);
+      child.stdin.write(
+        `${JSON.stringify({
+          type: "STOP",
+          payload: { note: `before${unicodeLineSeparator}after` },
+        })}\n`,
+      );
       await waitForEvent(events, isLogMessage(/STOP received/), "STOP acknowledgement");
 
       child.stdin.end();
@@ -131,6 +147,11 @@ describe("worker stdio lifecycle", () => {
       const exit = await withTimeout(exitPromise, "worker process exit");
       assert.equal(exit.code, 0, stderr);
       assert.equal(exit.signal, null, stderr);
+      assert.equal(
+        events.filter((event) => event.type === "FINISHED").length,
+        1,
+        JSON.stringify(events),
+      );
       assert.deepEqual(
         events.filter((event) => event.type === "__PARSE_ERROR__"),
         [],

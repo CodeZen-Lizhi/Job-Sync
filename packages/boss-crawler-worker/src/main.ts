@@ -20,32 +20,55 @@ function safeError(err: unknown): { message: string; stack?: string } {
 
 function createContext(controller: AbortController): { emit: (e: EventOut) => void; signal: AbortSignal } {
   return {
-    emit: emitEvent,
+    emit: emitWorkerEvent,
     signal: controller.signal,
   };
 }
 
 let running: Running | null = null;
+let finishedEmitted = false;
 
-function stopRunning(): void {
-  if (!running) return;
-  running.controller.abort();
+function emitWorkerEvent(event: EventOut): void {
+  if (event.type === "FINISHED") finishedEmitted = true;
+  emitEvent(event);
+}
+
+function stopRunning(): Promise<void> | null {
+  const current = running;
+  if (!current) return null;
+  current.controller.abort();
   running = null;
+  return current.done;
+}
+
+async function stopRunningAndWait(): Promise<void> {
+  const done = stopRunning();
+  if (!done) return;
+  await done.catch((err) => {
+    emitWorkerEvent({ type: "ERROR", payload: safeError(err) });
+  });
+}
+
+function finishIfNeeded(): void {
+  if (finishedEmitted) return;
+  emitWorkerEvent({ type: "FINISHED" });
 }
 
 async function startMode(run: (payload: any, ctx: any) => Promise<void>, payload: any): Promise<void> {
-  stopRunning();
+  await stopRunningAndWait();
+  finishedEmitted = false;
   const controller = new AbortController();
   const ctx = createContext(controller);
   const done = run(payload, ctx).catch((err) => {
-    emitEvent({ type: "ERROR", payload: safeError(err) });
+    emitWorkerEvent({ type: "ERROR", payload: safeError(err) });
   });
   running = { controller, done };
   await done;
   if (running?.done === done) running = null;
+  finishIfNeeded();
 }
 
-emitEvent({ type: "LOG", payload: { level: "info", message: "boss-crawler-worker started" } });
+emitWorkerEvent({ type: "LOG", payload: { level: "info", message: "boss-crawler-worker started" } });
 
 readCommands((cmd: CommandIn) => {
   void (async () => {
@@ -88,22 +111,27 @@ readCommands((cmd: CommandIn) => {
         return;
       case "STOP":
         stopRunning();
-        emitEvent({ type: "LOG", payload: { level: "info", message: "STOP received" } });
+        emitWorkerEvent({ type: "LOG", payload: { level: "info", message: "STOP received" } });
         return;
       case "PAUSE":
-        emitEvent({ type: "LOG", payload: { level: "warn", message: "PAUSE not implemented in V1" } });
+        emitWorkerEvent({ type: "LOG", payload: { level: "warn", message: "PAUSE not implemented in V1" } });
         return;
       case "RESUME":
-        emitEvent({ type: "LOG", payload: { level: "warn", message: "RESUME not implemented in V1" } });
+        emitWorkerEvent({ type: "LOG", payload: { level: "warn", message: "RESUME not implemented in V1" } });
         return;
       default:
-        emitEvent({ type: "ERROR", payload: { message: `Unknown command type: ${(cmd as any).type}` } });
+        emitWorkerEvent({ type: "ERROR", payload: { message: `Unknown command type: ${(cmd as any).type}` } });
     }
+  })();
+}, () => {
+  void (async () => {
+    await stopRunningAndWait();
+    finishIfNeeded();
   })();
 });
 
 process.on("SIGINT", () => {
   stopRunning();
-  emitEvent({ type: "FINISHED" });
+  finishIfNeeded();
   process.exit(0);
 });

@@ -23,6 +23,7 @@ export const CrawlAutoStartPayloadSchema = z.object({
   session: SessionStatePayloadSchema,
   task: SearchTaskPayloadSchema,
   run_id: z.string().optional(),
+  user_data_dir: z.string().optional(),
 });
 
 export const RefreshJobEvidencePayloadSchema = z.object({
@@ -30,6 +31,7 @@ export const RefreshJobEvidencePayloadSchema = z.object({
   encrypt_job_id: z.string().min(1),
   source_url: z.string().optional(),
   raw_payload: z.any().optional(),
+  user_data_dir: z.string().optional(),
 });
 
 export const BossMetaSyncPayloadSchema = z.object({
@@ -167,6 +169,7 @@ export const CookieCollectedPayloadSchema = z.object({
 export const JobListCapturedPayloadSchema = z.object({
   keyword: z.string().optional(),
   filters: z.any().optional(),
+  capture_source: z.enum(["natural", "dom_fallback", "api_fallback"]).optional(),
   raw: z.any(),
 });
 

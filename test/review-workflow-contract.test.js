@@ -286,15 +286,15 @@ describe("review workflow contract", () => {
     const dbTests = readProjectFile("src-tauri/src/db/tests.rs");
 
     assert.match(crawlTypes, /DEFAULT_PREFERENCE_DIRECTIONS/);
-    assert.match(crawlTypes, /"Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"/);
+    assert.match(crawlTypes, /DEFAULT_PREFERENCE_DIRECTIONS[\s\S]{0,180}"Go"[\s\S]{0,80}"云原生"/);
     assert.match(crawlTypes, /DEFAULT_PREFERENCE_TECH_TAGS/);
-    assert.match(crawlTypes, /"Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI\/CD", "Terraform"/);
+    assert.match(crawlTypes, /DEFAULT_PREFERENCE_TECH_TAGS[\s\S]{0,180}"Go"[\s\S]{0,80}"Terraform"/);
     assert.match(filterProfile, /DEFAULT_PREFERENCE_DIRECTIONS\.join\("\\n"\)/);
     assert.match(filterProfile, /DEFAULT_PREFERENCE_TECH_TAGS\.join\("\\n"\)/);
     assert.match(dbDefaults, /"preferenceDirections"/);
-    assert.match(dbDefaults, /"Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"/);
+    assert.match(dbDefaults, /"preferenceDirections"[\s\S]*"Go"[\s\S]*"云原生"/);
     assert.match(dbDefaults, /"preferenceTechTags"/);
-    assert.match(dbDefaults, /"Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI\/CD", "Terraform"/);
+    assert.match(dbDefaults, /"preferenceTechTags"[\s\S]*"Go"[\s\S]*"Terraform"/);
     assert.match(dbDefaults, /"requiredDirections"\.to_string\(\), Value::Array\(vec!\[\]\)/);
     assert.match(dbDefaults, /"requiredTechTags"\.to_string\(\), Value::Array\(vec!\[\]\)/);
     assert.match(dbTests, /default preference direction/);
@@ -403,7 +403,7 @@ describe("review workflow contract", () => {
       assert.match(crawlTypes, new RegExp(`${field}: string\\[\\]`));
       assert.match(filterProfile, new RegExp(`${field}: parseList`));
       assert.match(filterProfile, new RegExp(`formatList\\(json\\.${field}\\)`));
-      assert.match(dbDefaults, new RegExp(`"${field}"\\.to_string\\(\\), Value::Array\\(vec!\\[\\]\\)`));
+      assert.match(dbDefaults, new RegExp(`"${field}"\\.to_string\\(\\)[\\s\\S]{0,120}Value::Array\\(vec!\\[\\]\\)`));
     }
 
     for (const rule of [
@@ -438,12 +438,43 @@ describe("review workflow contract", () => {
     assert.match(crawlConfig, /Boss 搜索关键词/);
     assert.match(crawlConfig, /Go 远程/);
     assert.match(crawlTypes, /SECONDARY_BOSS_FILTER_FIELDS = new Set\(\["stage", "jobType"\]\)/);
-    assert.match(crawlLogic, /buildBossSearchKeywordsFromIntent/);
+    assert.doesNotMatch(crawlLogic, /buildBossSearchKeywordsFromIntent/);
     for (const supportedField of ["multiSubway", "multiBusinessDistrict", "position", "jobType", "stage"]) {
       assert.match(workerShared, new RegExp(`params\\.set\\("${supportedField}"`));
     }
     assert.doesNotMatch(crawlConfig, /Boss 活跃状态/);
     assert.doesNotMatch(crawlConfig, /最新排序/);
+  });
+
+  it("removes the generic collection intent layer from config UI and collection payloads", () => {
+    const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
+    const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+
+    for (const removedSymbol of [
+      "collectionKeywordsText",
+      "collectionTargetCitiesText",
+      "collectionWorkModesText",
+      "collectionTechStackText",
+      "collectionExcludedKeywordsText",
+      "collectionDegreesText",
+      "collectionMinimumSalaryK",
+      "collectionMaximumSalaryK",
+      "collectionMinimumExperienceYears",
+      "collectionMaximumExperienceYears",
+      "collectionIntentSyncLabel",
+      "syncCollectionIntentToPlatforms",
+      "bossSyncMappedFields",
+      "bossSyncUnmappedFields",
+      "bossSyncMessage",
+    ]) {
+      assert.doesNotMatch(crawlConfig, new RegExp(removedSymbol));
+      assert.doesNotMatch(crawlLogic, new RegExp(removedSymbol));
+    }
+
+    assert.doesNotMatch(crawlConfig, /同步到.*平台配置/);
+    assert.doesNotMatch(crawlConfig, /<div class="ui-field-label">城市<\/div>/);
+    assert.doesNotMatch(crawlConfig, /<div class="ui-field-label">方式<\/div>/);
+    assert.doesNotMatch(crawlLogic, /collection_intent/);
   });
 
   it("keeps product copy centered on precise job research instead of automation", () => {
@@ -714,6 +745,20 @@ describe("review workflow contract", () => {
     assert.match(sidecar, /recompute_default_filter_profile_for_job_on_conn\([\s\S]{0,120}conn,[\s\S]{0,80}encrypt_job_id/);
   });
 
+  it("keeps sidecar maxJobs strict across same-page list overflow and filtered events", () => {
+    const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
+
+    assert.match(sidecar, /fn should_skip_new_insert_for_limit/);
+    assert.match(sidecar, /ActiveCollectionRun::insert_limit_reached/);
+    assert.match(sidecar, /limit_reached && !local_job_exists\(conn, encrypt_job_id\)/);
+    assert.match(sidecar, /EventOut::JobDetailCaptured\(payload\) => \{[\s\S]{0,180}should_skip_new_insert_for_limit/);
+    assert.match(sidecar, /EventOut::JobNormalizedCaptured\(payload\) => \{[\s\S]{0,180}should_skip_new_insert_for_limit/);
+    assert.match(sidecar, /fn persist_job_list_capture\([\s\S]*for item in jobs \{[\s\S]*should_skip_new_insert_for_limit[\s\S]*break;/);
+    assert.match(sidecar, /EventOut::JobListCaptured\(payload\) => \{[\s\S]{0,240}persist_job_list_capture\(/);
+    assert.match(sidecar, /EventOut::JobFiltered\(payload\) => \{[\s\S]*should_skip_new_insert_for_limit/);
+    assert.match(sidecar, /EventOut::JobFiltered[\s\S]*request_stop_when_ready\(\s*&active_collection_run,\s*&inner,\s*\)/);
+  });
+
   it("keeps worker filtered-job events carrying the same source filter context into Rust", () => {
     const workerRun = readProjectFile("packages/boss-crawler-worker/src/modes/auto/run.ts");
     const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
@@ -733,6 +778,7 @@ describe("review workflow contract", () => {
     const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
     const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
     const workerMain = readProjectFile("packages/boss-crawler-worker/src/main.ts");
+    const workerEvidenceRefresh = readProjectFile("packages/boss-crawler-worker/src/modes/evidenceRefresh.ts");
     const crawlPageLogic = readProjectFile("src/lib/useCrawlPage.ts");
     const jobsPageLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
@@ -745,12 +791,22 @@ describe("review workflow contract", () => {
       assert.match(crawlCommand, new RegExp(`pub fn ${command}`));
     }
     assert.match(crawlCommand, /create_collection_run/);
+    assert.match(crawlCommand, /pub fn crawl_stop[\s\S]*stop_collection_by_user\(\)/);
     assert.match(crawlCommand, /RefreshJobEvidencePayload/);
+    assert.match(crawlCommand, /pub fn refresh_pending_job_evidence[\s\S]*let session = load_session_optional\(sidecar\.app_data_dir\(\)\)/);
     assert.match(sidecar, /active_collection_run/);
+    assert.match(sidecar, /pub fn stop_collection_by_user/);
+    assert.match(sidecar, /pub fn stop_collection_by_user[\s\S]*record_collection_failure\([\s\S]*&conn,[\s\S]*Some\(active_run\),[\s\S]*"STOP"/);
+    assert.match(sidecar, /models::fail_collection_run\(&conn, &active_run\.id, reason\)/);
     assert.match(sidecar, /record_collection_failure/);
     assert.match(sidecar, /refresh_collection_run_bucket_counts/);
     assert.match(workerProtocol, /REFRESH_JOB_EVIDENCE/);
+    assert.match(workerProtocol, /RefreshJobEvidencePayloadSchema[\s\S]*user_data_dir: z\.string\(\)\.optional\(\)/);
     assert.match(workerMain, /runRefreshJobEvidenceMode/);
+    assert.match(crawlCommand, /user_data_dir:\s*Some\([\s\S]*storage::boss_browser_profile_path/);
+    assert.match(workerEvidenceRefresh, /launchBrowser\(\{\s*headless:\s*false,\s*user_data_dir:\s*payload\.user_data_dir,\s*stealth:\s*false,\s*preserve_on_disconnect:\s*true,\s*\}\)/);
+    assert.match(workerEvidenceRefresh, /waitUntilBossLoginReady\(page, ctx, "Boss 登录态已就绪，开始补充岗位证据。"\)/);
+    assert.match(workerEvidenceRefresh, /requestBossJsonWithRiskRecovery\(page, ctx, "job\/detail"/);
     assert.match(crawlPageLogic, /list_collection_runs/);
     assert.match(crawlPageLogic, /list_collection_failures/);
     assert.match(jobsPageLogic, /refreshPendingJobEvidence/);
@@ -760,7 +816,7 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(jobsPageLogic, /apply_job|send_greeting|open_chat/);
   });
 
-  it("keeps Boss auto crawl using shared job-list id extraction before filtering and detail fetch", () => {
+  it("keeps Boss auto crawl using shared job-list id extraction before filtering and optional detail fetch", () => {
     const workerRun = readProjectFile("packages/boss-crawler-worker/src/modes/auto/run.ts");
     const parser = readProjectFile("packages/boss-crawler-worker/src/boss/parser.ts");
 
@@ -773,6 +829,113 @@ describe("review workflow contract", () => {
     assert.match(workerRun, /const securityId = pickBossJobIdFromListItem\(job\) \?\? undefined/);
     assert.match(workerRun, /const securityId = pickBossJobIdFromListItem\(job\);\n\s+if \(!securityId\) continue/);
     assert.doesNotMatch(workerRun, /typeof job\?\.securityId === "string"/);
+  });
+
+  it("keeps a low-volume Boss canary smoke command for real browser verification", () => {
+    const packageJson = readProjectFile("package.json");
+    const canaryScript = readProjectFile("scripts/boss-canary.mjs");
+    const gitignore = readProjectFile(".gitignore");
+
+    assert.match(packageJson, /"boss:canary": "node scripts\/boss-canary\.mjs"/);
+    assert.match(packageJson, /"test:boss-canary": "node --test test\/boss-canary\.test\.js"/);
+    assert.match(gitignore, /\.tmp\//);
+    assert.match(canaryScript, /"\.jobpilot", "boss-canary", "boss-browser-profile"/);
+    assert.match(canaryScript, /type: "LOGIN_START"/);
+    assert.match(canaryScript, /type: "CRAWL_AUTO_START"/);
+    assert.match(canaryScript, /user_data_dir: options\.profileDir/);
+    assert.match(canaryScript, /bossDetailFetchLimit: options\.detailLimit/);
+    assert.match(canaryScript, /const pageSize = Math\.max\(1, Math\.min\(options\.maxJobs, 15\)\)/);
+    assert.match(canaryScript, /pageSize,/);
+    assert.match(canaryScript, /--allow-fallback-source/);
+    assert.match(canaryScript, /allowFallbackSource/);
+    assert.match(canaryScript, /required source=\$\{options\.allowFallbackSource \? "any" : "natural"\}/);
+    assert.match(canaryScript, /JOB_LIST_CAPTURED/);
+    assert.match(canaryScript, /event\.payload\?\.capture_source/);
+    assert.match(canaryScript, /captureSources/);
+    assert.match(canaryScript, /naturalJobListJobs/);
+    assert.match(canaryScript, /summary\.naturalJobListJobs <= 0/);
+    assert.match(canaryScript, /no capture_source=natural JOB_LIST_CAPTURED event with jobs was observed/);
+    assert.match(canaryScript, /!summary\.cookieCollected \|\| summary\.cookieCount <= 0/);
+    assert.match(canaryScript, /summary\.finishedEvents !== 1/);
+    assert.match(canaryScript, /0 disables timeout/);
+    assert.match(canaryScript, /Canary did not meet success criteria/);
+    assert.match(canaryScript, /已捕获搜索页自然 joblist 响应/);
+    assert.match(canaryScript, /This direct worker smoke verifies capture events only; it does not write DB rows/);
+    assert.doesNotMatch(canaryScript, /apply_job|send_greeting|sendGreeting|autoSend|open_chat|submit.*resume/i);
+  });
+
+  it("keeps a read-only Boss App DB canary that verifies sidecar persistence, not worker finish alone", () => {
+    const packageJson = readProjectFile("package.json");
+    const dbCanaryScript = readProjectFile("scripts/boss-db-canary.mjs");
+    const scriptsReadme = readProjectFile("scripts/README.md");
+
+    assert.match(packageJson, /"boss:db-canary": "node scripts\/boss-db-canary\.mjs"/);
+    assert.match(scriptsReadme, /boss-db-canary\.mjs/);
+    assert.match(scriptsReadme, /read-only Boss App DB canary/);
+    assert.match(dbCanaryScript, /"com\.administrator\.jobpilot"/);
+    assert.match(dbCanaryScript, /"Application Support"/);
+    assert.match(dbCanaryScript, /spawn\("sqlite3", \["-readonly", "-json", dbPath, sql\]/);
+    assert.match(dbCanaryScript, /source_platform = 'boss'/);
+    assert.match(dbCanaryScript, /status !== "finished"/);
+    assert.match(dbCanaryScript, /finished_at/);
+    assert.match(dbCanaryScript, /error_message/);
+    assert.match(dbCanaryScript, /captured=\$\{captured\}, expected > 0/);
+    assert.match(dbCanaryScript, /inserted\+updated\+duplicate/);
+    assert.match(dbCanaryScript, /--require-insert/);
+    assert.match(dbCanaryScript, /collection_failure/);
+    assert.match(dbCanaryScript, /event_type IN/);
+    assert.match(dbCanaryScript, /"ERROR", "WORKER_EXIT", "CRAWL_AUTO_START"/);
+    assert.match(dbCanaryScript, /job_source_link/);
+    assert.match(dbCanaryScript, /s\.captured_at >=/);
+    assert.match(dbCanaryScript, /job_detail_raw/);
+    assert.match(dbCanaryScript, /detailStatus/);
+    assert.match(dbCanaryScript, /postDescription/);
+    assert.match(dbCanaryScript, /detail_status \|\| ""\) === "list_only"/);
+    assert.match(dbCanaryScript, /job_filter_result/);
+    assert.match(dbCanaryScript, /reason_json/);
+    assert.match(dbCanaryScript, /filter_updated_after_link/);
+    assert.match(dbCanaryScript, /"recommended", "pending_confirmation", "filtered"/);
+    assert.match(dbCanaryScript, /source_url.*zhipin\.com\/job_detail/s);
+    assert.match(dbCanaryScript, /raw_payload_json_valid/);
+    assert.match(dbCanaryScript, /filters_json_valid/);
+    assert.match(dbCanaryScript, /detail_json_valid/);
+    assert.match(dbCanaryScript, /reason_json_valid/);
+    assert.match(dbCanaryScript, /latest Boss run within/);
+    assert.doesNotMatch(dbCanaryScript, /\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/);
+  });
+
+  it("keeps Boss job-list capture source observable across worker, Rust, frontend, and canary", () => {
+    const workerRun = readProjectFile("packages/boss-crawler-worker/src/modes/auto/run.ts");
+    const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
+    const rustProtocol = readProjectFile("src-tauri/src/ipc/protocol.rs");
+    const frontendProtocol = readProjectFile("src/lib/protocol.ts");
+    const canaryScript = readProjectFile("scripts/boss-canary.mjs");
+
+    assert.match(workerRun, /capture_source:\s*"natural"/);
+    assert.match(workerRun, /capture_source:\s*"dom_fallback"/);
+    assert.match(workerRun, /capture_source:\s*"api_fallback"/);
+    assert.match(workerProtocol, /capture_source:\s*z\.enum\(\["natural", "dom_fallback", "api_fallback"\]\)\.optional\(\)/);
+    assert.match(rustProtocol, /pub capture_source: Option<String>/);
+    assert.match(frontendProtocol, /capture_source\?: "natural" \| "dom_fallback" \| "api_fallback"/);
+    assert.match(canaryScript, /const source = event\.payload\?\.capture_source \?\? "unknown"/);
+    assert.match(canaryScript, /source=\$\{source\}/);
+  });
+
+  it("keeps Boss HTML login/risk responses and empty lists from becoming false success", () => {
+    const workerRun = readProjectFile("packages/boss-crawler-worker/src/modes/auto/run.ts");
+    const workerShared = readProjectFile("packages/boss-crawler-worker/src/modes/auto/shared.ts");
+
+    assert.match(workerShared, /response_url\?: string/);
+    assert.match(workerShared, /content_type\?: string/);
+    assert.match(workerShared, /text\?: string/);
+    assert.match(workerShared, /res\.status === 401/);
+    assert.match(workerShared, /contentType\.includes\("text\/html"\)/);
+    assert.match(workerShared, /text\.includes\("验证码"\)/);
+    assert.match(workerShared, /text\.includes\("geetest"\)/);
+    assert.match(workerRun, /total_extracted_job_list_items === 0/);
+    assert.match(workerRun, /没有采集到任何岗位列表数据/);
+    assert.match(workerRun, /total_stable_job_ids === 0/);
+    assert.match(workerRun, /未解析到稳定岗位 ID/);
   });
 
   it("keeps job review commands local-first without automatic apply or send actions", () => {
@@ -890,9 +1053,9 @@ describe("review workflow contract", () => {
     const greetingCommand = readProjectFile("src-tauri/src/commands/ai/greeting.rs");
 
     assert.match(jobItem, /AI 结果：\{\{ aiAuditStatusLabel\(aiAuditStatus\) \}\}/);
-    assert.match(jobItem, /只保留原始详情和复制入口。/);
     assert.match(jobItem, /岗位详情/);
     assert.match(jobItem, /复制/);
+    assert.match(jobItem, /复制打招呼/);
     assert.match(greetingCommand, /ensure_greeting_allowed_review_status/);
     assert.match(greetingCommand, /ready_to_apply/);
     assert.match(greetingCommand, /greeting_requires_manual_ready_to_apply_review_status/);
@@ -957,7 +1120,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /function formatApplicationFilterTrace/);
     assert.match(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
     assert.match(jobsLogic, /通过筛选规则/);
-    assert.match(jobsLogic, /【Job Sync 投递材料包】/);
+    assert.match(jobsLogic, /【JobPilot 投递材料包】/);
     assert.match(jobsLogic, /简历工作区：\/resume-workspace\?jobId=/);
     assert.match(jobsLogic, /getResumeWorkspaceStatusForJob/);
     assert.match(jobsLogic, /async function loadResumeWorkspaceStatus/);
@@ -1014,9 +1177,9 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /buildApplicationReadinessGaps/);
     assert.match(jobsLogic, /buildApplicationPacket/);
     assert.match(jobItem, /AI 结果：\{\{ aiAuditStatusLabel\(aiAuditStatus\) \}\}/);
-    assert.match(jobItem, /只保留原始详情和复制入口。/);
     assert.match(jobItem, /岗位详情/);
     assert.match(jobItem, /复制/);
+    assert.match(jobItem, /复制打招呼/);
     assert.match(jobsLogic, /updateReviewStatus/);
     assert.match(jobsLogic, /applyReviewStatus/);
     assert.match(jobItem, /@click="\$emit\('open-source-url', job\)"/);
@@ -1224,7 +1387,7 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeHint/);
     assert.match(filterProfile, /sourcePlatformOptions: JOB_SOURCE_PLATFORM_OPTIONS/);
-    assert.match(filterProfile, /允许 Boss 和所有外部保留来源岗位进入筛选和 Top 20/);
+    assert.match(filterProfile, /允许 Boss、V2EX、LinuxDo 等已支持自动采集来源进入筛选和 Top 20/);
     assert.match(crawlTypes, /JOB_SOURCE_PLATFORM_OPTIONS/);
     assert.match(crawlTypes, /MANUAL_IMPORT_SOURCE_PLATFORMS/);
     assert.match(crawlTypes, /manual_import/);
@@ -1253,6 +1416,18 @@ describe("review workflow contract", () => {
     assert.match(dbTests, /liepin/);
     assert.match(dbTests, /manual_import/);
     assert.match(dbTests, /enabled == 1/);
+  });
+
+  it("shows feedback when refreshing platform login status", () => {
+    const settingsPage = readProjectFile("src/pages/Settings.vue");
+
+    assert.match(settingsPage, /loginRefreshingPlatform/);
+    assert.match(settingsPage, /loginMessage/);
+    assert.match(settingsPage, /refreshPlatformLogin\(source\.platform, true\)/);
+    assert.match(settingsPage, /检查中…/);
+    assert.match(settingsPage, /刷新状态/);
+    assert.match(settingsPage, /登录状态已刷新/);
+    assert.match(settingsPage, /ui-status-success/);
   });
 
   it("keeps release packaging platform-aware for the Mac-first Tauri path", () => {
@@ -1379,17 +1554,22 @@ describe("review workflow contract", () => {
     assert.match(settingsPage, /baseUrl: baseUrl\.value\.trim\(\) \|\| null/);
   });
 
-  it("keeps saved worker proxy settings wired to worker environment", () => {
+  it("keeps saved network proxy settings wired to worker environment and Telegram", () => {
     const settingsPage = readProjectFile("src/pages/Settings.vue");
     const settingsCommand = readProjectFile("src-tauri/src/commands/settings.rs");
     const settingsCore = readProjectFile("src-tauri/src/settings.rs");
 
     assert.match(settingsPage, /网络代理/);
-    assert.match(settingsPage, /Worker 代理 URL/);
+    assert.match(settingsPage, /网络代理 URL/);
+    assert.match(settingsPage, /Telegram 通知/);
     assert.match(settingsPage, /proxyUrl/);
     assert.match(settingsPage, /proxyUrl: proxyUrl\.value\.trim\(\) \|\| null/);
     assert.match(settingsCommand, /proxy_url: Option<String>/);
     assert.match(settingsCommand, /current\.proxy_url = opt_trimmed\(proxy_url\)/);
+    assert.match(settingsCommand, /fn telegram_agent\(settings: &settings::AppSettings\)/);
+    assert.match(settingsCommand, /ureq::Proxy::new\(&proxy_url\)/);
+    assert.match(settingsCommand, /builder = builder\.proxy\(proxy\)/);
+    assert.match(settingsCommand, /telegram_sender_uses_saved_proxy_url/);
     assert.match(settingsCore, /pub proxy_url: Option<String>/);
     assert.match(settingsCore, /cmd\.env\("HTTP_PROXY", &v\)/);
     assert.match(settingsCore, /cmd\.env\("HTTPS_PROXY", &v\)/);

@@ -12,6 +12,11 @@ fn has_boss_session(app_data_dir: &std::path::Path) -> bool {
         && storage::boss_local_storage_path(app_data_dir).is_file()
 }
 
+fn has_linuxdo_session(app_data_dir: &std::path::Path) -> bool {
+    storage::linuxdo_cookies_path(app_data_dir).is_file()
+        && storage::linuxdo_local_storage_path(app_data_dir).is_file()
+}
+
 fn normalize_login_platform(source_platform: Option<&str>) -> Result<&'static str, String> {
     match source_platform
         .map(str::trim)
@@ -21,6 +26,7 @@ fn normalize_login_platform(source_platform: Option<&str>) -> Result<&'static st
         .as_str()
     {
         "boss" => Ok("boss"),
+        "linuxdo" => Ok("linuxdo"),
         other => Err(format!("当前平台暂不支持登录：{other}")),
     }
 }
@@ -32,8 +38,25 @@ pub fn get_login_status(
 ) -> Result<bool, String> {
     let platform = normalize_login_platform(source_platform.as_deref())?;
     Ok(match platform {
-        _ => has_boss_session(sidecar.app_data_dir()),
+        "boss" => has_boss_session(sidecar.app_data_dir()),
+        "linuxdo" => has_linuxdo_session(sidecar.app_data_dir()),
+        _ => false,
     })
+}
+
+fn build_login_payload(app_data_dir: &std::path::Path, platform: &str) -> LoginStartPayload {
+    let user_data_dir = match platform {
+        "boss" => Some(storage::boss_browser_profile_path(app_data_dir)),
+        "linuxdo" => Some(storage::linuxdo_browser_profile_path(app_data_dir)),
+        _ => None,
+    }
+    .map(|path| path.to_string_lossy().to_string());
+
+    LoginStartPayload {
+        source_platform: Some(platform.to_string()),
+        executable_path: settings::browser_executable_path(app_data_dir),
+        user_data_dir,
+    }
 }
 
 #[tauri::command]
@@ -42,11 +65,7 @@ pub fn start_login(
     source_platform: Option<String>,
 ) -> Result<(), String> {
     let platform = normalize_login_platform(source_platform.as_deref())?;
-    let payload = LoginStartPayload {
-        source_platform: Some(platform.to_string()),
-        executable_path: settings::browser_executable_path(sidecar.app_data_dir()),
-        user_data_dir: None,
-    };
+    let payload = build_login_payload(sidecar.app_data_dir(), platform);
     sidecar
         .send(&CommandIn::LoginStart(payload))
         .map_err(|e| e.to_string())?;
@@ -91,7 +110,42 @@ mod tests {
     #[test]
     fn login_platform_defaults_to_boss_and_rejects_unknown() {
         assert_eq!(normalize_login_platform(None).expect("default"), "boss");
-        assert!(normalize_login_platform(Some("linuxdo")).is_err());
+        assert_eq!(
+            normalize_login_platform(Some("linuxdo")).expect("linuxdo"),
+            "linuxdo"
+        );
         assert!(normalize_login_platform(Some("liepin")).is_err());
+    }
+
+    #[test]
+    fn linuxdo_login_payload_uses_linuxdo_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+
+        let payload = build_login_payload(app_data_dir, "linuxdo");
+        let expected_user_data_dir = storage::linuxdo_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(payload.source_platform.as_deref(), Some("linuxdo"));
+        assert_eq!(
+            payload.user_data_dir.as_deref(),
+            Some(expected_user_data_dir.as_str())
+        );
+    }
+
+    #[test]
+    fn boss_login_payload_uses_boss_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+
+        let payload = build_login_payload(app_data_dir, "boss");
+        let expected_user_data_dir = storage::boss_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(payload.source_platform.as_deref(), Some("boss"));
+        assert_eq!(
+            payload.user_data_dir.as_deref(),
+            Some(expected_user_data_dir.as_str())
+        );
     }
 }

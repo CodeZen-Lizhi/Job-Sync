@@ -23,7 +23,7 @@ export type SidecarEvent =
     }
   | {
       type: "JOB_LIST_CAPTURED";
-      payload: { keyword?: string; filters?: unknown; raw: unknown };
+      payload: { keyword?: string; filters?: unknown; capture_source?: "natural" | "dom_fallback" | "api_fallback"; raw: unknown };
     }
   | {
       type: "JOB_DETAIL_CAPTURED";

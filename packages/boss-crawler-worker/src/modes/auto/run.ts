@@ -1,3 +1,5 @@
+import type { HTTPResponse, Page } from "puppeteer";
+
 import { launchBrowser } from "../../browser/launch.js";
 import { blockNavigation } from "../../browser/navigationLock.js";
 import { collectBossMetaByListening } from "../../boss/meta.js";
@@ -7,22 +9,421 @@ import {
   hasBossProfileFilter,
   normalizeBossProfileFilter,
 } from "../../boss/profileFilter.js";
-import { API_PATH, URLS } from "../../boss/selectors.js";
+import { API_PATH, JOB_CARD_SELECTORS, URLS } from "../../boss/selectors.js";
 import { delayWithJitter } from "../../utils/delay.js";
 import { SageTime } from "../../utils/sage-time.js";
 
-import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, normalizeFilterVariants, readApiCode, readApiMessage, safeError, setLocalStorage } from "./shared.js";
+import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, closeBrowserRespectingHumanVerification, createHumanVerificationTracker, extractJobList, fetchJsonFromPage, isAbnormalAccess, matchesExpectedJobListPayload, normalizeFilterVariants, readApiCode, readApiMessage, readHttpResponseAsPageFetchJsonResult, requestBossJsonWithRiskRecovery, safeError, setLocalStorage, waitUntilBossLoginReady, waitUntilNoRiskUrl } from "./shared.js";
+import type { ApiFilters, PageFetchJsonResult } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
 import { runV2exFeedMode } from "../../v2ex/feed.js";
+import { runLinuxDoMode } from "../../linuxdo/feed.js";
 
-export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeContext): Promise<void> {
+const NATURAL_JOB_LIST_TIMEOUT_MS = 20_000;
+const DEFAULT_DETAIL_FETCH_LIMIT = 0;
+const FILTER_MATCH_KEYS: Array<keyof ApiFilters> = [
+  "city",
+  "multiSubway",
+  "multiBusinessDistrict",
+  "position",
+  "jobType",
+  "salary",
+  "experience",
+  "degree",
+  "industry",
+  "scale",
+  "stage",
+];
+
+function setSearchParamIfPresent(params: URLSearchParams, key: keyof ApiFilters, value: string): void {
+  if (value) params.set(key, value);
+}
+
+function buildBossSearchPageUrl(keyword: string, pageIndex: number, filters: ApiFilters): string {
+  const url = new URL(URLS.GEEK_JOBS);
+  url.searchParams.set("query", keyword);
+  url.searchParams.set("page", String(pageIndex));
+  setSearchParamIfPresent(url.searchParams, "city", filters.city);
+  setSearchParamIfPresent(url.searchParams, "multiSubway", filters.multiSubway);
+  setSearchParamIfPresent(url.searchParams, "multiBusinessDistrict", filters.multiBusinessDistrict);
+  setSearchParamIfPresent(url.searchParams, "position", filters.position);
+  setSearchParamIfPresent(url.searchParams, "jobType", filters.jobType);
+  setSearchParamIfPresent(url.searchParams, "salary", filters.salary);
+  setSearchParamIfPresent(url.searchParams, "experience", filters.experience);
+  setSearchParamIfPresent(url.searchParams, "degree", filters.degree);
+  setSearchParamIfPresent(url.searchParams, "industry", filters.industry);
+  setSearchParamIfPresent(url.searchParams, "scale", filters.scale);
+  setSearchParamIfPresent(url.searchParams, "stage", filters.stage);
+  return url.toString();
+}
+
+function collectJobListResponseParams(response: HTTPResponse): URLSearchParams {
+  const params = new URLSearchParams();
+  const merge = (next: URLSearchParams): void => {
+    for (const [key, value] of next.entries()) {
+      if (!params.has(key)) params.set(key, value);
+    }
+  };
+
+  try {
+    merge(new URL(response.url()).searchParams);
+  } catch {
+    // Ignore malformed URLs from the browser layer.
+  }
+
+  const body = response.request().postData();
+  if (body) {
+    try {
+      merge(new URLSearchParams(body));
+    } catch {
+      // Ignore non-form post bodies.
+    }
+  }
+
+  return params;
+}
+
+function matchesExpectedJobListResponse(
+  response: HTTPResponse,
+  keyword: string,
+  pageIndex: number,
+  filters: ApiFilters,
+): boolean {
+  if (!response.url().includes(API_PATH.JOB_LIST)) return false;
+  const params = collectJobListResponseParams(response);
+
+  if (params.get("query") !== keyword) return false;
+  if (params.get("page") !== String(pageIndex)) return false;
+  if (filters.city && params.get("city") !== filters.city) return false;
+  if (!matchesExpectedFilterParams(params, filters)) return false;
+  return true;
+}
+
+function matchesExpectedFilterParams(params: URLSearchParams, filters: ApiFilters): boolean {
+  for (const key of FILTER_MATCH_KEYS) {
+    const expected = filters[key];
+    if (!expected) continue;
+    if (params.get(key) !== expected) return false;
+  }
+  return true;
+}
+
+function matchesBossSearchPageUrl(currentUrl: string, keyword: string, pageIndex: number, filters: ApiFilters): boolean {
+  try {
+    const parsed = new URL(currentUrl);
+    if (!parsed.pathname.includes("/web/geek/jobs")) return false;
+    if (parsed.searchParams.get("query") !== keyword) return false;
+    if (parsed.searchParams.get("page") !== String(pageIndex)) return false;
+    if (filters.city && parsed.searchParams.get("city") !== filters.city) return false;
+    if (!matchesExpectedFilterParams(parsed.searchParams, filters)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchJobListFromNaturalPage(
+  page: Page,
+  ctx: ModeContext,
+  keyword: string,
+  pageIndex: number,
+  pageSize: number,
+  filters: ApiFilters,
+  warn: (msg: string) => void,
+): Promise<PageFetchJsonResult | null> {
+  const searchUrl = buildBossSearchPageUrl(keyword, pageIndex, filters);
+  const responsePromise = page
+    .waitForResponse((response) => matchesExpectedJobListResponse(response, keyword, pageIndex, filters), {
+      timeout: NATURAL_JOB_LIST_TIMEOUT_MS,
+    })
+    .catch(() => null);
+
+  const gotoError = await page
+    .goto(searchUrl, { waitUntil: "domcontentloaded" })
+    .then(() => null)
+    .catch((err) => String(err));
+
+  await waitUntilNoRiskUrl(page, ctx);
+  if (ctx.signal.aborted) return null;
+
+  const response = await responsePromise;
+  if (response) {
+    const natural = await readHttpResponseAsPageFetchJsonResult(response);
+    if (natural.json && typeof natural.json === "object" && readApiCode(natural.json) === 0) {
+      if (!matchesExpectedJobListPayload(natural.json, keyword, pageIndex, filters)) {
+        warn(`忽略不匹配的自然 joblist 响应：keyword=${keyword} page=${pageIndex}`);
+      } else {
+        ctx.emit({
+          type: "LOG",
+          payload: {
+            level: "info",
+            message: `已捕获搜索页自然 joblist 响应：keyword=${keyword} page=${pageIndex}`,
+          },
+        });
+        return { ...natural, capture_source: "natural" };
+      }
+    } else {
+      return { ...natural, capture_source: "natural" };
+    }
+  }
+
+  if (gotoError) return { status: 0, json: null, error: gotoError };
+  if (!matchesBossSearchPageUrl(page.url(), keyword, pageIndex, filters)) {
+    warn(`当前搜索页 URL 与请求不匹配，跳过 DOM 列表恢复以避免错页入库：${page.url()}`);
+    return null;
+  }
+
+  const domResult = await extractJobListFromDomPage(page, keyword, pageIndex, pageSize, filters);
+  if (domResult) {
+    warn(`未捕获自然 joblist 响应，已从搜索页 DOM 列表恢复 ${domResult.count} 个岗位。`);
+    return { status: 200, json: domResult.raw, capture_source: "dom_fallback" };
+  }
+
+  warn(`未捕获自然 joblist 响应，且页面 DOM 未解析到岗位列表，回退到接口请求：${searchUrl}`);
+  return null;
+}
+
+async function extractJobListFromDomPage(
+  page: Page,
+  keyword: string,
+  pageIndex: number,
+  pageSize: number,
+  filters: ApiFilters,
+): Promise<{ raw: any; count: number } | null> {
+  const raw = await page.evaluate(
+    (selectors, expectedPageSize, currentKeyword, currentPage, currentFilters) => {
+      const textOf = (root: Element, candidates: string[]): string => {
+        for (const selector of candidates) {
+          const element = root.querySelector(selector);
+          const text = element?.textContent?.replace(/\s+/g, " ").trim();
+          if (text) return text;
+        }
+        return "";
+      };
+
+      const attrOf = (root: Element, candidates: string[], name: string): string => {
+        for (const selector of candidates) {
+          const element = root.querySelector(selector);
+          const value = element?.getAttribute(name)?.trim();
+          if (value) return value;
+        }
+        return "";
+      };
+
+      const directAttrOf = (root: Element, names: string[]): string => {
+        for (const name of names) {
+          const value = root.getAttribute(name)?.trim();
+          if (value) return value;
+          const child = root.querySelector(`[${name}]`);
+          const childValue = child?.getAttribute(name)?.trim();
+          if (childValue) return childValue;
+        }
+        return "";
+      };
+
+      const parseIdsFromHref = (href: string): { securityId: string; lid: string } => {
+        if (!href) return { securityId: "", lid: "" };
+        try {
+          const parsed = new URL(href, window.location.href);
+          const lid = parsed.searchParams.get("lid")?.trim() ?? "";
+          const fromQuery =
+            parsed.searchParams.get("securityId")?.trim() ||
+            parsed.searchParams.get("security_id")?.trim() ||
+            parsed.searchParams.get("encryptJobId")?.trim() ||
+            parsed.searchParams.get("encrypt_job_id")?.trim() ||
+            "";
+          if (fromQuery) return { securityId: fromQuery, lid };
+          const fromPath = parsed.pathname.match(/\/job_detail\/([^/.]+)(?:\.html)?/i)?.[1]?.trim() ?? "";
+          return { securityId: fromPath, lid };
+        } catch {
+          return { securityId: "", lid: "" };
+        }
+      };
+
+      const cards = Array.from(document.querySelectorAll(selectors.join(",")));
+      const seen = new Set<string>();
+      const jobList: Record<string, unknown>[] = [];
+
+      for (const card of cards) {
+        const href = attrOf(card, [
+          'a[href*="job_detail"]',
+          'a[href*="/web/geek/job"]',
+          "a.job-name",
+          "a",
+        ], "href");
+        const parsedIds = parseIdsFromHref(href);
+        const securityId =
+          directAttrOf(card, [
+            "data-securityid",
+            "data-security-id",
+            "data-encrypt-job-id",
+            "data-encryptjobid",
+            "data-jobid",
+            "data-jid",
+            "data-id",
+          ]) || parsedIds.securityId;
+        if (!securityId || seen.has(securityId)) continue;
+
+        const jobName = textOf(card, [
+          ".job-name",
+          ".job-title",
+          ".job-card-left .title",
+          "[class*='job-name']",
+          "[class*='job-title']",
+          'a[href*="job_detail"]',
+        ]);
+        if (!jobName) continue;
+
+        seen.add(securityId);
+
+        const tagTexts = Array.from(card.querySelectorAll(".tag-list li, .tag-item, .job-tags span, [class*='tag'] li"))
+          .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
+          .filter(Boolean);
+        const description = textOf(card, [
+          ".info-desc",
+          ".job-card-footer",
+          ".job-desc",
+          "[class*='desc']",
+        ]);
+        const brandName = textOf(card, [
+          ".company-name",
+          ".company-text .name",
+          ".company-info .name",
+          "[class*='company-name']",
+          "[class*='brand-name']",
+        ]);
+        const bossName = textOf(card, [
+          ".boss-name",
+          ".info-publis .name",
+          ".info-public .name",
+          "[class*='boss-name']",
+        ]);
+        const locationName = textOf(card, [
+          ".job-area",
+          ".job-location",
+          "[class*='job-area']",
+          "[class*='location']",
+        ]);
+        const salaryDesc = textOf(card, [
+          ".salary",
+          ".job-salary",
+          ".job-limit .red",
+          ".red",
+          "[class*='salary']",
+        ]);
+        const companyTags = Array.from(card.querySelectorAll(".company-tag-list li, .company-text p, [class*='company-tag'] li"))
+          .map((element) => element.textContent?.replace(/\s+/g, " ").trim() ?? "")
+          .filter(Boolean);
+
+        jobList.push({
+          securityId,
+          encryptJobId: securityId,
+          lid: directAttrOf(card, ["data-lid"]) || parsedIds.lid || undefined,
+          jobName,
+          positionName: jobName,
+          salaryDesc,
+          cityName: locationName.split(/[·\s]/).filter(Boolean)[0] ?? locationName,
+          locationName,
+          jobExperience: tagTexts[0] ?? "",
+          experienceName: tagTexts[0] ?? "",
+          jobDegree: tagTexts[1] ?? "",
+          degreeName: tagTexts[1] ?? "",
+          bossName,
+          brandName,
+          brandIndustry: companyTags[0] ?? "",
+          brandStageName: companyTags[1] ?? "",
+          brandScaleName: companyTags.find((item) => item.includes("人")) ?? "",
+          jobLabels: tagTexts,
+          skills: tagTexts,
+          welfareList: description ? [description] : [],
+          postDescription: description,
+          sourceUrl: href,
+          domFallback: true,
+        });
+      }
+
+      if (jobList.length === 0) return null;
+
+      const next = document.querySelector(
+        ".options-pages a:last-child, .page a:last-child, a[ka*='page-next'], .pagination-next, .ui-pagination-next",
+      );
+      const nextText = next?.textContent?.trim() ?? "";
+      const nextClass = next?.getAttribute("class") ?? "";
+      const nextHref = next?.getAttribute("href") ?? "";
+      const nextDisabled =
+        !next ||
+        nextClass.includes("disabled") ||
+        nextClass.includes("disable") ||
+        next.getAttribute("aria-disabled") === "true" ||
+        nextHref === "javascript:;";
+      const hasMore = (!nextDisabled && (nextText.includes("下一") || !!nextHref)) || jobList.length >= expectedPageSize;
+
+      return {
+        code: 0,
+        message: "ok",
+        zpData: {
+          jobList,
+          hasMore,
+          source: "dom_fallback",
+          keyword: currentKeyword,
+          page: currentPage,
+          filters: currentFilters,
+        },
+      };
+    },
+    JOB_CARD_SELECTORS,
+    pageSize,
+    keyword,
+    pageIndex,
+    filters,
+  );
+
+  if (!raw || typeof raw !== "object") return null;
+  const count = Array.isArray((raw as any).zpData?.jobList) ? (raw as any).zpData.jobList.length : 0;
+  return count > 0 ? { raw, count } : null;
+}
+
+async function requestJobList(
+  page: Page,
+  ctx: ModeContext,
+  keyword: string,
+  pageIndex: number,
+  pageSize: number,
+  filters: ApiFilters,
+  warn: (msg: string) => void,
+): Promise<PageFetchJsonResult> {
+  const natural = await fetchJobListFromNaturalPage(page, ctx, keyword, pageIndex, pageSize, filters, warn);
+  if (natural) return natural;
+
+  const jobListUrl = `https://www.zhipin.com${API_PATH.JOB_LIST}?_=${Date.now()}`;
+  const jobListBody = buildJobListBody(keyword, pageIndex, pageSize, filters);
+  const apiResult = await fetchJsonFromPage(page, jobListUrl, {
+    method: "POST",
+    body: jobListBody,
+    timeoutMs: 60_000,
+  });
+  return { ...apiResult, capture_source: "api_fallback" };
+}
+
+export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeContext): Promise<void> {
+  if (payload.task.source_platform === "linuxdo") {
+    try {
+      await runLinuxDoMode(payload, baseCtx);
+    } catch (err) {
+      baseCtx.emit({ type: "ERROR", payload: safeError(err) });
+    } finally {
+      baseCtx.emit({ type: "FINISHED" });
+    }
+    return;
+  }
+
   if (payload.task.source_platform === "v2ex") {
     try {
-      await runV2exFeedMode(payload, ctx);
+      await runV2exFeedMode(payload, baseCtx);
     } catch (err) {
-      ctx.emit({ type: "ERROR", payload: safeError(err) });
+      baseCtx.emit({ type: "ERROR", payload: safeError(err) });
     } finally {
-      ctx.emit({ type: "FINISHED" });
+      baseCtx.emit({ type: "FINISHED" });
     }
     return;
   }
@@ -30,40 +431,30 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
   const keywords = payload.task.keywords ?? [];
   const limits = (payload.task.limits ?? {}) as any;
   const maxPages: number = typeof limits.maxPages === "number" ? limits.maxPages : 3;
-  const maxJobs: number = typeof limits.maxJobs === "number" ? limits.maxJobs : Number.POSITIVE_INFINITY;
+  const rawDetailFetchLimit =
+    typeof limits.bossDetailFetchLimit === "number"
+      ? limits.bossDetailFetchLimit
+      : limits.detailFetchLimit;
+  const detailFetchLimit: number =
+    typeof rawDetailFetchLimit === "number" && Number.isFinite(rawDetailFetchLimit) && rawDetailFetchLimit > 0
+      ? Math.floor(rawDetailFetchLimit)
+      : DEFAULT_DETAIL_FETCH_LIMIT;
   const delayMs: number = typeof limits.delayMs === "number" ? limits.delayMs : 800;
   const jitterMs: number = typeof limits.jitterMs === "number" ? limits.jitterMs : 1000;
   const pageSize: number = typeof limits.pageSize === "number" ? limits.pageSize : 15;
+  const syncBossMeta: boolean = limits.syncBossMeta === true;
   const sageTime = new SageTime({
     enabled: typeof limits.sageTimeEnabled === "boolean" ? limits.sageTimeEnabled : true,
     maxOps: typeof limits.sageTimeMaxOps === "number" ? limits.sageTimeMaxOps : 100,
     pauseMinutes: typeof limits.sageTimePauseMinutes === "number" ? limits.sageTimePauseMinutes : 15,
   });
+  const verificationTracker = createHumanVerificationTracker(baseCtx);
+  const ctx = verificationTracker.ctx;
   const log = (msg: string): void => {
     ctx.emit({ type: "LOG", payload: { level: "info", message: msg } });
   };
   const warn = (msg: string): void => {
     ctx.emit({ type: "LOG", payload: { level: "warn", message: msg } });
-  };
-  const stopForBossRiskControl = (status: "captcha" | "denied", message: string): never => {
-    const finalMessage = `Boss 风控已触发，已退出本次采集：${message}`;
-    ctx.emit({ type: "LOGIN_STATUS", payload: { status, message: finalMessage } });
-    warn(finalMessage);
-    throw new Error(finalMessage);
-  };
-  const stopForRiskUrl = (): void => {
-    const risk = detectRiskUrl(page.url());
-    if (risk) {
-      stopForBossRiskControl(risk, `检测到风控页面：${page.url()}`);
-    }
-  };
-  const stopForApiRiskControl = (label: string, raw: any): never => {
-    const msg = readApiMessage(raw);
-    const code = readApiCode(raw);
-    return stopForBossRiskControl(
-      "captcha",
-      `${label} 接口返回访问异常：${msg || `code=${String(code ?? 37)}`}`,
-    );
   };
 
   const filterVariants = normalizeFilterVariants(payload.task.filters, warn);
@@ -72,9 +463,18 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
   let captured_job_list = 0;
   let captured_job_detail = 0;
+  let attempted_job_detail = 0;
   let filtered_job = 0;
+  let total_extracted_job_list_items = 0;
+  let total_stable_job_ids = 0;
+  let detailFetchSkippedLogged = false;
 
-  const { browser, page } = await launchBrowser({ headless: false });
+  const { browser, page } = await launchBrowser({
+    headless: false,
+    user_data_dir: payload.user_data_dir,
+    stealth: false,
+    preserve_on_disconnect: true,
+  });
   try {
     await blockNavigation(page, { allow_domain_suffixes: ["zhipin.com"] });
 
@@ -89,26 +489,29 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
       await setLocalStorage(page, local_storage as Record<string, string>);
     }
 
+    await page.goto(URLS.USER, { waitUntil: "domcontentloaded" });
+    if (!await waitUntilBossLoginReady(page, ctx)) return;
+
     await page.goto(URLS.GEEK_JOBS, { waitUntil: "domcontentloaded" });
 
-    stopForRiskUrl();
+    await waitUntilNoRiskUrl(page, ctx);
     if (ctx.signal.aborted) return;
 
-    const meta = await collectBossMetaByListening(page, ctx.signal).catch(() => null);
-    if (meta && (meta.city_group || meta.filter_conditions || meta.industry_filter_exemption)) {
-      ctx.emit({ type: "BOSS_META_SYNCED", payload: meta });
+    if (syncBossMeta) {
+      const meta = await collectBossMetaByListening(page, ctx.signal).catch(() => null);
+      if (meta && (meta.city_group || meta.filter_conditions || meta.industry_filter_exemption)) {
+        ctx.emit({ type: "BOSS_META_SYNCED", payload: meta });
+      }
     }
 
     const seenJobIds = new Set<string>();
     for (const keyword of keywords) {
       if (ctx.signal.aborted) break;
-      if (captured_job_detail >= maxJobs) break;
 
       log(`开始关键词：${keyword}`);
 
       for (const [variantIndex, apiFilters] of filterVariants.entries()) {
         if (ctx.signal.aborted) break;
-        if (captured_job_detail >= maxJobs) break;
         const variantLabel = apiFilters.city
           ? `城市 ${apiFilters.city}（${variantIndex + 1}/${filterVariants.length}）`
           : `默认筛选（${variantIndex + 1}/${filterVariants.length}）`;
@@ -117,13 +520,10 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
         for (let pageIndex = 1; pageIndex <= maxPages; pageIndex++) {
           if (ctx.signal.aborted) break;
-          if (captured_job_detail >= maxJobs) break;
           if (!hasMore) break;
 
-          const risk = detectRiskUrl(page.url());
-          if (risk) {
-            stopForBossRiskControl(risk, `检测到风控页面：${page.url()}`);
-          }
+          await waitUntilNoRiskUrl(page, ctx);
+          if (ctx.signal.aborted) break;
 
           ctx.emit({
             type: "PROGRESS",
@@ -131,19 +531,12 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
           });
 
           await sageTime.checkpoint(ctx.signal, log);
-          const jobListUrl = `https://www.zhipin.com${API_PATH.JOB_LIST}?_=${Date.now()}`;
-          const jobListBody = buildJobListBody(keyword, pageIndex, pageSize, apiFilters);
-          let jobListRes = await fetchJsonFromPage(page, jobListUrl, {
-            method: "POST",
-            body: jobListBody,
-            timeoutMs: 60_000,
-          });
+          let jobListRes = await requestBossJsonWithRiskRecovery(page, ctx, "joblist", () =>
+            requestJobList(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn),
+          );
 
           if (ctx.signal.aborted) break;
-
-          if (jobListRes.status === 403) {
-            stopForBossRiskControl("denied", "joblist 接口返回 403（可能触发风控）。");
-          }
+          if (!jobListRes) break;
 
           if (!jobListRes.json || typeof jobListRes.json !== "object") {
             ctx.emit({
@@ -155,7 +548,9 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
 
           let jobListRaw = jobListRes.json as any;
           if (readApiCode(jobListRaw) !== 0 && isAbnormalAccess(jobListRaw)) {
-            stopForApiRiskControl("joblist", jobListRaw);
+            const msg = readApiMessage(jobListRaw);
+            warn(`joblist 接口仍返回访问异常：${msg || `code=${String(readApiCode(jobListRaw) ?? 37)}`}`);
+            break;
           }
 
           if (readApiCode(jobListRaw) !== 0) {
@@ -170,8 +565,25 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
             return;
           }
 
+          if (!matchesExpectedJobListPayload(jobListRaw, keyword, pageIndex, apiFilters)) {
+            warn(`joblist 响应参数与当前请求不匹配，已跳过以避免错页入库：keyword=${keyword} page=${pageIndex} source=${jobListRes.capture_source ?? "unknown"}`);
+            hasMore = false;
+            continue;
+          }
+
           const extracted = extractJobList(jobListRaw);
           hasMore = extracted.hasMore;
+          if (extracted.jobs.length === 0) {
+            warn(`joblist 未返回岗位列表：keyword=${keyword} page=${pageIndex} source=${jobListRes.capture_source ?? "unknown"}`);
+            hasMore = false;
+            continue;
+          }
+          total_extracted_job_list_items += extracted.jobs.length;
+          const stableJobIdCount = extracted.jobs.filter((job) => !!pickBossJobIdFromListItem(job)).length;
+          total_stable_job_ids += stableJobIdCount;
+          if (stableJobIdCount === 0) {
+            warn(`joblist 返回了 ${extracted.jobs.length} 个岗位，但缺少稳定岗位 ID：keyword=${keyword} page=${pageIndex}`);
+          }
           let jobsToCapture = extracted.jobs;
 
           if (profileFilterEnabled) {
@@ -204,6 +616,7 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
             payload: {
               keyword,
               filters: payload.task.filters,
+              capture_source: jobListRes.capture_source,
               raw: jobListRaw,
             },
           });
@@ -212,43 +625,54 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
             payload: { keyword, current_page: pageIndex, captured_job_list, captured_job_detail, filtered_job },
           });
 
+          if (detailFetchLimit <= 0) {
+            if (!detailFetchSkippedLogged) {
+              log("Boss 本轮优先使用列表数据入库，不主动请求详情接口；需要完整 JD 时可稍后刷新岗位证据。");
+              detailFetchSkippedLogged = true;
+            }
+            continue;
+          }
+
           for (const job of jobsToCapture) {
             if (ctx.signal.aborted) break;
-            if (captured_job_detail >= maxJobs) break;
+            if (attempted_job_detail >= detailFetchLimit) break;
 
             const securityId = pickBossJobIdFromListItem(job);
             if (!securityId) continue;
             if (seenJobIds.has(securityId)) continue;
+            seenJobIds.add(securityId);
+            attempted_job_detail += 1;
 
             const lid = typeof job?.lid === "string" ? job.lid : undefined;
 
             await sageTime.checkpoint(ctx.signal, log);
             const detailUrl = buildJobDetailUrl(securityId, lid);
-            let detailResGet = await fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 });
+            let detailResGet = await requestBossJsonWithRiskRecovery(page, ctx, "job/detail", () =>
+              fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 }),
+            );
 
             if (ctx.signal.aborted) break;
-
-            if (detailResGet.status === 403) {
-              stopForBossRiskControl("denied", "job/detail 接口返回 403（可能触发风控）。");
-            }
+            if (!detailResGet) break;
 
             let detailRaw = detailResGet.json as any;
             if (detailRaw && typeof detailRaw === "object" && readApiCode(detailRaw) !== 0 && isAbnormalAccess(detailRaw)) {
-              stopForApiRiskControl("job/detail", detailRaw);
+              const msg = readApiMessage(detailRaw);
+              warn(`job/detail 接口仍返回访问异常：${msg || `code=${String(readApiCode(detailRaw) ?? 37)}`}，securityId=${securityId}`);
+              await delayWithJitter(delayMs, ctx.signal, jitterMs);
+              continue;
             }
             if (!detailRaw || typeof detailRaw !== "object" || detailRaw.code !== 0) {
               const detailBody = buildJobDetailBody(securityId, lid);
-              const detailResPost = await fetchJsonFromPage(page, detailUrl, {
-                method: "POST",
-                body: detailBody,
-                timeoutMs: 60_000,
-              });
+              const detailResPost = await requestBossJsonWithRiskRecovery(page, ctx, "job/detail", () =>
+                fetchJsonFromPage(page, detailUrl, {
+                  method: "POST",
+                  body: detailBody,
+                  timeoutMs: 60_000,
+                }),
+              );
 
               if (ctx.signal.aborted) break;
-
-              if (detailResPost.status === 403) {
-                stopForBossRiskControl("denied", "job/detail 接口返回 403（可能触发风控）。");
-              }
+              if (!detailResPost) break;
 
               detailRaw = detailResPost.json as any;
               if (!detailRaw || typeof detailRaw !== "object") {
@@ -257,7 +681,10 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
                 continue;
               }
               if (readApiCode(detailRaw) !== 0 && isAbnormalAccess(detailRaw)) {
-                stopForApiRiskControl("job/detail", detailRaw);
+                const msg = readApiMessage(detailRaw);
+                warn(`job/detail 接口仍返回访问异常：${msg || `code=${String(readApiCode(detailRaw) ?? 37)}`}，securityId=${securityId}`);
+                await delayWithJitter(delayMs, ctx.signal, jitterMs);
+                continue;
               }
               if (detailRaw.code !== 0) {
                 warn(`job/detail 接口返回异常：code=${String(detailRaw.code)} message=${String(detailRaw.message ?? "")}`);
@@ -266,12 +693,11 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
               }
             }
 
-            seenJobIds.add(securityId);
             captured_job_detail += 1;
             const zp_data = detailRaw?.zpData ?? detailRaw;
             ctx.emit({ type: "JOB_DETAIL_CAPTURED", payload: { encrypt_job_id: securityId, zp_data } });
 
-            if (captured_job_detail >= maxJobs) break;
+            if (attempted_job_detail >= detailFetchLimit) break;
             await delayWithJitter(delayMs, ctx.signal, jitterMs);
           }
 
@@ -279,10 +705,22 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, ctx: ModeConte
         }
       }
     }
+
+    if (!ctx.signal.aborted && total_extracted_job_list_items === 0) {
+      ctx.emit({
+        type: "ERROR",
+        payload: { message: "Boss 本轮没有采集到任何岗位列表数据；请确认关键词/城市条件，或在浏览器窗口完成登录/验证后重试。" },
+      });
+    } else if (!ctx.signal.aborted && total_stable_job_ids === 0) {
+      ctx.emit({
+        type: "ERROR",
+        payload: { message: "Boss 本轮采集到岗位列表，但未解析到稳定岗位 ID，已停止本轮入库以避免假成功。" },
+      });
+    }
   } catch (err) {
     ctx.emit({ type: "ERROR", payload: safeError(err) });
   } finally {
-    await browser.close().catch(() => undefined);
+    await closeBrowserRespectingHumanVerification(browser, ctx, verificationTracker, "Boss 自动采集");
     ctx.emit({ type: "FINISHED" });
   }
 }

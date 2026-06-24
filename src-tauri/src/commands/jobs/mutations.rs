@@ -612,13 +612,17 @@ mod tests {
         )
         .expect("mark terminal state");
 
-        assert_eq!(filter_eligible(&conn, "job_restore_candidate"), 0);
+        assert_eq!(filter_eligible(&conn, "job_restore_candidate"), 1);
         let blocked_reason = filter_reason(&conn, "job_restore_candidate");
         assert!(blocked_reason["blocked_by"]
             .as_array()
             .expect("blocked rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("review_status")));
+            .is_empty());
+        assert_eq!(blocked_reason["dimensions"]["review_status"], "ignored");
+        assert_eq!(
+            blocked_reason["dimensions"]["communication_status"],
+            "read_no_reply"
+        );
         assert!(queries::list_review_candidates_on_conn(&conn, Some(20))
             .expect("list blocked candidates")
             .iter()
@@ -729,9 +733,9 @@ mod tests {
             .expect("restore candidate state");
         }
 
-        assert_eq!(filter_eligible(&conn, "job_profile_blocked_restore"), 0);
+        assert_eq!(filter_eligible(&conn, "job_profile_blocked_restore"), 1);
         assert_eq!(filter_eligible(&conn, "job_blacklisted_restore"), 0);
-        assert_eq!(filter_eligible(&conn, "job_company_not_fit_restore"), 0);
+        assert_eq!(filter_eligible(&conn, "job_company_not_fit_restore"), 1);
 
         let candidates =
             queries::list_review_candidates_on_conn(&conn, Some(20)).expect("list candidates");
@@ -739,7 +743,7 @@ mod tests {
             .iter()
             .map(|job| job.encrypt_job_id.as_str())
             .collect::<Vec<_>>();
-        assert!(!candidate_ids.contains(&"job_profile_blocked_restore"));
+        assert!(candidate_ids.contains(&"job_profile_blocked_restore"));
         assert!(!candidate_ids.contains(&"job_blacklisted_restore"));
         assert!(!candidate_ids.contains(&"job_company_not_fit_restore"));
 
@@ -747,8 +751,8 @@ mod tests {
         assert!(hard_filter_reason["blocked_by"]
             .as_array()
             .expect("hard filter rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str) == Some("must_not_keyword")));
+            .is_empty());
+        assert_eq!(hard_filter_reason["dimensions"]["review_status"], "pending");
 
         let blacklist_reason = filter_reason(&conn, "job_blacklisted_restore");
         assert!(blacklist_reason["blocked_by"]
@@ -761,8 +765,10 @@ mod tests {
         assert!(company_reason["blocked_by"]
             .as_array()
             .expect("company state rules")
-            .iter()
-            .any(|item| item.get("rule_type").and_then(Value::as_str)
-                == Some("company_review_status")));
+            .is_empty());
+        assert_eq!(
+            company_reason["dimensions"]["company_review_status"],
+            "manual_not_fit"
+        );
     }
 }

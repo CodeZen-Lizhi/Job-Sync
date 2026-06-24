@@ -13,12 +13,14 @@
 - Frontend selection state:
   - `selectedCollectionSources: JobSourcePlatform[]`
   - multiple collectable platforms may be selected in one automatic run
+  - collection configuration must not expose a generic collection-intent form or a sync-to-platform action; users configure each selected platform directly
 - Frontend task payload:
   - `keywords: string[]`
   - `source_platform: "boss" | "v2ex" | string`
   - `filters: object`
     - Boss: `city`, `salary`, `experience`, `degree`, `industry`, `scale`, `stage`, and `jobType` are the user-facing platform filters known to map to `/wapi/zpgeek/search/joblist.json`; `position`, `multiSubway`, and `multiBusinessDistrict` may pass through internally if available, but must not be surfaced as generic unknown filters.
     - V2EX: `feed_urls?: string[]`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
+    - LinuxDo: `category_url?: string`, `sort_by?: "latest" | "created"`, `recent_days?: number | null`, `keywords?: string[]`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -38,9 +40,21 @@
 
 - Boss:
   - `source_platform = "boss"`
-  - requires Boss Cookie and LocalStorage session
+  - uses an isolated persistent visible-browser profile (`boss-browser-profile`) as the primary login continuity source; stored Boss Cookie and LocalStorage remain a compatibility snapshot and may be empty when collection starts from an already logged-in profile
+  - if the profile is not logged in or Boss presents a risk/login check, the worker keeps the visible browser open, emits `LOGIN_STATUS`, waits for the user to complete login/verification, then resumes collection
+  - Boss API responses that arrive as login/security-check HTML, 401/403, or login/risk JSON codes are recoverable risk states; the worker must keep the browser open, emit `LOGIN_STATUS`, and retry after the user finishes login/verification instead of closing the run as a terminal JSON parse failure
+  - natural Boss HTTP response readers must preserve non-JSON response text and content type before risk classification; otherwise `200 text/html` login/security pages can be misreported as terminal JSON parse failures
+  - if a Boss visible-browser mode is stopped while the latest login state is `invalid`, `captcha`, or `denied`, the worker should disconnect from the browser instead of closing it so the user can finish the in-progress verification and rerun with the same profile
+  - job list collection should prefer the natural `/wapi/zpgeek/search/joblist.json` response produced by normal Boss search-page navigation and fall back to DOM recovery or page-context API fetch only when the natural response is missing
+  - natural job-list response matching must guard against wrong page/filter capture: if the response exposes `query`, `page`, or selected `city`, they must match the active request before the worker treats it as the current page's result
+  - DOM job-list fallback must not parse a stale page after navigation failure or URL mismatch; only parse DOM when the current Boss search URL matches the active keyword/page/city request
+  - `JOB_LIST_CAPTURED.payload.capture_source` is optional but, when present, must be one of `natural`, `dom_fallback`, or `api_fallback`; canary and diagnostics should prefer this structured field over parsing log text
+  - a Boss run that finishes without any extracted job-list items or without any stable job ids must emit an explicit `ERROR`; `FINISHED` alone is not a success signal
   - emits Boss list/detail events already understood by sidecar
   - `query` is built from Boss search keywords; each keyword line is one Boss search request, so remote intent should be expressed as one line such as `Go 远程` rather than a separate standalone `远程` keyword.
+  - supports `limits.maxPages` as the positive page cap per keyword/filter variant and `limits.maxJobs` as the optional positive inserted-job cap enforced by the sidecar run tracker; missing `maxPages` falls back to the worker default of 3 pages.
+  - Boss automatic collection should not require per-job `/wapi/zpgeek/job/detail.json` fetches for success. The default path stores natural joblist/list-item data first; detail fetches are an opt-in enhancement through `limits.bossDetailFetchLimit` / `limits.detailFetchLimit`, defaulting to `0`. When enabled, the detail limit counts attempted detail ids, not only successful detail captures.
+  - Boss pending-evidence refresh uses the same isolated persistent visible-browser profile (`boss-browser-profile`) as Boss login and auto collection; do not launch a fresh temporary profile for `REFRESH_JOB_EVIDENCE`.
   - platform-side filters must be limited to observed `joblist` parameters. Do not add visible controls for latest sorting or Boss active status unless a logged-in request proves stable API parameters.
   - Boss active status remains saved job evidence/display input and AI judgement evidence after collection, not an API pre-filter.
 - V2EX:
@@ -63,11 +77,28 @@
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains the fetched topic detail body so `get_job_detail` can render the V2EX post without a Boss detail fetch
   - only uses positive hiring signals before writing to `job`; default discussion/exclusion keywords must not pre-filter V2EX entries
   - post-collection profile and AI judgement own soft exclusion decisions after V2EX entries are written
+- LinuxDo:
+  - `source_platform = "linuxdo"`
+  - does not require Boss session
+  - uses visible-browser collection mode because LinuxDo can present Cloudflare / login checks
+  - must not restore the old automated Puppeteer login flow or attempt hidden Cloudflare bypass
+  - opens the configured category URL, default `https://linux.do/c/job/27`
+  - supports `filters.sort_by = "latest" | "created"`; missing or invalid values default to `latest`
+  - supports `filters.recent_days` as a positive day window applied to the selected timestamp field; null, missing, or non-positive values mean no time pre-filter
+  - supports `limits.maxPages` as a positive category pagination cap and `limits.maxJobs` as inserted job cap
+  - if list-level topic id, title, and URL are available but detail fetch is blocked or missing, may emit a normalized title-level job with `raw_payload.detail_status = "missing" | "blocked"` and `jd_text` containing `详情暂未抓取，需打开原帖确认。`
+  - emits `JOB_NORMALIZED_CAPTURED`
+  - stores `encrypt_job_id = "linuxdo:<topicId>"`
+  - stores `dedup_key = <topicId>`
+  - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains the topic title plus detail text or the missing-detail marker
+  - only uses positive hiring signals before writing to `job`; configured keywords may add matches but must not alone turn a discussion thread into a job
+  - post-collection profile and AI judgement own soft exclusion decisions after LinuxDo entries are written
 - Collection limits:
-  - `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates
+  - For normalized feed adapters, `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates.
+  - For the Boss adapter, `limits.maxJobs` follows the same inserted-job meaning and must not force detail endpoint requests. The sidecar stops the worker once inserted rows reach the cap.
   - the sidecar may stop a worker after counting an inserted job, and duplicate or updated rows must not consume the limit
 - Post-collection AI judgement:
-  - after Boss or V2EX automatic collection finishes, the sidecar may trigger `recompute_ai_post_collection_judgement`
+  - after Boss, V2EX, or LinuxDo automatic collection finishes, the sidecar may trigger `recompute_ai_post_collection_judgement`
   - persisted `reason_json.ai_judgement.status` is the UI status source when present: `passed`, `rejected`, `pending_confirmation`, or `failed`
   - missing `reason_json.ai_judgement` means the UI status is `pending_review`; in-flight frontend recompute may temporarily show `processing`
   - automatic AI judgement success must emit a runtime `LOG` summary with updated, AI-judged, hard-skipped, and fallback-failed counts
@@ -76,18 +107,21 @@
 - Source registry:
   - Boss adapter kind is `boss`
   - V2EX adapter kind is `feed`
+  - LinuxDo adapter kind is `feed`
   - other non-Boss platforms remain `manual_import` until their automatic adapter exists
-  - LinuxDo remains `manual_import` and must not use the Puppeteer login worker; open the normal system browser instead because Cloudflare challenges automated browser sessions
+  - enabled `manual_import` platforms may be shown in the collection source selector so users can save intended source scope, but automatic collection must skip them with a clear runtime log until an adapter exists
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`
-  - the default filter profile must include currently supported automatic collection sources (`boss`, `v2ex`) so a platform that can be collected is not hidden by source gating immediately after ingestion
+  - the default filter profile must include currently supported automatic collection sources (`boss`, `v2ex`, `linuxdo`) so a platform that can be collected is not hidden by source gating immediately after ingestion
   - Boss-only filtering remains an explicit user-selected narrowing mode, not the default
 - Multi-source run:
   - UI stores all selected collectable sources, not a single `selectedCollectionSource`
   - starting automatic collection invokes `crawl_auto_start` once per selected source, sequentially
   - each invocation keeps its platform-specific payload and session requirement
   - the user action is still one button click; worker modes remain one source per command
+  - platform-specific configuration panels must be rendered from the selected source set; selecting only LinuxDo must not show Boss-only filters, and selecting a platform should make its dedicated panel immediately visible/open
+  - do not reintroduce a generic intent-to-platform synchronization layer; Boss, V2EX, and LinuxDo fields are edited and persisted directly
 - Boss multi-city run:
   - Boss city selection may be multi-select in the UI
   - if Boss API/browser search only accepts one city at a time, the worker must expand the selected city list into sequential job-list variants
@@ -95,10 +129,18 @@
 
 ### 4. Validation & Error Matrix
 
-- Boss selected without stored session -> `crawl_auto_start` returns login/session error.
+- Boss selected without stored session -> `crawl_auto_start` still starts with the Boss persistent browser profile and the worker waits for login in the visible browser if needed.
+- Boss selected with missing or invalid `limits.maxPages` -> frontend should fall back to the default positive page cap or block non-positive page values before start.
+- Boss selected with non-positive `limits.maxJobs` -> frontend blocks start; empty `maxJobs` means no explicit inserted-job cap beyond page and dedup limits.
+- Boss joblist/detail returns login HTML, security-check HTML, 401, 403, code 7, code 36, or code 37 -> worker emits a waiting login/risk status and retries after user action; it must not close the browser as a plain parse/API failure.
+- Boss joblist natural response belongs to a different query, page, or selected city -> worker ignores it and waits for the matching response or fallback path.
+- Boss run completes with zero parsed job-list items or zero stable ids -> worker emits `ERROR` so UI/canary do not report a false success.
 - V2EX selected without stored Boss session -> command still starts with an empty session payload.
 - V2EX selected with an empty URL input -> frontend blocks start with a clear URL-required message; if an empty payload reaches the worker, the worker logs that no URL was provided and skips collection.
-- Boss + V2EX selected -> Boss validates keywords/session; V2EX still runs with optional Boss session.
+- LinuxDo selected with an empty or non-linux.do category URL -> frontend blocks start with a clear URL-required message.
+- LinuxDo Cloudflare challenge -> worker logs that the user should complete verification in the visible browser; timeout emits an explicit error.
+- LinuxDo detail blocked but list topic data is stable -> worker may write a title-level normalized job with missing-detail evidence.
+- Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
 - V2EX feed entry lacks stable topic id or title -> skip that entry.
@@ -120,8 +162,14 @@
 - Good: user enters `https://www.v2ex.com/feed/jobs.json` and `https://www.v2ex.com/go/meet`; the feed is fetched once, the page URL is paginated, and duplicated topic ids are inserted once.
 - Good: AI provider fails after collection, and the run log shows the provider error instead of leaving only `AI 结果：未判定` in the job list.
 - Good: user selects Boss + V2EX, frontend runs Boss then V2EX sequentially while each source keeps its adapter contract.
+- Good: user selects LinuxDo, visible Chromium opens `https://linux.do/c/job/27`, the user completes any verification, worker emits normalized `linuxdo:<topicId>` jobs, and post-collection AI judgement runs.
+- Good: user selects only LinuxDo in collection config, the page shows the LinuxDo dedicated config panel with category URL/sort/page/job limits, and hides Boss-only dictionary/filter controls.
+- Good: LinuxDo detail JSON is blocked after list parse, and the job is still inserted with a clear missing-detail marker for AI/pending confirmation.
 - Base: user selects Boss, existing Boss payload and browser-session collection keep working.
+- Base: user leaves Boss limits at defaults, the task sends `limits.maxPages = 3`, `limits.maxJobs = 100`, `limits.bossDetailFetchLimit = 0`, and the worker still keeps `pageSize = 15`.
+- Good: user lowers Boss page cap to 1 or clears the job cap, and the payload changes only `limits` without adding unverified Boss sort/filter parameters.
 - Bad: UI shows V2EX as collectable but `crawl_auto_start` still requires Boss cookies.
+- Bad: UI uses Boss availability as the condition for rendering Boss settings, causing Boss-only config to appear when only LinuxDo or V2EX is selected.
 - Bad: frontend collapses selected sources into one payload and loses platform-specific filters/session behavior.
 - Bad: Feed entries are written as Boss jobs or without a topic-based dedup key.
 - Bad: filter profile allowed candidate sources are used as a pre-ingest collection gate.
@@ -146,9 +194,17 @@
   - classifier accepts clear hiring posts from positive signals only.
   - classifier does not let search keywords alone make a feed entry a job posting.
   - classifier ignores excluded keywords at feed stage so post-collection rules and AI judgement can handle soft exclusion.
+  - LinuxDo category JSON parser extracts topic id, title, topic URL, author, excerpt, and timestamps.
+  - LinuxDo topic JSON parser extracts first-post cooked text.
+  - LinuxDo Cloudflare challenge detection recognizes common challenge HTML/text.
+  - LinuxDo classifier accepts clear hiring posts and rejects keyword-only discussions.
+  - LinuxDo title-level fallback builds normalized payload with `detail_status`.
   - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
+  - Boss natural job-list capture exposes `capture_source = "natural"`; DOM fallback exposes `"dom_fallback"`; page-context API fallback exposes `"api_fallback"`.
+  - Boss HTML login/security-check responses are treated as recoverable risk/login states.
+  - Boss empty-list / missing-stable-id runs emit `ERROR` before `FINISHED`.
 - Rust tests:
-  - `job_sources` seeds Boss as `boss`, V2EX as `feed`, and reserved platforms as `manual_import`.
+  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo as `feed`, and reserved platforms as `manual_import`.
   - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, `jd_text`, and `job_detail_raw.zp_data_json` with `jobInfo.postDescription`.
   - default filter profile includes V2EX and legacy Boss-only default profile upgrades to Boss + V2EX.
 - Frontend/browser smoke:
@@ -414,7 +470,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - `captured`, `inserted`, `updated`, `duplicate`, and `failed` are run-operation counters.
 - `recommended`, `pending`, `filtered`, `processed`, and `all_jobs` are refreshed from canonical DB/filter state after recompute/finish. They are not limited to only rows captured in that run.
 - Upsert outcome is based on persisted DB fields before/after write. `last_seen_at` alone must not turn an unchanged row into `updated`.
-- Sidecar records durable failures for missing stable job id, upsert failure, recompute failure, worker error, unsupported pending refresh, and missing Boss session.
+- Sidecar records durable failures for missing stable job id, upsert failure, recompute failure, worker error, unsupported pending refresh, and missing Boss session in session-required commands.
 - Running-run recovery is a startup-only concern. Query commands such as `list_collection_runs`, job queries, filter recompute commands, or sidecar event handling may open the DB while a collection is active; those paths must preserve `status='running'`.
 - Pending evidence refresh reuses the worker `JOB_DETAIL_CAPTURED` event after fetching Boss detail. Rust sidecar performs the same upsert and filter recompute path as normal collection detail events.
 - Non-Boss pending jobs or Boss jobs without usable session/path return a clear error and remain in the job library.
@@ -422,7 +478,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 
 ### 4. Validation & Error Matrix
 
-- Boss selected without session -> run is marked `failed`, a `collection_failure` row is written, command returns the session error.
+- Boss selected without stored session -> collection starts with the persistent Boss browser profile; the run is only marked failed if the worker emits an actual `ERROR` or the user stops before login/verification can complete.
 - Worker emits `ERROR` during active run -> failure row is written and run status becomes `failed`; later `FINISHED` may still refresh bucket counts but must not overwrite failed status.
 - App process starts with stale `status='running'` rows from a previous crash -> `init_db_for_app_start` marks them `failed` with `error_message='app restarted before collection finished'`.
 - Normal command opens DB while sidecar is running -> active `status='running'` rows remain running.
@@ -552,8 +608,9 @@ Unsupported evidence refresh must fail explicitly and preserve the pending job.
 
 ### 3. Contracts
 
-- Boss worker may use the lightweight profile filter to control detail-fetch priority and volume.
+- Boss worker may use the lightweight profile filter to control optional detail-fetch priority and volume.
 - Boss worker must still emit the original full job-list raw payload through `JOB_LIST_CAPTURED`; do not replace the list with only eligible jobs.
+- Boss worker must be able to collect and store list-item jobs when `limits.bossDetailFetchLimit` / `limits.detailFetchLimit` is missing or `0`; detail fetch must not be the success gate for automatic collection.
 - Sidecar/Rust must upsert list-level jobs before final eligibility is decided.
 - Rust default Filter profile recompute must build its searchable evidence from:
   - normalized job fields
@@ -582,7 +639,8 @@ Unsupported evidence refresh must fail explicitly and preserve the pending job.
 
 ### 5. Good/Base/Bad Cases
 
-- Good: Boss list response has ten rows, worker detail gate keeps three rows for detail fetch, but `JOB_LIST_CAPTURED.raw.zpData.jobList` still contains all ten rows.
+- Good: Boss list response has ten rows, the worker emits `JOB_LIST_CAPTURED.raw.zpData.jobList` with all ten rows and the sidecar inserts list-item jobs without requiring detail fetch.
+- Good: `limits.bossDetailFetchLimit = 3` lets the worker optionally fetch at most three details after list capture, guarded by the same risk wait/retry path.
 - Good: V2EX normalized job stores `jd_text`; Rust recompute can satisfy `mustKeywords` from the post body.
 - Good: A weak Boss list-only job missing JD cannot prove required JD terms, so it enters pending confirmation instead of disappearing.
 - Base: old filter result rows without a bucket still render using `eligible`.
@@ -594,6 +652,7 @@ Unsupported evidence refresh must fail explicitly and preserve the pending job.
 - Worker contract test:
   - assert `JOB_LIST_CAPTURED` emits `raw: jobListRaw`
   - assert worker can still set `jobsToCapture = eligibleJobs` for detail priority
+  - assert Boss detail fetches are opt-in and default to `0`, so `maxJobs` is not used as a worker-side detail loop cap
 - Rust filter tests:
   - `jd_text` satisfies required keyword/tag rules
   - `raw_payload_json` triggers must-not keyword filtering

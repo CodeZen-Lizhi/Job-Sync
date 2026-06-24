@@ -27,6 +27,9 @@ pub struct CrawlAutoStartPayload {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +42,9 @@ pub struct RefreshJobEvidencePayload {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_payload: Option<Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_data_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,6 +277,9 @@ pub struct JobListCapturedPayload {
     pub keyword: Option<String>,
     #[serde(default)]
     pub filters: Option<Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capture_source: Option<String>,
     pub raw: Value,
 }
 

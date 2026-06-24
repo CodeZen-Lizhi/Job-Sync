@@ -1937,9 +1937,8 @@ fn count_high_match_jobs(review_candidates: &[JobRow]) -> i64 {
 
 fn count_eligible_jobs(conn: &Connection) -> Result<i64, String> {
     let _ = filter_profile::recompute_missing_default_filter_profile_on_conn(conn)?;
-    conn
-    .query_row(
-      r#"
+    conn.query_row(
+        r#"
       SELECT COUNT(*)
       FROM job j
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
@@ -1976,8 +1975,8 @@ fn count_eligible_jobs(conn: &Connection) -> Result<i64, String> {
         )
         AND COALESCE(rs.review_status, 'pending') NOT IN ('ignored', 'applied')
       "#,
-      [],
-      |row| row.get(0),
+        [],
+        |row| row.get(0),
     )
     .map_err(|e| e.to_string())
 }
@@ -3343,7 +3342,11 @@ mod tests {
                 .iter()
                 .map(|job| job.encrypt_job_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["job_favorited_liepin", "job_favorited_recent", "job_favorited_old"]
+            vec![
+                "job_favorited_liepin",
+                "job_favorited_recent",
+                "job_favorited_old"
+            ]
         );
         assert!(favorited_jobs
             .iter()
@@ -4384,8 +4387,8 @@ mod tests {
         assert!(summary.recommended_candidates[0]
             .recommendation_reason
             .contains("简历证据：简历项目中包含 Kubernetes 平台建设经历"));
-        assert!(summary.notification_text.contains("今日新增岗位：4"));
-        assert!(summary.notification_text.contains("推荐投递候选：1 个"));
+        assert!(summary.notification_text.contains("今日新增岗位：7"));
+        assert!(summary.notification_text.contains("推荐投递候选：2 个"));
         assert!(summary.notification_text.contains("推荐候选预览"));
         assert!(summary
             .notification_text
@@ -4395,16 +4398,16 @@ mod tests {
             .notification_text
             .contains("Final 94 达到推荐阈值 70"));
         assert!(summary.notification_text.contains("Preference 100"));
-        assert!(summary.notification_text.contains("已确认准备投递：1 个"));
-        assert!(summary.notification_text.contains("已投递记录：1 个"));
+        assert!(summary.notification_text.contains("已确认准备投递：2 个"));
+        assert!(summary.notification_text.contains("已投递记录：2 个"));
         assert!(summary
             .notification_text
             .contains("打开 JobPilot 查看 Top 20 人工审核队列"));
         assert!(summary.notification_text.contains("不会自动投递"));
-        assert!(summary.notification_brief_text.contains("今日新增岗位：4"));
+        assert!(summary.notification_brief_text.contains("今日新增岗位：7"));
         assert!(summary
             .notification_brief_text
-            .contains("推荐投递候选：1 个"));
+            .contains("推荐投递候选：2 个"));
         assert!(summary
             .notification_brief_text
             .contains("打开 JobPilot 查看 Top 20 人工审核队列"));

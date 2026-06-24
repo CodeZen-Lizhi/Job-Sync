@@ -6,15 +6,21 @@ import {
   buildBossCityGroups,
   buildBossFilterConditionGroups,
   buildBossIndustryGroups,
+  DEFAULT_BOSS_MAX_JOBS,
+  DEFAULT_BOSS_MAX_PAGES,
   BOSS_SOURCE_PLATFORM,
   COLLECTABLE_SOURCE_PLATFORMS,
   CRAWL_TASK_TYPE_AUTO,
   CRAWL_TASK_TYPE_META_SYNC,
   DEFAULT_DELAY_MS,
+  DEFAULT_LINUXDO_CATEGORY_URL,
+  DEFAULT_LINUXDO_MAX_PAGES,
   DEFAULT_V2EX_MAX_PAGES,
   DEFAULT_V2EX_FEED_URL,
   filterBossOptions,
   JOB_SOURCE_PLATFORM_OPTIONS,
+  LINUXDO_SOURCE_PLATFORM,
+  MANUAL_IMPORT_SOURCE_PLATFORMS,
   parseList,
   V2EX_SOURCE_PLATFORM,
   type BossCityGroup,
@@ -37,16 +43,6 @@ type AppSettings = {
 
 type CollectionConfigPayload = {
   version?: number;
-  collectionKeywordsText?: string;
-  collectionTargetCitiesText?: string;
-  collectionWorkModesText?: string;
-  collectionTechStackText?: string;
-  collectionExcludedKeywordsText?: string;
-  collectionDegreesText?: string;
-  collectionMinimumSalaryK?: number | null;
-  collectionMaximumSalaryK?: number | null;
-  collectionMinimumExperienceYears?: number | null;
-  collectionMaximumExperienceYears?: number | null;
   selectedCollectionSources?: string[];
   v2exFeedUrl?: string;
   v2exKeywordsText?: string;
@@ -54,7 +50,15 @@ type CollectionConfigPayload = {
   v2exRecentDays?: number | null;
   v2exMaxPages?: number | null;
   v2exMaxEntries?: number | null;
+  linuxdoCategoryUrl?: string;
+  linuxdoKeywordsText?: string;
+  linuxdoSortBy?: string;
+  linuxdoRecentDays?: number | null;
+  linuxdoMaxPages?: number | null;
+  linuxdoMaxJobs?: number | null;
   bossKeywordsText?: string;
+  bossMaxPages?: number | null;
+  bossMaxJobs?: number | null;
   cityText?: string;
   salaryText?: string;
   experienceText?: string;
@@ -73,6 +77,7 @@ type CollectionConfigPayload = {
 };
 
 type V2exFeedSortBy = "published_desc" | "updated_desc";
+type LinuxDoSortBy = "latest" | "created";
 
 let crawlPageState: CrawlPageState | null = null;
 
@@ -94,16 +99,6 @@ export function useCrawlPage(): CrawlPageState {
 function createCrawlPageState() {
   const tauri = isTauri();
   const initialized = ref(false);
-  const collectionKeywordsText = ref("");
-  const collectionTargetCitiesText = ref("");
-  const collectionWorkModesText = ref("");
-  const collectionTechStackText = ref("");
-  const collectionExcludedKeywordsText = ref("");
-  const collectionDegreesText = ref("");
-  const collectionMinimumSalaryK = ref<number | null>(null);
-  const collectionMaximumSalaryK = ref<number | null>(null);
-  const collectionMinimumExperienceYears = ref<number | null>(null);
-  const collectionMaximumExperienceYears = ref<number | null>(null);
   const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
   const bossCollectionEnabled = ref(false);
   const collectionSourcesLoaded = ref(false);
@@ -117,7 +112,16 @@ function createCrawlPageState() {
   const v2exFeedSortBy = ref<V2exFeedSortBy>("published_desc");
   const v2exRecentDays = ref<number | null>(null);
   const v2exMaxPages = ref(DEFAULT_V2EX_MAX_PAGES);
+  const linuxdoSettingsOpen = ref(false);
+  const linuxdoCategoryUrl = ref(DEFAULT_LINUXDO_CATEGORY_URL);
+  const linuxdoKeywordsText = ref("");
+  const linuxdoSortBy = ref<LinuxDoSortBy>("latest");
+  const linuxdoRecentDays = ref<number | null>(null);
+  const linuxdoMaxPages = ref(DEFAULT_LINUXDO_MAX_PAGES);
+  const linuxdoMaxJobs = ref<number | null>(20);
   const bossKeywordsText = ref("");
+  const bossMaxPages = ref(DEFAULT_BOSS_MAX_PAGES);
+  const bossMaxJobs = ref<number | null>(DEFAULT_BOSS_MAX_JOBS);
   const cityText = ref("");
   const salaryText = ref("");
   const experienceText = ref("");
@@ -145,9 +149,6 @@ function createCrawlPageState() {
   const collectionConfigMessage = ref<string | null>(null);
   const bossSettingsOpen = ref(false);
   const filterProfileOpen = ref(false);
-  const bossSyncMappedFields = ref<string[]>([]);
-  const bossSyncUnmappedFields = ref<string[]>([]);
-  const bossSyncMessage = ref<string | null>(null);
   let bossMetaSyncTimeout: number | null = null;
   const filterProfileState = useFilterProfile();
 
@@ -162,6 +163,10 @@ function createCrawlPageState() {
   const bossIndustryGroups = computed<BossIndustryGroup[]>(() => buildBossIndustryGroups(runtime.bossMeta));
   const bossMetaReady = computed(() => bossCityGroups.value.length > 0 && bossSalaryOptions.value.length > 0);
   const bossSourceAvailable = computed(() => collectionSourcesLoaded.value && collectableSourceOptions.value.some((source) => source.value === BOSS_SOURCE_PLATFORM));
+  const selectableCollectionSourcePlatforms = computed(() => [
+    ...COLLECTABLE_SOURCE_PLATFORMS,
+    ...MANUAL_IMPORT_SOURCE_PLATFORMS,
+  ] as readonly JobSourcePlatform[]);
   const bossFilterConditionCount = computed(
     () => 5 + (bossIndustryGroups.value.length > 0 ? 1 : 0) + bossAdditionalFilterGroups.value.length,
   );
@@ -171,12 +176,12 @@ function createCrawlPageState() {
       : [
           { platform: BOSS_SOURCE_PLATFORM, adapter_kind: "boss", enabled: bossCollectionEnabled.value },
           { platform: V2EX_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
+          { platform: LINUXDO_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
         ];
     return sources
       .filter((source) => {
         if (!source.enabled) return false;
-        if (!(COLLECTABLE_SOURCE_PLATFORMS as readonly string[]).includes(source.platform)) return false;
-        return source.adapter_kind === "boss" || source.adapter_kind === "feed";
+        return (selectableCollectionSourcePlatforms.value as readonly string[]).includes(source.platform);
       })
       .map((source) => {
         const option = JOB_SOURCE_PLATFORM_OPTIONS.find((item) => item.value === source.platform);
@@ -187,12 +192,6 @@ function createCrawlPageState() {
       });
   });
   const latestCollectionRun = computed(() => collectionRuns.value[0] ?? null);
-  const collectionKeywords = computed(() => parseList(collectionKeywordsText.value));
-  const collectionTechStack = computed(() => parseList(collectionTechStackText.value));
-  const collectionTargetCities = computed(() => parseList(collectionTargetCitiesText.value));
-  const collectionWorkModes = computed(() => parseList(collectionWorkModesText.value));
-  const collectionExcludedKeywords = computed(() => parseList(collectionExcludedKeywordsText.value));
-  const collectionDegrees = computed(() => parseList(collectionDegreesText.value));
   const bossKeywords = computed(() => parseList(bossKeywordsText.value));
   const filters = computed(() => ({
     city: selectedCities.value.length > 0 ? selectedCities.value : selectedCity.value ? [selectedCity.value] : parseList(cityText.value),
@@ -217,17 +216,32 @@ function createCrawlPageState() {
   });
   const v2exKeywords = computed(() => uniqueList(parseList(v2exKeywordsText.value)));
   const v2exTaskKeywords = computed(() => v2exKeywords.value.length > 0 ? v2exKeywords.value : ["V2EX"]);
+  const linuxdoKeywords = computed(() => uniqueList(parseList(linuxdoKeywordsText.value)));
+  const linuxdoTaskKeywords = computed(() => linuxdoKeywords.value.length > 0 ? linuxdoKeywords.value : ["LinuxDo"]);
   const selectedCollectionSourceSet = computed(() => new Set(selectedCollectionSources.value));
   const bossSelected = computed(() => selectedCollectionSourceSet.value.has(BOSS_SOURCE_PLATFORM));
   const v2exSelected = computed(() => selectedCollectionSourceSet.value.has(V2EX_SOURCE_PLATFORM));
-  const collectionIntentSyncLabel = computed(() => {
-    const selected = selectedCollectionSources.value.length;
-    if (selected > 1) return "同步到已选平台配置";
-    if (bossSelected.value) return "同步到 Boss 配置";
-    if (v2exSelected.value) return "同步到 V2EX 配置";
-    return "同步到平台配置";
-  });
+  const linuxdoSelected = computed(() => selectedCollectionSourceSet.value.has(LINUXDO_SOURCE_PLATFORM));
   function buildTaskForSource(sourcePlatform: JobSourcePlatform) {
+    if (sourcePlatform === LINUXDO_SOURCE_PLATFORM) {
+      return {
+        keywords: linuxdoTaskKeywords.value,
+        source_platform: LINUXDO_SOURCE_PLATFORM,
+        filters: {
+          category_url: linuxdoCategoryUrl.value.trim() || DEFAULT_LINUXDO_CATEGORY_URL,
+          sort_by: linuxdoSortBy.value,
+          recent_days: optionalNumber(linuxdoRecentDays.value),
+          keywords: linuxdoKeywords.value,
+          profile: filterProfileState.filterProfile.value,
+        },
+        limits: {
+          delayMs: delayMs.value,
+          maxPages: optionalNumber(linuxdoMaxPages.value) ?? DEFAULT_LINUXDO_MAX_PAGES,
+          maxJobs: optionalNumber(linuxdoMaxJobs.value),
+        },
+        mode: "auto",
+      };
+    }
     if (sourcePlatform === V2EX_SOURCE_PLATFORM) {
       const feedUrls = splitUrlList(v2exFeedUrl.value);
       return {
@@ -237,17 +251,7 @@ function createCrawlPageState() {
           feed_urls: feedUrls,
           sort_by: v2exFeedSortBy.value,
           recent_days: optionalNumber(v2exRecentDays.value),
-          excluded_keywords: collectionExcludedKeywords.value,
           profile: filterProfileState.filterProfile.value,
-          collection_intent: {
-            target_cities: collectionTargetCities.value,
-            work_modes: collectionWorkModes.value,
-            degrees: collectionDegrees.value,
-            minimum_salary_k: collectionMinimumSalaryK.value,
-            maximum_salary_k: collectionMaximumSalaryK.value,
-            minimum_experience_years: collectionMinimumExperienceYears.value,
-            maximum_experience_years: collectionMaximumExperienceYears.value,
-          },
         },
         limits: {
           delayMs: delayMs.value,
@@ -260,7 +264,12 @@ function createCrawlPageState() {
       keywords: bossKeywords.value,
       source_platform: BOSS_SOURCE_PLATFORM,
       filters: filters.value,
-      limits: { delayMs: delayMs.value },
+      limits: {
+        delayMs: delayMs.value,
+        maxPages: optionalNumber(bossMaxPages.value) ?? DEFAULT_BOSS_MAX_PAGES,
+        maxJobs: optionalNumber(bossMaxJobs.value),
+        bossDetailFetchLimit: 0,
+      },
       mode: "auto",
     };
   }
@@ -271,11 +280,38 @@ function createCrawlPageState() {
   }
 
   function validateCollectionSource(source: JobSourcePlatform): string | null {
+    if (!(COLLECTABLE_SOURCE_PLATFORMS as readonly string[]).includes(source)) {
+      return `${collectionSourceLabel(source)} 当前只作为职位来源和采后筛选来源，暂未接入自动采集适配器。`;
+    }
     if (source === BOSS_SOURCE_PLATFORM && bossKeywords.value.length === 0) {
-      return "Boss 搜索关键词为空。请填写采集意图并同步到 Boss，或在 Boss 配置中输入至少 1 个关键词。";
+      return "Boss 搜索关键词为空。请在 Boss 配置中输入至少 1 个关键词。";
+    }
+    if (source === BOSS_SOURCE_PLATFORM) {
+      if ((optionalNumber(bossMaxPages.value) ?? 0) <= 0) {
+        return "Boss 页数上限必须大于 0。";
+      }
+      const maxJobs = optionalNumber(bossMaxJobs.value);
+      if (maxJobs !== null && maxJobs <= 0) {
+        return "Boss 岗位上限必须大于 0，或留空不限。";
+      }
     }
     if (source === V2EX_SOURCE_PLATFORM && splitUrlList(v2exFeedUrl.value).length === 0) {
       return "V2EX URL 为空。请填写至少 1 个 feed 或节点 URL。";
+    }
+    if (source === LINUXDO_SOURCE_PLATFORM) {
+      const url = linuxdoCategoryUrl.value.trim();
+      if (!url) return "LinuxDo 分类 URL 为空。";
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname !== "linux.do" && !parsed.hostname.endsWith(".linux.do")) {
+          return "LinuxDo 分类 URL 必须是 linux.do 域名。";
+        }
+      } catch {
+        return "LinuxDo 分类 URL 格式不正确。";
+      }
+      if ((optionalNumber(linuxdoMaxPages.value) ?? 0) <= 0) {
+        return "LinuxDo 页数上限必须大于 0。";
+      }
     }
     return null;
   }
@@ -311,22 +347,6 @@ function createCrawlPageState() {
     return out;
   }
 
-  function buildBossSearchKeywordsFromIntent(baseKeywords: readonly string[], workModes: readonly string[]): string[] {
-    const bases = uniqueList(baseKeywords);
-    const modes = uniqueList(workModes);
-    if (modes.length === 0) return bases;
-    if (bases.length === 0) return modes;
-    return uniqueList(
-      bases.flatMap((base) =>
-        modes.map((mode) => {
-          const normalizedBase = normalizeToken(base);
-          const normalizedMode = normalizeToken(mode);
-          return normalizedMode && normalizedBase.includes(normalizedMode) ? base : `${base} ${mode}`;
-        }),
-      ),
-    );
-  }
-
   function optionalNumber(value: unknown): number | null {
     if (value === null || value === undefined || value === "") return null;
     const parsed = typeof value === "number" ? value : Number(value);
@@ -341,6 +361,10 @@ function createCrawlPageState() {
     return value === "updated_desc" ? "updated_desc" : "published_desc";
   }
 
+  function sanitizeLinuxDoSortBy(value: unknown): LinuxDoSortBy {
+    return value === "created" ? "created" : "latest";
+  }
+
   function sanitizeStringList(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return Array.from(new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)));
@@ -349,23 +373,21 @@ function createCrawlPageState() {
   function buildCollectionConfigPayload(): CollectionConfigPayload {
     return {
       version: 1,
-      collectionKeywordsText: collectionKeywordsText.value,
-      collectionTargetCitiesText: collectionTargetCitiesText.value,
-      collectionWorkModesText: collectionWorkModesText.value,
-      collectionTechStackText: collectionTechStackText.value,
-      collectionExcludedKeywordsText: collectionExcludedKeywordsText.value,
-      collectionDegreesText: collectionDegreesText.value,
-      collectionMinimumSalaryK: optionalNumber(collectionMinimumSalaryK.value),
-      collectionMaximumSalaryK: optionalNumber(collectionMaximumSalaryK.value),
-      collectionMinimumExperienceYears: optionalNumber(collectionMinimumExperienceYears.value),
-      collectionMaximumExperienceYears: optionalNumber(collectionMaximumExperienceYears.value),
       selectedCollectionSources: selectedCollectionSources.value,
       v2exFeedUrl: v2exFeedUrl.value,
       v2exKeywordsText: v2exKeywordsText.value,
       v2exFeedSortBy: v2exFeedSortBy.value,
       v2exRecentDays: optionalNumber(v2exRecentDays.value),
       v2exMaxPages: optionalNumber(v2exMaxPages.value) ?? DEFAULT_V2EX_MAX_PAGES,
+      linuxdoCategoryUrl: linuxdoCategoryUrl.value,
+      linuxdoKeywordsText: linuxdoKeywordsText.value,
+      linuxdoSortBy: linuxdoSortBy.value,
+      linuxdoRecentDays: optionalNumber(linuxdoRecentDays.value),
+      linuxdoMaxPages: optionalNumber(linuxdoMaxPages.value) ?? DEFAULT_LINUXDO_MAX_PAGES,
+      linuxdoMaxJobs: optionalNumber(linuxdoMaxJobs.value),
       bossKeywordsText: bossKeywordsText.value,
+      bossMaxPages: optionalNumber(bossMaxPages.value) ?? DEFAULT_BOSS_MAX_PAGES,
+      bossMaxJobs: optionalNumber(bossMaxJobs.value),
       cityText: cityText.value,
       salaryText: salaryText.value,
       experienceText: experienceText.value,
@@ -388,19 +410,9 @@ function createCrawlPageState() {
 
   function applyCollectionConfigPayload(config: CollectionConfigPayload | null | undefined): void {
     if (!config || typeof config !== "object") return;
-    collectionKeywordsText.value = textValue(config.collectionKeywordsText);
-    collectionTargetCitiesText.value = textValue(config.collectionTargetCitiesText);
-    collectionWorkModesText.value = textValue(config.collectionWorkModesText);
-    collectionTechStackText.value = textValue(config.collectionTechStackText);
-    collectionExcludedKeywordsText.value = textValue(config.collectionExcludedKeywordsText);
-    collectionDegreesText.value = textValue(config.collectionDegreesText);
-    collectionMinimumSalaryK.value = optionalNumber(config.collectionMinimumSalaryK);
-    collectionMaximumSalaryK.value = optionalNumber(config.collectionMaximumSalaryK);
-    collectionMinimumExperienceYears.value = optionalNumber(config.collectionMinimumExperienceYears);
-    collectionMaximumExperienceYears.value = optionalNumber(config.collectionMaximumExperienceYears);
     if (Array.isArray(config.selectedCollectionSources)) {
       const selected = config.selectedCollectionSources.filter((source): source is JobSourcePlatform =>
-        (COLLECTABLE_SOURCE_PLATFORMS as readonly string[]).includes(source),
+        (selectableCollectionSourcePlatforms.value as readonly string[]).includes(source),
       );
       selectedCollectionSources.value = selected.length > 0 ? Array.from(new Set(selected)) : selectedCollectionSources.value;
     }
@@ -409,7 +421,17 @@ function createCrawlPageState() {
     v2exFeedSortBy.value = sanitizeV2exFeedSortBy(config.v2exFeedSortBy);
     v2exRecentDays.value = optionalNumber(config.v2exRecentDays);
     v2exMaxPages.value = optionalNumber(config.v2exMaxPages ?? config.v2exMaxEntries) ?? DEFAULT_V2EX_MAX_PAGES;
+    linuxdoCategoryUrl.value = textValue(config.linuxdoCategoryUrl) || DEFAULT_LINUXDO_CATEGORY_URL;
+    linuxdoKeywordsText.value = textValue(config.linuxdoKeywordsText);
+    linuxdoSortBy.value = sanitizeLinuxDoSortBy(config.linuxdoSortBy);
+    linuxdoRecentDays.value = optionalNumber(config.linuxdoRecentDays);
+    linuxdoMaxPages.value = optionalNumber(config.linuxdoMaxPages) ?? DEFAULT_LINUXDO_MAX_PAGES;
+    linuxdoMaxJobs.value = optionalNumber(config.linuxdoMaxJobs) ?? 20;
     bossKeywordsText.value = textValue(config.bossKeywordsText);
+    bossMaxPages.value = optionalNumber(config.bossMaxPages) ?? DEFAULT_BOSS_MAX_PAGES;
+    bossMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "bossMaxJobs")
+      ? optionalNumber(config.bossMaxJobs)
+      : DEFAULT_BOSS_MAX_JOBS;
     cityText.value = textValue(config.cityText);
     salaryText.value = textValue(config.salaryText);
     experienceText.value = textValue(config.experienceText);
@@ -430,35 +452,13 @@ function createCrawlPageState() {
     delayMs.value = typeof config.delayMs === "number" && Number.isFinite(config.delayMs) && config.delayMs >= 0
       ? Math.floor(config.delayMs)
       : DEFAULT_DELAY_MS;
+    openSelectedSourceSettings();
   }
 
-  function allBossCities(): BossOption[] {
-    const grouped = bossCityGroups.value.flatMap((group) => group.cityList);
-    return [...bossHotCities.value, ...grouped];
-  }
-
-  function findBossOption(values: readonly string[], options: readonly BossOption[]): BossOption | null {
-    for (const value of values) {
-      const key = normalizeToken(value);
-      const found = options.find((option) => normalizeToken(option.name) === key || String(option.code) === value.trim());
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function findBossOptions(values: readonly string[], options: readonly BossOption[]): BossOption[] {
-    const out: BossOption[] = [];
-    const seen = new Set<string>();
-    for (const value of values) {
-      const key = normalizeToken(value);
-      const found = options.find((option) => normalizeToken(option.name) === key || String(option.code) === value.trim());
-      if (!found) continue;
-      const code = String(found.code);
-      if (seen.has(code)) continue;
-      seen.add(code);
-      out.push(found);
-    }
-    return out;
+  function openSelectedSourceSettings(): void {
+    bossSettingsOpen.value = bossSelected.value;
+    v2exFeedSettingsOpen.value = v2exSelected.value;
+    linuxdoSettingsOpen.value = linuxdoSelected.value;
   }
 
   function sanitizeBossFilterConditionSelection(value: unknown): Record<string, string> {
@@ -483,86 +483,6 @@ function createCrawlPageState() {
       delete next[cleanField];
     }
     selectedBossFilterConditions.value = next;
-  }
-
-  function syncCollectionIntentToPlatforms(): void {
-    const mapped: string[] = [];
-    const unmapped: string[] = [];
-    const expandedKeywords = uniqueList([...collectionKeywords.value, ...collectionTechStack.value]);
-    const bossSearchKeywords = buildBossSearchKeywordsFromIntent(expandedKeywords, collectionWorkModes.value);
-
-    if (bossSelected.value && bossSearchKeywords.length > 0) {
-      bossKeywordsText.value = bossSearchKeywords.join("\n");
-      mapped.push(`Boss 搜索关键词：${bossSearchKeywords.join("、")}`);
-    }
-
-    if (bossSelected.value) {
-      const cities = findBossOptions(collectionTargetCities.value, allBossCities());
-      if (cities.length > 0) {
-        selectedCities.value = cities.map((city) => String(city.code));
-        selectedCity.value = selectedCities.value[0] ?? "";
-        cityText.value = "";
-        mapped.push(`Boss 城市：${cities.map((city) => city.name).join("、")}`);
-      } else if (collectionTargetCities.value.length > 0) {
-        selectedCity.value = "";
-        selectedCities.value = [];
-        cityText.value = "";
-        unmapped.push(`目标城市：${collectionTargetCities.value.join("、")}（Boss 字典未匹配）`);
-      }
-
-      const degree = findBossOption(collectionDegrees.value, bossDegreeOptions.value);
-      if (degree) {
-        selectedDegree.value = String(degree.code);
-        degreeText.value = "";
-        mapped.push(`Boss 学历：${degree.name}`);
-      } else if (collectionDegrees.value.length > 0) {
-        selectedDegree.value = "";
-        degreeText.value = "";
-        unmapped.push(`学历：${collectionDegrees.value.join("、")}（Boss 字典未匹配）`);
-      }
-
-      if (collectionWorkModes.value.length > 0 && bossSearchKeywords.length > 0) {
-        mapped.push(`Boss 工作方式：已写入同一行搜索词`);
-      } else if (collectionWorkModes.value.length > 0) {
-        unmapped.push(`工作方式：${collectionWorkModes.value.join("、")}（Boss 站内筛选暂不支持稳定下拉项）`);
-      }
-      if (collectionExcludedKeywords.value.length > 0) {
-        unmapped.push(`排除关键词：${collectionExcludedKeywords.value.join("、")}（交给采后规则做排除）`);
-      }
-      if (collectionMinimumSalaryK.value !== null || collectionMaximumSalaryK.value !== null) {
-        unmapped.push("薪资范围（暂不自动映射 Boss 薪资枚举，可在 Boss 设置手动选择）");
-      }
-      if (collectionMinimumExperienceYears.value !== null || collectionMaximumExperienceYears.value !== null) {
-        unmapped.push("经验范围（暂不自动映射 Boss 经验枚举，可在 Boss 设置手动选择）");
-      }
-    }
-
-    if (v2exSelected.value) {
-      mapped.push("V2EX Feed：已纳入本次采集来源");
-      if (expandedKeywords.length > 0) {
-        v2exKeywordsText.value = expandedKeywords.join("\n");
-        mapped.push(`V2EX 关键词：${expandedKeywords.join("、")}`);
-      }
-      if (
-        collectionTargetCities.value.length > 0 ||
-        collectionWorkModes.value.length > 0 ||
-        collectionDegrees.value.length > 0 ||
-        collectionMinimumSalaryK.value !== null ||
-        collectionMaximumSalaryK.value !== null ||
-        collectionMinimumExperienceYears.value !== null ||
-        collectionMaximumExperienceYears.value !== null
-      ) {
-        unmapped.push("V2EX 城市、工作方式、学历、薪资和经验继续交给采后规则");
-      }
-    }
-
-    bossSyncMappedFields.value = mapped;
-    bossSyncUnmappedFields.value = unmapped;
-    bossSyncMessage.value = mapped.length > 0
-      ? `已同步 ${mapped.length} 项到已选平台配置`
-      : "没有可直接同步的平台配置；请先选择自动采集平台或补充采集意图";
-    if (bossSelected.value) bossSettingsOpen.value = true;
-    if (v2exSelected.value) v2exFeedSettingsOpen.value = true;
   }
 
   async function loadBossMeta(): Promise<void> {
@@ -628,6 +548,7 @@ function createCrawlPageState() {
       if (!bossCollectionEnabled.value) {
         selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => source !== BOSS_SOURCE_PLATFORM);
       }
+      openSelectedSourceSettings();
     } catch {
       bossCollectionEnabled.value = false;
       collectionSourcesLoaded.value = true;
@@ -826,25 +747,15 @@ function createCrawlPageState() {
     tauri,
     runtime,
     clearLogs,
-    collectionKeywordsText,
-    collectionTargetCitiesText,
-    collectionWorkModesText,
-    collectionTechStackText,
-    collectionExcludedKeywordsText,
-    collectionDegreesText,
-    collectionMinimumSalaryK,
-    collectionMaximumSalaryK,
-    collectionMinimumExperienceYears,
-    collectionMaximumExperienceYears,
     selectedCollectionSources,
     collectionRuns,
     collectionFailures,
     collectionSummaryLoading,
     latestCollectionRun,
     selectedCollectionSourceLabel,
-    collectionIntentSyncLabel,
     bossSelected,
     v2exSelected,
+    linuxdoSelected,
     collectableSourceOptions,
     collectionSourcesLoaded,
     v2exFeedSettingsOpen,
@@ -854,7 +765,17 @@ function createCrawlPageState() {
     v2exRecentDays,
     v2exMaxPages,
     v2exKeywords,
+    linuxdoSettingsOpen,
+    linuxdoCategoryUrl,
+    linuxdoKeywordsText,
+    linuxdoSortBy,
+    linuxdoRecentDays,
+    linuxdoMaxPages,
+    linuxdoMaxJobs,
+    linuxdoKeywords,
     bossKeywordsText,
+    bossMaxPages,
+    bossMaxJobs,
     cityText,
     salaryText,
     experienceText,
@@ -882,9 +803,6 @@ function createCrawlPageState() {
     collectionConfigMessage,
     bossSettingsOpen,
     filterProfileOpen,
-    bossSyncMappedFields,
-    bossSyncUnmappedFields,
-    bossSyncMessage,
     bossMetaSyncedAt,
     bossCityGroups,
     bossHotCities,
@@ -903,7 +821,6 @@ function createCrawlPageState() {
     loadDefaultFilterProfile,
     saveActiveFilterProfile,
     recomputeDefaultFilterProfile,
-    syncCollectionIntentToPlatforms,
     setBossAdditionalFilter,
     saveCollectionConfig,
     loadCollectionSummary,

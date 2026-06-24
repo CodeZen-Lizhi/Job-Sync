@@ -7,7 +7,7 @@ use crate::db::Result;
 use super::common::now_rfc3339;
 
 pub(crate) const DEFAULT_FILTER_PROFILE_ID: &str = "default";
-const DEFAULT_SOURCE_PLATFORMS: &[&str] = &["boss", "v2ex"];
+const DEFAULT_SOURCE_PLATFORMS: &[&str] = &["boss", "v2ex", "linuxdo"];
 const DEFAULT_AI_PREFERRED_TEXT: &str = "优先看 Go / Infra / DevOps / SRE / 平台工程 / AI Infra / 云原生方向。\nJD 里最好能看到真实工程建设、稳定性、自动化、平台化、可观测性、Kubernetes 或云基础设施证据。\n远程、混合办公、技术深度强、业务稳定的岗位可加分。";
 const DEFAULT_AI_REJECTED_TEXT: &str = "明显外包、驻场、培训机构、销售导向、纯实施交付、电话销售、低代码搭建、重复客服支持类岗位。\n标题写技术但正文主要是售前销售、客户驻场、人力外派、拉新获客、课程销售、招转培。\n技术栈与目标方向明显无关，或 JD 缺少真实研发/平台工程职责。";
 const DEFAULT_AI_RISK_TEXT: &str = "信息太少、职责含糊、公司业务不清楚、薪资/经验/城市描述矛盾时不要直接推荐。\n软排除只有隐约迹象但证据不够时，放入待确认并说明需要人工看的点。";
@@ -56,10 +56,19 @@ pub(crate) fn default_filter_profile_json() -> Value {
     profile.insert(
         "preferenceDirections".to_string(),
         Value::Array(
-            ["Go", "Infra", "DevOps", "SRE", "平台工程", "AI Infra", "AI Agent", "云原生"]
-                .into_iter()
-                .map(|value| Value::String(value.to_string()))
-                .collect(),
+            [
+                "Go",
+                "Infra",
+                "DevOps",
+                "SRE",
+                "平台工程",
+                "AI Infra",
+                "AI Agent",
+                "云原生",
+            ]
+            .into_iter()
+            .map(|value| Value::String(value.to_string()))
+            .collect(),
         ),
     );
     profile.insert("requiredTechTags".to_string(), Value::Array(vec![]));
@@ -67,10 +76,19 @@ pub(crate) fn default_filter_profile_json() -> Value {
     profile.insert(
         "preferenceTechTags".to_string(),
         Value::Array(
-            ["Go", "Kubernetes", "Docker", "AWS", "Prometheus", "Linux", "CI/CD", "Terraform"]
-                .into_iter()
-                .map(|value| Value::String(value.to_string()))
-                .collect(),
+            [
+                "Go",
+                "Kubernetes",
+                "Docker",
+                "AWS",
+                "Prometheus",
+                "Linux",
+                "CI/CD",
+                "Terraform",
+            ]
+            .into_iter()
+            .map(|value| Value::String(value.to_string()))
+            .collect(),
         ),
     );
     profile.insert("requiredWorkModes".to_string(), Value::Array(vec![]));
@@ -107,16 +125,37 @@ pub(crate) fn default_filter_profile_json() -> Value {
     profile.insert("excludedDegrees".to_string(), Value::Array(vec![]));
     profile.insert("companyMustKeywords".to_string(), Value::Array(vec![]));
     profile.insert("companyMustNotKeywords".to_string(), Value::Array(vec![]));
-    profile.insert("companyPreferenceKeywords".to_string(), Value::Array(vec![]));
+    profile.insert(
+        "companyPreferenceKeywords".to_string(),
+        Value::Array(vec![]),
+    );
     profile.insert("companyRequiredScales".to_string(), Value::Array(vec![]));
     profile.insert("companyExcludedScales".to_string(), Value::Array(vec![]));
     profile.insert("companyPreferenceScales".to_string(), Value::Array(vec![]));
-    profile.insert("companyRequiredFinancingStages".to_string(), Value::Array(vec![]));
-    profile.insert("companyExcludedFinancingStages".to_string(), Value::Array(vec![]));
-    profile.insert("companyPreferenceFinancingStages".to_string(), Value::Array(vec![]));
-    profile.insert("companyRequiredIndustries".to_string(), Value::Array(vec![]));
-    profile.insert("companyExcludedIndustries".to_string(), Value::Array(vec![]));
-    profile.insert("companyPreferenceIndustries".to_string(), Value::Array(vec![]));
+    profile.insert(
+        "companyRequiredFinancingStages".to_string(),
+        Value::Array(vec![]),
+    );
+    profile.insert(
+        "companyExcludedFinancingStages".to_string(),
+        Value::Array(vec![]),
+    );
+    profile.insert(
+        "companyPreferenceFinancingStages".to_string(),
+        Value::Array(vec![]),
+    );
+    profile.insert(
+        "companyRequiredIndustries".to_string(),
+        Value::Array(vec![]),
+    );
+    profile.insert(
+        "companyExcludedIndustries".to_string(),
+        Value::Array(vec![]),
+    );
+    profile.insert(
+        "companyPreferenceIndustries".to_string(),
+        Value::Array(vec![]),
+    );
 
     let mut score_weights = Map::new();
     score_weights.insert("resume".to_string(), Value::from(0.6));
@@ -212,7 +251,9 @@ fn upgrade_default_filter_profile_json(profile_id: &str, profile_json: &Value) -
 }
 
 fn upgrade_legacy_default_source_platforms(profile_json: &mut Value, defaults: &Value) -> bool {
-    let Some(source_platforms) = profile_json.get("sourcePlatforms").and_then(Value::as_array)
+    let Some(source_platforms) = profile_json
+        .get("sourcePlatforms")
+        .and_then(Value::as_array)
     else {
         return fill_missing_or_empty_array(profile_json, defaults, "sourcePlatforms");
     };

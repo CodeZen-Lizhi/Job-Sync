@@ -1,25 +1,16 @@
 <script setup lang="ts">
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
-import type { JobSourcePlatform } from "../lib/crawl";
+import { BOSS_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
 import { useCrawlPage } from "../lib/useCrawlPage";
 
 const {
   tauri,
-  collectionKeywordsText,
-  collectionTargetCitiesText,
-  collectionWorkModesText,
-  collectionTechStackText,
-  collectionExcludedKeywordsText,
-  collectionDegreesText,
-  collectionMinimumSalaryK,
-  collectionMaximumSalaryK,
-  collectionMinimumExperienceYears,
-  collectionMaximumExperienceYears,
   selectedCollectionSources,
   selectedCollectionSourceLabel,
-  collectionIntentSyncLabel,
+  bossSelected,
   v2exSelected,
+  linuxdoSelected,
   collectableSourceOptions,
   collectionSourcesLoaded,
   v2exFeedSettingsOpen,
@@ -29,7 +20,17 @@ const {
   v2exRecentDays,
   v2exMaxPages,
   v2exKeywords,
+  linuxdoSettingsOpen,
+  linuxdoCategoryUrl,
+  linuxdoKeywordsText,
+  linuxdoSortBy,
+  linuxdoRecentDays,
+  linuxdoMaxPages,
+  linuxdoMaxJobs,
+  linuxdoKeywords,
   bossKeywordsText,
+  bossMaxPages,
+  bossMaxJobs,
   cityText,
   salaryText,
   experienceText,
@@ -52,9 +53,6 @@ const {
   collectionConfigMessage,
   bossSettingsOpen,
   filterProfileOpen,
-  bossSyncMappedFields,
-  bossSyncUnmappedFields,
-  bossSyncMessage,
   aiPreferredText,
   aiRejectedText,
   aiRiskText,
@@ -78,7 +76,6 @@ const {
   saveActiveFilterProfile,
   recomputeDefaultFilterProfile,
   saveCollectionConfig,
-  syncCollectionIntentToPlatforms,
   setBossAdditionalFilter,
 } = useCrawlPage();
 
@@ -93,6 +90,9 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
     return;
   }
   selectedCollectionSources.value = [...selectedCollectionSources.value, value];
+  if (value === BOSS_SOURCE_PLATFORM) bossSettingsOpen.value = true;
+  if (value === V2EX_SOURCE_PLATFORM) v2exFeedSettingsOpen.value = true;
+  if (value === LINUXDO_SOURCE_PLATFORM) linuxdoSettingsOpen.value = true;
 }
 </script>
 
@@ -115,14 +115,6 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             @click="saveCollectionConfig"
           >
             {{ collectionConfigSaving ? "保存中…" : "保存配置" }}
-          </button>
-          <button
-            class="ui-btn-primary px-3 py-1.5 text-xs"
-            type="button"
-            :disabled="sidecarRunning"
-            @click="syncCollectionIntentToPlatforms"
-          >
-            {{ collectionIntentSyncLabel }}
           </button>
         </div>
       </div>
@@ -169,68 +161,10 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             </div>
           </fieldset>
 
-          <div class="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <label class="space-y-1">
-              <div class="ui-field-label">关键词</div>
-              <textarea v-model="collectionKeywordsText" class="ui-textarea h-20 w-full resize-none" placeholder="Go&#10;后端&#10;平台工程" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">排除词</div>
-              <textarea v-model="collectionExcludedKeywordsText" class="ui-textarea h-20 w-full resize-none" placeholder="外包&#10;驻场&#10;培训" />
-            </label>
-          </div>
-
-          <div class="grid gap-3 lg:grid-cols-3">
-            <label class="space-y-1">
-              <div class="ui-field-label">城市</div>
-              <textarea v-model="collectionTargetCitiesText" class="ui-textarea h-20 w-full resize-none" placeholder="上海&#10;深圳&#10;远程" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">方式</div>
-              <textarea v-model="collectionWorkModesText" class="ui-textarea h-20 w-full resize-none" placeholder="远程&#10;混合&#10;到岗" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">技术栈</div>
-              <textarea v-model="collectionTechStackText" class="ui-textarea h-20 w-full resize-none" placeholder="Go&#10;Kubernetes&#10;Docker" />
-            </label>
-          </div>
-
-          <div class="grid gap-3 lg:grid-cols-[minmax(0,1.25fr)_repeat(4,minmax(0,0.7fr))]">
-            <label class="space-y-1">
-              <div class="ui-field-label">学历</div>
-              <textarea v-model="collectionDegreesText" class="ui-textarea h-16 w-full resize-none" placeholder="学历不限&#10;本科" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">最低薪资</div>
-              <input v-model.number="collectionMinimumSalaryK" type="number" min="0" class="ui-input h-9 w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">最高薪资</div>
-              <input v-model.number="collectionMaximumSalaryK" type="number" min="0" class="ui-input h-9 w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">最低经验</div>
-              <input v-model.number="collectionMinimumExperienceYears" type="number" min="0" step="0.5" class="ui-input h-9 w-full" />
-            </label>
-            <label class="space-y-1">
-              <div class="ui-field-label">最高经验</div>
-              <input v-model.number="collectionMaximumExperienceYears" type="number" min="0" step="0.5" class="ui-input h-9 w-full" />
-            </label>
-          </div>
-        </div>
-
-        <div v-if="bossSyncMessage" class="px-4 pb-4 text-xs text-content-muted">
-          <div>{{ bossSyncMessage }}</div>
-          <div v-if="bossSyncMappedFields.length > 0" class="mt-1">
-            已映射：{{ bossSyncMappedFields.join("；") }}
-          </div>
-          <div v-if="bossSyncUnmappedFields.length > 0" class="mt-1">
-            未映射：{{ bossSyncUnmappedFields.join("；") }}
-          </div>
         </div>
       </section>
 
-      <section v-if="bossSourceAvailable" class="ui-panel overflow-hidden">
+      <section v-if="bossSelected && bossSourceAvailable" class="ui-panel overflow-hidden">
         <button
           class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
           :class="bossSettingsOpen ? 'border-b border-border/90' : ''"
@@ -266,6 +200,19 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <textarea v-model="bossKeywordsText" class="ui-textarea h-24 w-full" placeholder="Go 远程&#10;SRE 远程&#10;Kubernetes 平台" />
             <div class="text-[11px] leading-5 text-content-muted">一行一个关键词。</div>
           </label>
+
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="space-y-1">
+              <div class="text-xs font-medium text-content-muted">Boss 页数上限</div>
+              <input v-model.number="bossMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
+              <div class="text-[11px] text-content-muted">按每个关键词和城市组合计算。</div>
+            </label>
+            <label class="space-y-1">
+              <div class="text-xs font-medium text-content-muted">Boss 岗位上限</div>
+              <input v-model.number="bossMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
+              <div class="text-[11px] text-content-muted">按本轮成功入库岗位计算。</div>
+            </label>
+          </div>
 
           <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <label class="space-y-1">
@@ -383,6 +330,52 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <input v-model.number="v2exMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
           </label>
           <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ v2exKeywords.length > 0 ? v2exKeywords.join("、") : "仅用招聘信号识别" }}</div>
+        </div>
+      </section>
+
+      <section v-if="linuxdoSelected" class="ui-panel overflow-hidden">
+        <button
+          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+          :class="linuxdoSettingsOpen ? 'border-b border-border/90' : ''"
+          type="button"
+          @click="linuxdoSettingsOpen = !linuxdoSettingsOpen"
+        >
+          <span class="space-y-1">
+            <span class="block text-sm font-semibold text-content-primary">LinuxDo</span>
+            <span class="block text-xs text-content-muted">可见浏览器</span>
+          </span>
+          <span class="text-xs text-content-muted">{{ linuxdoSettingsOpen ? "收起" : "展开" }}</span>
+        </button>
+
+        <div v-if="linuxdoSettingsOpen" class="grid gap-3 p-4 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">分类 URL</div>
+            <input v-model="linuxdoCategoryUrl" class="ui-input w-full" placeholder="https://linux.do/c/job/27" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">关键词</div>
+            <textarea v-model="linuxdoKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;远程&#10;Kubernetes" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">排序</div>
+            <UiSelect v-model="linuxdoSortBy">
+              <option value="latest">最新活跃</option>
+              <option value="created">发布时间</option>
+            </UiSelect>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">最近天数</div>
+            <input v-model.number="linuxdoRecentDays" type="number" min="0" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">页数上限</div>
+            <input v-model.number="linuxdoMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">入库上限</div>
+            <input v-model.number="linuxdoMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
+          <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ linuxdoKeywords.length > 0 ? linuxdoKeywords.join("、") : "仅用招聘信号识别" }}</div>
         </div>
       </section>
 

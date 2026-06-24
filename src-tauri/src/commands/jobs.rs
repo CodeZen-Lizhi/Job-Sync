@@ -250,5 +250,4 @@ pub fn delete_job_blacklist(app: tauri::AppHandle, blacklist_id: i64) -> Result<
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

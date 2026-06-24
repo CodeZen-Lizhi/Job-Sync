@@ -147,17 +147,22 @@ export const DEFAULT_AI_RISK_TEXT = [
 export const DEFAULT_AI_UNCERTAIN_STRATEGY: AiUncertainStrategy = "pending_confirmation";
 export const BOSS_SOURCE_PLATFORM: JobSourcePlatform = "boss";
 export const V2EX_SOURCE_PLATFORM: JobSourcePlatform = "v2ex";
-export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "zhilian", "maimai", "linuxdo"] as const;
-export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM] as const;
+export const LINUXDO_SOURCE_PLATFORM: JobSourcePlatform = "linuxdo";
+export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "zhilian", "maimai"] as const;
+export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM] as const;
 export const DEFAULT_V2EX_FEED_URL = "";
+export const DEFAULT_BOSS_MAX_PAGES = 3;
+export const DEFAULT_BOSS_MAX_JOBS = 100;
 export const DEFAULT_V2EX_MAX_PAGES = 5;
+export const DEFAULT_LINUXDO_CATEGORY_URL = "https://linux.do/c/job/27";
+export const DEFAULT_LINUXDO_MAX_PAGES = 3;
 export const JOB_SOURCE_PLATFORM_OPTIONS: JobSourcePlatformOption[] = [
   { value: BOSS_SOURCE_PLATFORM, label: "Boss 直聘", adapterKind: "boss" },
   { value: "liepin", label: "猎聘", adapterKind: "manual_import" },
   { value: "zhilian", label: "智联招聘", adapterKind: "manual_import" },
   { value: "maimai", label: "脉脉", adapterKind: "manual_import" },
   { value: V2EX_SOURCE_PLATFORM, label: "V2EX", adapterKind: "feed" },
-  { value: "linuxdo", label: "LinuxDo", adapterKind: "manual_import" },
+  { value: LINUXDO_SOURCE_PLATFORM, label: "LinuxDo", adapterKind: "feed" },
 ];
 export const BOSS_ONLY_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM] as const;
 export const DEFAULT_SOURCE_PLATFORMS = [...COLLECTABLE_SOURCE_PLATFORMS];
@@ -169,6 +174,18 @@ export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
   preference: 0.25,
   company: 0.15,
 };
+
+export function formatLocalDateTime(value: string | null | undefined): string {
+  if (!value) return "-";
+  if (value === "预览") return value;
+  const trimmed = value.trim();
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)
+    ? `${trimmed.replace(" ", "T")}Z`
+    : trimmed;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+}
 
 export function parseList(text: string): string[] {
   return text

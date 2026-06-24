@@ -20,7 +20,7 @@ use crate::{
     db,
     db::models,
     ipc,
-    ipc::protocol::{CommandIn, EventOut, LogPayload},
+    ipc::protocol::{CommandIn, EventOut, JobListCapturedPayload, LogPayload},
     settings, storage,
 };
 
@@ -111,6 +111,21 @@ fn summarize_auto_ai_result(result: &Value) -> String {
     }
     if failed > 0 {
         message.push_str(&format!("，{failed} 个转入待确认"));
+    }
+    if result
+        .get("telegram_sent")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        message.push_str("，已推送 Telegram");
+    }
+    if let Some(error) = result
+        .get("telegram_error")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        message.push_str(&format!("，Telegram 推送失败：{error}"));
     }
     message
 }
@@ -249,30 +264,184 @@ fn send_worker_command(inner: &Arc<Mutex<Option<RunningSidecar>>>, cmd: &Command
     Ok(())
 }
 
+fn note_inserted_and_should_stop(
+    active_collection_run: &Arc<Mutex<Option<ActiveCollectionRun>>>,
+) -> bool {
+    let mut guard = match active_collection_run.lock() {
+        Ok(guard) => guard,
+        Err(_) => return false,
+    };
+    let Some(run) = guard.as_mut() else {
+        return false;
+    };
+    run.note_inserted_and_should_stop()
+}
+
 fn request_stop_when_ready(
     active_collection_run: &Arc<Mutex<Option<ActiveCollectionRun>>>,
     inner: &Arc<Mutex<Option<RunningSidecar>>>,
 ) {
-    let should_stop = {
-        let mut guard = match active_collection_run.lock() {
-            Ok(guard) => guard,
-            Err(_) => return,
-        };
-        let Some(run) = guard.as_mut() else {
-            return;
-        };
-        run.note_inserted_and_should_stop()
-    };
-
+    let should_stop = note_inserted_and_should_stop(active_collection_run);
     if should_stop {
         let _ = send_worker_command(inner, &CommandIn::Stop);
     }
+}
+
+fn should_skip_new_insert_for_limit(
+    conn: &rusqlite::Connection,
+    active_collection_run: &Arc<Mutex<Option<ActiveCollectionRun>>>,
+    encrypt_job_id: &str,
+) -> bool {
+    let limit_reached = active_collection_run
+        .lock()
+        .ok()
+        .and_then(|guard| {
+            guard
+                .as_ref()
+                .map(ActiveCollectionRun::insert_limit_reached)
+        })
+        .unwrap_or(false);
+    limit_reached && !local_job_exists(conn, encrypt_job_id)
+}
+
+fn persist_job_list_capture(
+    conn: &rusqlite::Connection,
+    active_run: Option<&ActiveCollectionRun>,
+    active_collection_run: &Arc<Mutex<Option<ActiveCollectionRun>>>,
+    payload: &JobListCapturedPayload,
+) -> bool {
+    let mut should_stop_worker = false;
+    let jobs = extract_job_items_from_joblist(&payload.raw);
+    if let Some(active_run) = active_run {
+        let _ = models::increment_collection_counter(
+            conn,
+            &active_run.id,
+            models::CollectionCounter::Captured,
+            jobs.len() as i64,
+        );
+    }
+    let filters_json = payload
+        .filters
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+    for item in jobs {
+        let Some(id) = item.encrypt_job_id.as_deref() else {
+            record_collection_failure(
+                conn,
+                active_run,
+                "JOB_LIST_CAPTURED",
+                payload.keyword.as_deref(),
+                None,
+                "missing stable job id",
+                Some(&item.raw),
+            );
+            continue;
+        };
+        if should_skip_new_insert_for_limit(conn, active_collection_run, id) {
+            break;
+        }
+        match models::upsert_job_from_list_item_with_outcome(conn, id, &item.raw) {
+            Ok(outcome) => {
+                if let Some(active_run) = active_run {
+                    let _ = models::increment_collection_counter(
+                        conn,
+                        &active_run.id,
+                        outcome.counter(),
+                        1,
+                    );
+                    if matches!(outcome.counter(), models::CollectionCounter::Inserted)
+                        && note_inserted_and_should_stop(active_collection_run)
+                    {
+                        should_stop_worker = true;
+                    }
+                }
+            }
+            Err(err) => {
+                record_collection_failure(
+                    conn,
+                    active_run,
+                    "JOB_LIST_CAPTURED",
+                    payload.keyword.as_deref(),
+                    Some(id),
+                    &format!("db upsert list job failed: {err}"),
+                    Some(&item.raw),
+                );
+                continue;
+            }
+        }
+        if let Err(err) = models::insert_job_source_link(
+            conn,
+            id,
+            payload.keyword.as_deref(),
+            filters_json.as_deref(),
+        ) {
+            record_collection_failure(
+                conn,
+                active_run,
+                "JOB_LIST_CAPTURED",
+                payload.keyword.as_deref(),
+                Some(id),
+                &format!("source link insert failed: {err}"),
+                Some(&item.raw),
+            );
+        }
+        if let Err(err) = filter_profile::recompute_default_filter_profile_for_job_on_conn(conn, id)
+        {
+            record_collection_failure(
+                conn,
+                active_run,
+                "JOB_LIST_CAPTURED",
+                payload.keyword.as_deref(),
+                Some(id),
+                &format!("filter recompute failed: {err}"),
+                Some(&item.raw),
+            );
+        }
+    }
+    should_stop_worker
+}
+
+fn persist_collection_finished(conn: &rusqlite::Connection, active_run: &ActiveCollectionRun) {
+    if let Ok(counts) = filter_profile::count_filter_buckets_on_conn(conn) {
+        let _ = models::refresh_collection_run_bucket_counts(conn, &active_run.id, counts);
+    }
+    let _ = models::finish_collection_run(conn, &active_run.id, None);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn auto_ai_summary_includes_telegram_success() {
+        let summary = summarize_auto_ai_result(&json!({
+            "updated": 3,
+            "ai_judged": 2,
+            "hard_skipped": 1,
+            "failed": 0,
+            "telegram_sent": true,
+            "telegram_error": null,
+        }));
+
+        assert!(summary.contains("AI 采后判断已更新 3 个岗位"));
+        assert!(summary.contains("已推送 Telegram"));
+    }
+
+    #[test]
+    fn auto_ai_summary_includes_telegram_error() {
+        let summary = summarize_auto_ai_result(&json!({
+            "updated": 3,
+            "ai_judged": 2,
+            "hard_skipped": 0,
+            "failed": 1,
+            "telegram_sent": false,
+            "telegram_error": "Telegram 通知发送失败：HTTP 502",
+        }));
+
+        assert!(summary.contains("1 个转入待确认"));
+        assert!(summary.contains("Telegram 推送失败：Telegram 通知发送失败：HTTP 502"));
+    }
 
     #[test]
     fn extract_job_id_from_list_item_reads_nested_boss_ids() {
@@ -307,6 +476,276 @@ mod tests {
 
         assert_eq!(ids, vec!["nested-sec-1", "sec-2", "nested-encrypt-3"]);
     }
+
+    #[test]
+    fn active_collection_run_marks_insert_limit_reached_once() {
+        let mut run = ActiveCollectionRun {
+            id: "run-1".to_string(),
+            source_platform: "boss".to_string(),
+            max_jobs: Some(2),
+            inserted_count: 0,
+            stop_sent: false,
+        };
+
+        assert!(!run.insert_limit_reached());
+        assert!(!run.note_inserted_and_should_stop());
+        assert!(!run.insert_limit_reached());
+        assert!(run.note_inserted_and_should_stop());
+        assert!(run.insert_limit_reached());
+        assert!(!run.note_inserted_and_should_stop());
+    }
+
+    #[test]
+    fn persist_job_list_capture_writes_boss_job_and_run_counters() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+        let run_id = models::new_collection_run_id();
+        models::create_collection_run(
+            &conn,
+            &models::NewCollectionRun {
+                id: &run_id,
+                source_platform: "boss",
+                keywords: &["Go 远程".to_string()],
+                filters: &json!({ "city": "101020100" }),
+                limits: &json!({ "maxJobs": 1 }),
+            },
+        )
+        .expect("create run");
+        let active_collection_run = Arc::new(Mutex::new(Some(ActiveCollectionRun {
+            id: run_id.clone(),
+            source_platform: "boss".to_string(),
+            max_jobs: Some(1),
+            inserted_count: 0,
+            stop_sent: false,
+        })));
+        let active_run = active_collection_run
+            .lock()
+            .expect("active run lock")
+            .clone();
+        let payload = JobListCapturedPayload {
+            keyword: Some("Go 远程".to_string()),
+            filters: Some(json!({ "city": "101020100" })),
+            capture_source: Some("natural".to_string()),
+            raw: json!({
+              "zpData": {
+                "query": "Go 远程",
+                "page": 1,
+                "city": "101020100",
+                "jobList": [{
+                  "securityId": "canary-sec-1",
+                  "encryptJobId": "canary-encrypt-1",
+                  "jobName": "Go 远程平台工程师",
+                  "brandName": "Canary Tech",
+                  "cityName": "上海",
+                  "salaryDesc": "30-50K",
+                  "jobExperience": "3-5年",
+                  "jobDegree": "本科",
+                  "skills": ["Go", "Kubernetes"]
+                }]
+              }
+            }),
+        };
+
+        let should_stop_worker =
+            persist_job_list_capture(&conn, active_run.as_ref(), &active_collection_run, &payload);
+
+        assert!(should_stop_worker);
+        let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].id, run_id);
+        assert_eq!(runs[0].status, "running");
+        assert_eq!(runs[0].captured, 1);
+        assert_eq!(runs[0].inserted, 1);
+        assert_eq!(runs[0].failed, 0);
+
+        let row: (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
+                r#"
+                SELECT source_platform, source_url, dedup_key, position_name,
+                       brand_name, city_name, raw_payload_json
+                FROM job
+                WHERE encrypt_job_id = ?1
+                "#,
+                ["canary-sec-1"],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("query job");
+        assert_eq!(row.0, "boss");
+        assert_eq!(
+            row.1.as_deref(),
+            Some("https://www.zhipin.com/job_detail/canary-sec-1.html")
+        );
+        assert_eq!(row.2.as_deref(), Some("canary-sec-1"));
+        assert_eq!(row.3.as_deref(), Some("Go 远程平台工程师"));
+        assert_eq!(row.4.as_deref(), Some("Canary Tech"));
+        assert_eq!(row.5.as_deref(), Some("上海"));
+        let raw_payload: serde_json::Value =
+            serde_json::from_str(row.6.as_deref().unwrap_or("{}")).expect("parse raw payload");
+        assert_eq!(
+            raw_payload
+                .get("skills")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+
+        let link: (Option<String>, Option<String>, String) = conn
+            .query_row(
+                "SELECT keyword, filters_json, captured_at FROM job_source_link WHERE encrypt_job_id = ?1",
+                ["canary-sec-1"],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("query job source link");
+        assert_eq!(link.0.as_deref(), Some("Go 远程"));
+        let link_filters: serde_json::Value =
+            serde_json::from_str(link.1.as_deref().unwrap_or("{}")).expect("parse link filters");
+        assert_eq!(
+            link_filters.get("city").and_then(Value::as_str),
+            Some("101020100")
+        );
+        assert!(link.2.as_str() >= runs[0].started_at.as_str());
+
+        let (detail_status, post_description): (String, String) = conn
+            .query_row(
+                r#"
+                SELECT json_extract(zp_data_json, '$.detailStatus'),
+                       json_extract(zp_data_json, '$.jobInfo.postDescription')
+                FROM job_detail_raw
+                WHERE encrypt_job_id = ?1
+                "#,
+                ["canary-sec-1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query list-only detail raw");
+        assert_eq!(detail_status, "list_only");
+        assert!(!post_description.trim().is_empty());
+
+        let filter_result: (i64, String) = conn
+            .query_row(
+                "SELECT eligible, reason_json FROM job_filter_result WHERE encrypt_job_id = ?1",
+                ["canary-sec-1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query filter result");
+        assert_eq!(filter_result.0, 1);
+        let reason: serde_json::Value =
+            serde_json::from_str(&filter_result.1).expect("parse filter reason");
+        assert!(matches!(
+            reason.get("bucket").and_then(Value::as_str),
+            Some("recommended" | "pending_confirmation" | "filtered")
+        ));
+
+        let active_run = active_collection_run
+            .lock()
+            .expect("active run lock")
+            .clone()
+            .expect("active run");
+        persist_collection_finished(&conn, &active_run);
+        let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs after finish");
+        assert_eq!(runs[0].status, "finished");
+        assert!(runs[0].finished_at.is_some());
+        assert!(runs[0].error_message.is_none());
+        assert_eq!(runs[0].recommended + runs[0].pending + runs[0].filtered, 1);
+        assert_eq!(runs[0].all_jobs, 1);
+
+        let failures = models::list_collection_failures(&conn, Some(5)).expect("list failures");
+        assert!(failures.is_empty());
+        let terminal_failure_count: i64 = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*)
+                FROM collection_failure
+                WHERE run_id = ?1
+                  AND event_type IN ('ERROR', 'WORKER_EXIT', 'CRAWL_AUTO_START')
+                "#,
+                [&run_id],
+                |row| row.get(0),
+            )
+            .expect("count terminal failures");
+        assert_eq!(terminal_failure_count, 0);
+    }
+
+    #[test]
+    fn persist_job_list_capture_records_missing_stable_id_failure() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+        let run_id = models::new_collection_run_id();
+        models::create_collection_run(
+            &conn,
+            &models::NewCollectionRun {
+                id: &run_id,
+                source_platform: "boss",
+                keywords: &["Go 远程".to_string()],
+                filters: &json!({}),
+                limits: &json!({ "maxJobs": 1 }),
+            },
+        )
+        .expect("create run");
+        let active_collection_run = Arc::new(Mutex::new(Some(ActiveCollectionRun {
+            id: run_id.clone(),
+            source_platform: "boss".to_string(),
+            max_jobs: Some(1),
+            inserted_count: 0,
+            stop_sent: false,
+        })));
+        let active_run = active_collection_run
+            .lock()
+            .expect("active run lock")
+            .clone();
+        let payload = JobListCapturedPayload {
+            keyword: Some("Go 远程".to_string()),
+            filters: None,
+            capture_source: Some("natural".to_string()),
+            raw: json!({
+              "zpData": {
+                "jobList": [{
+                  "jobName": "缺少 ID 的岗位",
+                  "brandName": "No Id Co"
+                }]
+              }
+            }),
+        };
+
+        let should_stop_worker =
+            persist_job_list_capture(&conn, active_run.as_ref(), &active_collection_run, &payload);
+
+        assert!(!should_stop_worker);
+        let job_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM job", [], |row| row.get(0))
+            .expect("count jobs");
+        assert_eq!(job_count, 0);
+        let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+        assert_eq!(runs[0].captured, 1);
+        assert_eq!(runs[0].inserted, 0);
+        assert_eq!(runs[0].failed, 1);
+        let failures = models::list_collection_failures(&conn, Some(5)).expect("list failures");
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].run_id.as_deref(), Some(run_id.as_str()));
+        assert_eq!(failures[0].source_platform.as_deref(), Some("boss"));
+        assert_eq!(failures[0].event_type, "JOB_LIST_CAPTURED");
+        assert_eq!(failures[0].keyword.as_deref(), Some("Go 远程"));
+        assert_eq!(failures[0].reason, "missing stable job id");
+    }
 }
 
 struct RunningSidecar {
@@ -324,15 +763,18 @@ struct ActiveCollectionRun {
 }
 
 impl ActiveCollectionRun {
+    fn insert_limit_reached(&self) -> bool {
+        self.max_jobs
+            .map(|max_jobs| self.inserted_count >= max_jobs)
+            .unwrap_or(false)
+    }
+
     fn note_inserted_and_should_stop(&mut self) -> bool {
         self.inserted_count += 1;
         if self.stop_sent {
             return false;
         }
-        let Some(max_jobs) = self.max_jobs else {
-            return false;
-        };
-        if self.inserted_count >= max_jobs {
+        if self.insert_limit_reached() {
             self.stop_sent = true;
             return true;
         }
@@ -367,6 +809,30 @@ impl SidecarManager {
             .ok()
             .and_then(|g| g.as_ref().map(|_| ()))
             .is_some()
+    }
+
+    pub fn stop_collection_by_user(&self) -> Result<()> {
+        let active_run = self
+            .active_collection_run
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        if let Some(active_run) = active_run.as_ref() {
+            if let Ok(conn) = db::init_db(&self.app_data_dir) {
+                let reason = "用户已停止采集";
+                record_collection_failure(
+                    &conn,
+                    Some(active_run),
+                    "STOP",
+                    None,
+                    None,
+                    reason,
+                    None,
+                );
+                let _ = models::fail_collection_run(&conn, &active_run.id, reason);
+            }
+        }
+        self.send(&CommandIn::Stop)
     }
 
     pub fn start_if_needed(&self) -> Result<()> {
@@ -498,6 +964,13 @@ impl SidecarManager {
                         .and_then(|guard| guard.clone());
                     match &evt {
                         EventOut::JobDetailCaptured(payload) => {
+                            if should_skip_new_insert_for_limit(
+                                conn,
+                                &active_collection_run,
+                                &payload.encrypt_job_id,
+                            ) {
+                                continue;
+                            }
                             if let Ok(zp_json) = serde_json::to_string(&payload.zp_data) {
                                 match models::upsert_job_from_detail_with_outcome(
                                     conn,
@@ -561,6 +1034,13 @@ impl SidecarManager {
                             }
                         }
                         EventOut::JobNormalizedCaptured(payload) => {
+                            if should_skip_new_insert_for_limit(
+                                conn,
+                                &active_collection_run,
+                                &payload.encrypt_job_id,
+                            ) {
+                                continue;
+                            }
                             if let Some(active_run) = active_run.as_ref() {
                                 let _ = models::increment_collection_counter(
                                     conn,
@@ -651,88 +1131,13 @@ impl SidecarManager {
                             );
                         }
                         EventOut::JobListCaptured(payload) => {
-                            let jobs = extract_job_items_from_joblist(&payload.raw);
-                            if let Some(active_run) = active_run.as_ref() {
-                                let _ = models::increment_collection_counter(
-                                    conn,
-                                    &active_run.id,
-                                    models::CollectionCounter::Captured,
-                                    jobs.len() as i64,
-                                );
-                            }
-                            let filters_json = payload
-                                .filters
-                                .as_ref()
-                                .and_then(|v| serde_json::to_string(v).ok());
-                            for item in jobs {
-                                let Some(id) = item.encrypt_job_id.as_deref() else {
-                                    record_collection_failure(
-                                        conn,
-                                        active_run.as_ref(),
-                                        "JOB_LIST_CAPTURED",
-                                        payload.keyword.as_deref(),
-                                        None,
-                                        "missing stable job id",
-                                        Some(&item.raw),
-                                    );
-                                    continue;
-                                };
-                                match models::upsert_job_from_list_item_with_outcome(
-                                    conn, id, &item.raw,
-                                ) {
-                                    Ok(outcome) => {
-                                        if let Some(active_run) = active_run.as_ref() {
-                                            let _ = models::increment_collection_counter(
-                                                conn,
-                                                &active_run.id,
-                                                outcome.counter(),
-                                                1,
-                                            );
-                                            if matches!(
-                                                outcome.counter(),
-                                                models::CollectionCounter::Inserted
-                                            ) {
-                                                request_stop_when_ready(
-                                                    &active_collection_run,
-                                                    &inner,
-                                                );
-                                            }
-                                        }
-                                    }
-                                    Err(err) => {
-                                        record_collection_failure(
-                                            conn,
-                                            active_run.as_ref(),
-                                            "JOB_LIST_CAPTURED",
-                                            payload.keyword.as_deref(),
-                                            Some(id),
-                                            &format!("db upsert list job failed: {err}"),
-                                            Some(&item.raw),
-                                        );
-                                        continue;
-                                    }
-                                }
-                                let _ = models::insert_job_source_link(
-                                    conn,
-                                    id,
-                                    payload.keyword.as_deref(),
-                                    filters_json.as_deref(),
-                                );
-                                if let Err(err) =
-                                    filter_profile::recompute_default_filter_profile_for_job_on_conn(
-                                        conn, id,
-                                    )
-                                {
-                                    record_collection_failure(
-                                        conn,
-                                        active_run.as_ref(),
-                                        "JOB_LIST_CAPTURED",
-                                        payload.keyword.as_deref(),
-                                        Some(id),
-                                        &format!("filter recompute failed: {err}"),
-                                        Some(&item.raw),
-                                    );
-                                }
+                            if persist_job_list_capture(
+                                conn,
+                                active_run.as_ref(),
+                                &active_collection_run,
+                                payload,
+                            ) {
+                                let _ = send_worker_command(&inner, &CommandIn::Stop);
                             }
                         }
                         EventOut::BossChatStatusSynced(payload) => {
@@ -791,6 +1196,13 @@ impl SidecarManager {
                                 payload.encrypt_job_id.as_deref().or(fallback_id.as_deref());
                             if let Some(encrypt_job_id) = encrypt_job_id {
                                 if let Some(raw) = payload.raw.as_ref() {
+                                    if should_skip_new_insert_for_limit(
+                                        conn,
+                                        &active_collection_run,
+                                        encrypt_job_id,
+                                    ) {
+                                        continue;
+                                    }
                                     let filters_json = payload
                                         .filters
                                         .as_ref()
@@ -808,6 +1220,15 @@ impl SidecarManager {
                                                     outcome.counter(),
                                                     1,
                                                 );
+                                                if matches!(
+                                                    outcome.counter(),
+                                                    models::CollectionCounter::Inserted
+                                                ) {
+                                                    request_stop_when_ready(
+                                                        &active_collection_run,
+                                                        &inner,
+                                                    );
+                                                }
                                             }
                                         }
                                         Err(err) => {
@@ -881,18 +1302,10 @@ impl SidecarManager {
                         }
                         EventOut::Finished => {
                             if let Some(active_run) = active_run.as_ref() {
-                                if let Ok(counts) =
-                                    filter_profile::count_filter_buckets_on_conn(conn)
-                                {
-                                    let _ = models::refresh_collection_run_bucket_counts(
-                                        conn,
-                                        &active_run.id,
-                                        counts,
-                                    );
-                                }
-                                let _ = models::finish_collection_run(conn, &active_run.id, None);
+                                persist_collection_finished(conn, active_run);
                                 if active_run.source_platform == "boss"
                                     || active_run.source_platform == "v2ex"
+                                    || active_run.source_platform == "linuxdo"
                                 {
                                     auto_recompute_ai_after_collection(&app_handle);
                                 }

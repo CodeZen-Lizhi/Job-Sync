@@ -32,6 +32,7 @@ src-tauri/bin/*
 # Local app data (db / cookies / exports)
 data/*
 !data/.gitkeep
+.tmp/
 
 # Local automation/tooling caches and screenshots
 .serena/

@@ -48,6 +48,9 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
     assert!(source_platforms
         .iter()
         .any(|item| item.as_str() == Some("v2ex")));
+    assert!(source_platforms
+        .iter()
+        .any(|item| item.as_str() == Some("linuxdo")));
     assert_eq!(
         profile
             .profile_json
@@ -223,7 +226,11 @@ fn existing_default_filter_profile_with_legacy_boss_only_source_adds_v2ex() {
     let profile = models::load_default_filter_profile(&conn).expect("load upgraded profile");
     assert_eq!(
         json_string_list(&profile.profile_json, "sourcePlatforms"),
-        vec!["boss".to_string(), "v2ex".to_string()]
+        vec![
+            "boss".to_string(),
+            "v2ex".to_string(),
+            "linuxdo".to_string()
+        ]
     );
 }
 
@@ -496,6 +503,85 @@ fn upsert_job_from_list_item_maps_mock_boss_payload_to_unified_source_fields() {
     let raw_payload = row.7.as_deref().unwrap_or_default();
     assert!(raw_payload.contains("\"securityId\":\"list-sec-123\""));
     assert!(raw_payload.contains("Kubernetes"));
+
+    let detail_json: String = conn
+        .query_row(
+            "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+            [encrypt_job_id],
+            |row| row.get(0),
+        )
+        .expect("query list-only detail");
+    let detail: Value = serde_json::from_str(&detail_json).expect("parse list-only detail");
+    assert_eq!(
+        detail.get("detailStatus").and_then(Value::as_str),
+        Some("list_only")
+    );
+    assert_eq!(
+        detail
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("postDescription"))
+            .and_then(Value::as_str),
+        Some("Go SRE 工程师 Mock 云科技 深圳 30-55K 3-5年 本科")
+    );
+    assert_eq!(
+        detail
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("jobLabels"))
+            .and_then(Value::as_array)
+            .map(|items| items.len()),
+        Some(2)
+    );
+}
+
+#[test]
+fn upsert_job_from_list_item_does_not_overwrite_real_boss_detail_raw() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let encrypt_job_id = "encrypt_real_detail_1";
+    let detail_json = r#"
+    {
+      "jobInfo": {
+        "jobName": "Go 平台工程师",
+        "postDescription": "真实详情：负责平台工程和云原生基础设施",
+        "salaryDesc": "35-55K",
+        "experienceName": "5-10 年",
+        "degreeName": "本科",
+        "cityName": "上海"
+      },
+      "brandInfo": {
+        "brandName": "真实科技"
+      }
+    }
+  "#;
+    models::upsert_job_from_detail(&conn, encrypt_job_id, detail_json).expect("upsert real detail");
+
+    let item = json!({
+      "securityId": "real-sec-1",
+      "jobName": "Go 平台工程师",
+      "brandName": "真实科技",
+      "cityName": "上海",
+      "salaryDesc": "30-50K"
+    });
+    models::upsert_job_from_list_item(&conn, encrypt_job_id, &item)
+        .expect("upsert list item after real detail");
+
+    let stored_json: String = conn
+        .query_row(
+            "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+            [encrypt_job_id],
+            |row| row.get(0),
+        )
+        .expect("query stored detail");
+    let stored: Value = serde_json::from_str(&stored_json).expect("parse stored detail");
+    assert_eq!(stored.get("detailStatus").and_then(Value::as_str), None);
+    assert_eq!(
+        stored
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("postDescription"))
+            .and_then(Value::as_str),
+        Some("真实详情：负责平台工程和云原生基础设施")
+    );
 }
 
 #[test]
@@ -589,6 +675,67 @@ fn init_db_preserves_active_collection_runs() {
     assert_eq!(runs[0].status, "running");
     assert_eq!(runs[0].error_message, None);
     assert!(runs[0].finished_at.is_none());
+}
+
+#[test]
+fn finish_collection_run_does_not_overwrite_failed_user_stop() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let run_id = models::new_collection_run_id();
+
+    models::create_collection_run(
+        &conn,
+        &models::NewCollectionRun {
+            id: &run_id,
+            source_platform: "boss",
+            keywords: &["Go 远程".to_string()],
+            filters: &json!({}),
+            limits: &json!({ "maxJobs": 1 }),
+        },
+    )
+    .expect("create running run");
+    models::fail_collection_run(&conn, &run_id, "用户已停止采集").expect("fail run");
+    models::finish_collection_run(&conn, &run_id, None).expect("finish after fail");
+
+    let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, run_id);
+    assert_eq!(runs[0].status, "failed");
+    assert_eq!(runs[0].error_message.as_deref(), Some("用户已停止采集"));
+    assert!(runs[0].finished_at.is_some());
+}
+
+#[test]
+fn finish_collection_run_does_not_overwrite_failed_worker_error() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let run_id = models::new_collection_run_id();
+
+    models::create_collection_run(
+        &conn,
+        &models::NewCollectionRun {
+            id: &run_id,
+            source_platform: "boss",
+            keywords: &["Go 远程".to_string()],
+            filters: &json!({}),
+            limits: &json!({ "maxJobs": 1 }),
+        },
+    )
+    .expect("create running run");
+    models::fail_collection_run(&conn, &run_id, "Boss 未返回有效岗位列表").expect("fail run");
+    models::finish_collection_run(&conn, &run_id, None).expect("finish after worker error");
+
+    let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, run_id);
+    assert_eq!(runs[0].status, "failed");
+    assert_eq!(
+        runs[0].error_message.as_deref(),
+        Some("Boss 未返回有效岗位列表")
+    );
+    assert!(runs[0].finished_at.is_some());
 }
 
 #[test]
@@ -1058,7 +1205,7 @@ fn init_db_seeds_job_source_registry_with_manual_import_adapters() {
                 && adapter_kind == "boss"
                 && *enabled == 1
         }));
-    for platform in ["liepin", "linuxdo", "maimai", "zhilian"] {
+    for platform in ["liepin", "maimai", "zhilian"] {
         assert!(sources
             .iter()
             .any(|(source_platform, _, adapter_kind, enabled)| {
@@ -1069,6 +1216,11 @@ fn init_db_seeds_job_source_registry_with_manual_import_adapters() {
         .iter()
         .any(|(source_platform, _, adapter_kind, enabled)| {
             source_platform == "v2ex" && adapter_kind == "feed" && *enabled == 1
+        }));
+    assert!(sources
+        .iter()
+        .any(|(source_platform, _, adapter_kind, enabled)| {
+            source_platform == "linuxdo" && adapter_kind == "feed" && *enabled == 1
         }));
     assert_eq!(
         sources
@@ -1118,6 +1270,9 @@ fn init_db_exposes_supported_job_source_adapter_spec() {
         && spec.adapter_kind == "manual_import"
         && spec.enabled_by_default));
     assert!(specs.iter().any(|spec| spec.platform == "v2ex"
+        && spec.adapter_kind == "feed"
+        && spec.enabled_by_default));
+    assert!(specs.iter().any(|spec| spec.platform == "linuxdo"
         && spec.adapter_kind == "feed"
         && spec.enabled_by_default));
 }

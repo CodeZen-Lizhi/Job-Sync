@@ -48,10 +48,18 @@ pub fn boss_meta_path(app_data_dir: &Path) -> PathBuf {
     storage_dir(app_data_dir).join("boss-meta.json")
 }
 
+pub fn boss_browser_profile_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("boss-browser-profile")
+}
+
 pub fn linuxdo_cookies_path(app_data_dir: &Path) -> PathBuf {
     storage_dir(app_data_dir).join("linuxdo-cookies.json")
 }
 
 pub fn linuxdo_local_storage_path(app_data_dir: &Path) -> PathBuf {
     storage_dir(app_data_dir).join("linuxdo-local-storage.json")
+}
+
+pub fn linuxdo_browser_profile_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("linuxdo-browser-profile")
 }

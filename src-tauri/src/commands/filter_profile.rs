@@ -1612,7 +1612,10 @@ mod tests {
         assert!(eligible);
         assert_eq!(reason["bucket"], json!("recommended"));
         assert_eq!(reason["evidence_quality"], json!("weak"));
-        assert!(reason["pending_by"].as_array().expect("pending reasons").is_empty());
+        assert!(reason["pending_by"]
+            .as_array()
+            .expect("pending reasons")
+            .is_empty());
     }
 
     #[test]
@@ -1684,7 +1687,10 @@ mod tests {
 
         assert!(boss_eligible);
         assert!(liepin_eligible);
-        assert!(liepin_reason["blocked_by"].as_array().expect("blocked rules").is_empty());
+        assert!(liepin_reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .is_empty());
         assert_eq!(boss_reason["dimensions"]["source_platform"], json!("boss"));
     }
 
@@ -1703,7 +1709,10 @@ mod tests {
         let (eligible, reason) = evaluate_filter_profile(&v2ex_job, None, &profile);
 
         assert!(eligible);
-        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
+        assert!(reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .is_empty());
         assert_eq!(reason["dimensions"]["source_platform"], json!("v2ex"));
     }
 
@@ -1722,7 +1731,10 @@ mod tests {
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
         assert!(eligible);
-        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
+        assert!(reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .is_empty());
         assert_eq!(
             reason["dimensions"]["communication_status"],
             json!("read_no_reply")
@@ -1745,7 +1757,10 @@ mod tests {
         let (eligible, reason) = evaluate_filter_profile(&job, None, &profile);
 
         assert!(eligible);
-        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
+        assert!(reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .is_empty());
         assert_eq!(reason["dimensions"]["review_status"], json!("applied"));
     }
 
@@ -1813,7 +1828,10 @@ mod tests {
             blocked_reason["dimensions"]["communication_status"],
             json!("read_no_reply")
         );
-        assert!(blocked_reason["blocked_by"].as_array().expect("blocked rules").is_empty());
+        assert!(blocked_reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .is_empty());
     }
 
     #[test]
@@ -1992,7 +2010,10 @@ mod tests {
 
         assert_eq!(eligible, 1);
         assert_eq!(reason["bucket"], json!("recommended"));
-        assert!(reason["blocked_by"].as_array().expect("blocked rules").is_empty());
+        assert!(reason["blocked_by"]
+            .as_array()
+            .expect("blocked rules")
+            .is_empty());
     }
 
     #[test]

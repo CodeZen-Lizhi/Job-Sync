@@ -244,13 +244,13 @@ fn diagnose_boss_session(app_data_dir: &Path, checked_at: &str) -> BossSessionDi
     let ready = cookies_valid_json && local_storage_valid_json;
     let status = if ready { "ok" } else { "warning" }.to_string();
     let message = if ready {
-        "Boss 登录态可复用：Cookie 与 LocalStorage 均存在且可解析。"
+        "Boss Cookie 快照可用；自动采集仍优先复用持久浏览器 profile。"
     } else if !cookies_present && !local_storage_present {
-        "尚未发现 Boss Cookie 与 LocalStorage，请先在采集页完成人工登录。"
+        "尚未发现 Boss Cookie 快照；自动采集会打开持久浏览器 profile，如未登录会等待你人工登录/验证。"
     } else if !cookies_valid_json || !local_storage_valid_json {
-        "Boss 登录态不完整或文件不可解析，请重新登录刷新 Cookie 与 LocalStorage。"
+        "Boss Cookie 快照不完整或不可解析；自动采集仍会复用持久浏览器 profile，并在需要时等待人工登录/验证。"
     } else {
-        "Boss 登录态不完整，请重新登录刷新 Cookie 与 LocalStorage。"
+        "Boss Cookie 快照不完整；自动采集仍会复用持久浏览器 profile，并在需要时等待人工登录/验证。"
     }
     .to_string();
 
@@ -315,9 +315,9 @@ fn diagnose_telegram(settings: &settings::AppSettings, checked_at: &str) -> Tele
         parts.next().is_some_and(|head| !head.trim().is_empty())
             && parts.next().is_some_and(|tail| !tail.trim().is_empty())
     });
-    let chat_id_valid = chat_id.as_deref().is_some_and(|value| {
-        value.parse::<i64>().is_ok() || value.starts_with('@')
-    });
+    let chat_id_valid = chat_id
+        .as_deref()
+        .is_some_and(|value| value.parse::<i64>().is_ok() || value.starts_with('@'));
     let status = if bot_token_valid && chat_id_valid {
         "ok"
     } else {
@@ -358,13 +358,21 @@ fn telegram_bot_api_base(token: &str) -> String {
     format!("https://api.telegram.org/bot{token}")
 }
 
+fn telegram_agent(settings: &settings::AppSettings) -> Result<ureq::Agent, String> {
+    let mut builder = ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(10));
+    if let Some(proxy_url) = opt_trimmed(settings.proxy_url.clone()) {
+        let proxy = ureq::Proxy::new(&proxy_url)
+            .map_err(|err| format!("Telegram 代理配置不正确，请检查代理地址：{err}"))?;
+        builder = builder.proxy(proxy);
+    }
+    Ok(builder.build())
+}
+
 pub(crate) fn telegram_message_is_valid(token: &str, chat_id: &str) -> bool {
     let token = token.trim();
     let chat_id = chat_id.trim();
     let mut parts = token.splitn(2, ':');
-    let token_ok = parts
-        .next()
-        .is_some_and(|head| !head.trim().is_empty())
+    let token_ok = parts.next().is_some_and(|head| !head.trim().is_empty())
         && parts.next().is_some_and(|tail| !tail.trim().is_empty());
     let chat_id_ok = chat_id.parse::<i64>().is_ok() || chat_id.starts_with('@');
     token_ok && chat_id_ok
@@ -409,9 +417,10 @@ pub(crate) fn send_telegram_message_from_settings_with_format(
         }
     }
 
-    let response = ureq::post(&format!("{}/sendMessage", telegram_bot_api_base(bot_token)))
+    let agent = telegram_agent(settings)?;
+    let response = agent
+        .post(&format!("{}/sendMessage", telegram_bot_api_base(bot_token)))
         .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(10))
         .send_json(payload);
 
     let response = match response {
@@ -428,7 +437,10 @@ pub(crate) fn send_telegram_message_from_settings_with_format(
     let body: serde_json::Value = response
         .into_json()
         .map_err(|e| format!("解析 Telegram 响应失败：{e}"))?;
-    let ok = body.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let ok = body
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     if !ok {
         return Err(format!(
             "Telegram 通知发送失败：{}",
@@ -511,6 +523,13 @@ pub fn save_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::mpsc,
+        thread,
+        time::{Duration, Instant},
+    };
 
     #[test]
     fn public_settings_redacts_saved_api_key() {
@@ -589,6 +608,8 @@ mod tests {
         assert!(!empty.ready);
         assert!(!empty.cookies_present);
         assert!(!empty.local_storage_present);
+        assert!(empty.message.contains("持久浏览器 profile"));
+        assert!(empty.message.contains("人工登录/验证"));
 
         storage::write_json(
             &storage::boss_cookies_path(tmp.path()),
@@ -600,6 +621,7 @@ mod tests {
         assert!(partial.cookies_present);
         assert!(partial.cookies_valid_json);
         assert!(!partial.local_storage_present);
+        assert!(partial.message.contains("持久浏览器 profile"));
 
         storage::write_json(
             &storage::boss_local_storage_path(tmp.path()),
@@ -631,5 +653,61 @@ mod tests {
         assert!(configured.bot_token_valid);
         assert!(configured.chat_id_valid);
         assert!(!configured.message.contains("secret"));
+    }
+
+    #[test]
+    fn telegram_sender_uses_saved_proxy_url() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("proxy listener");
+        listener
+            .set_nonblocking(true)
+            .expect("nonblocking listener");
+        let proxy_addr = listener.local_addr().expect("proxy addr");
+        let (tx, rx) = mpsc::channel();
+
+        let proxy = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let mut buffer = [0_u8; 512];
+                        let n = stream.read(&mut buffer).unwrap_or_default();
+                        let request = String::from_utf8_lossy(&buffer[..n]).to_string();
+                        let _ = tx.send(request);
+                        let _ = stream
+                            .write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+                        return;
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            let _ = tx.send(String::new());
+                            return;
+                        }
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(_) => {
+                        let _ = tx.send(String::new());
+                        return;
+                    }
+                }
+            }
+        });
+
+        let mut settings = settings::AppSettings::platform_default();
+        settings.telegram_bot_token = Some("123:secret".to_string());
+        settings.telegram_chat_id = Some("987654321".to_string());
+        settings.proxy_url = Some(format!("http://{proxy_addr}"));
+
+        let result =
+            send_telegram_message_from_settings_with_format(&settings, "hello", Some("HTML"));
+
+        assert!(result.is_err());
+        let request = rx
+            .recv_timeout(Duration::from_secs(6))
+            .expect("proxy request");
+        proxy.join().expect("proxy thread");
+        assert!(
+            request.starts_with("CONNECT api.telegram.org:443 "),
+            "unexpected proxy request: {request:?}"
+        );
     }
 }

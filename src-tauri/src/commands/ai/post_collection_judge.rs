@@ -214,7 +214,11 @@ fn run_recompute_ai_post_collection_judgement(
         match saved_settings.as_ref() {
             Some(settings) => {
                 for message in telegram_messages {
-                    match send_telegram_message_from_settings_with_format(settings, &message, Some("HTML")) {
+                    match send_telegram_message_from_settings_with_format(
+                        settings,
+                        &message,
+                        Some("HTML"),
+                    ) {
                         Ok(()) => telegram_sent = true,
                         Err(err) => {
                             telegram_error = Some(err);
@@ -670,7 +674,14 @@ fn telegram_messages_for_test(
     failed: u64,
     telegram_jobs: &[TelegramJobSummary],
 ) -> Vec<String> {
-    build_telegram_summary_messages(counts, updated, ai_judged, hard_skipped, failed, telegram_jobs)
+    build_telegram_summary_messages(
+        counts,
+        updated,
+        ai_judged,
+        hard_skipped,
+        failed,
+        telegram_jobs,
+    )
 }
 
 #[cfg(test)]

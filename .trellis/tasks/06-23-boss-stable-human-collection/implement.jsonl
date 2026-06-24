@@ -1,0 +1,3 @@
+{"file":".trellis/spec/boss-crawler-worker/frontend/collection-source-contracts.md","reason":"Boss collection source contract and cross-layer payload/event expectations"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Feature spans Tauri commands, worker payloads, browser behavior, and tests"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing LinuxDo persistent-profile and Boss retry helpers instead of duplicating behavior"}

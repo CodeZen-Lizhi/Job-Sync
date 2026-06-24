@@ -54,6 +54,12 @@ const UPSERT_JOB_DETAIL_RAW_SQL: &str = r#"
     fetched_at = excluded.fetched_at
 "#;
 
+const INSERT_JOB_DETAIL_RAW_IF_MISSING_SQL: &str = r#"
+  INSERT INTO job_detail_raw (encrypt_job_id, zp_data_json, fetched_at)
+  VALUES (?1, ?2, ?3)
+  ON CONFLICT(encrypt_job_id) DO NOTHING
+"#;
+
 const UPSERT_JOB_FROM_DETAIL_SQL: &str = r#"
   INSERT INTO job (
     encrypt_job_id,
@@ -187,6 +193,9 @@ pub(crate) fn upsert_job_from_list_item(
         &source,
         &last_seen_at,
     )?;
+    if let Some(detail_json) = build_boss_list_item_detail_json(item, &fields, &source) {
+        insert_job_detail_raw_if_missing(conn, encrypt_job_id, &detail_json)?;
+    }
     upsert_company_score_for_fields(conn, &fields, &item.to_string())?;
     Ok(())
 }
@@ -270,6 +279,58 @@ fn build_normalized_job_detail_json(
         "rawPayload": input.raw_payload,
     }))
     .ok()
+}
+
+fn build_boss_list_item_detail_json(
+    item: &Value,
+    fields: &JobFields,
+    source: &NormalizedJobSource,
+) -> Option<String> {
+    let post_description = source
+        .jd_text
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("列表仅含基础岗位信息，完整 JD 需补充岗位证据。");
+    serde_json::to_string(&json!({
+        "detailStatus": "list_only",
+        "sourcePlatform": source.source_platform,
+        "sourceUrl": source.source_url,
+        "dedupKey": source.dedup_key,
+        "jobInfo": {
+            "jobName": fields.position_name,
+            "positionName": fields.position_name,
+            "postDescription": post_description,
+            "cityName": fields.city_name,
+            "salaryDesc": fields.salary_desc,
+            "experienceName": fields.experience_name,
+            "degreeName": fields.degree_name,
+            "skills": boss_list_array_field(item, "skills"),
+            "showSkills": boss_list_array_field(item, "skills"),
+            "jobLabels": boss_list_array_field(item, "jobLabels"),
+        },
+        "bossInfo": {
+            "name": fields.boss_name,
+            "activeTimeDesc": fields.boss_active_status,
+        },
+        "brandInfo": {
+            "brandName": fields.brand_name,
+        },
+        "rawPayload": item,
+    }))
+    .ok()
+}
+
+fn boss_list_array_field(item: &Value, key: &str) -> Option<Value> {
+    item.get(key)
+        .filter(|value| value.is_array())
+        .cloned()
+        .or_else(|| {
+            item.get("jobInfo")
+                .and_then(|job_info| job_info.get(key))
+                .filter(|value| value.is_array())
+                .cloned()
+        })
 }
 
 fn normalized_post_description(
@@ -403,6 +464,19 @@ fn upsert_job_detail_raw(
     let fetched_at = now_rfc3339();
     conn.execute(
         UPSERT_JOB_DETAIL_RAW_SQL,
+        params![encrypt_job_id, zp_data_json, fetched_at],
+    )?;
+    Ok(())
+}
+
+fn insert_job_detail_raw_if_missing(
+    conn: &Connection,
+    encrypt_job_id: &str,
+    zp_data_json: &str,
+) -> Result<()> {
+    let fetched_at = now_rfc3339();
+    conn.execute(
+        INSERT_JOB_DETAIL_RAW_IF_MISSING_SQL,
         params![encrypt_job_id, zp_data_json, fetched_at],
     )?;
     Ok(())

@@ -54,20 +54,43 @@ fn load_session_optional(app_data_dir: &std::path::Path) -> SessionStatePayload 
     }
 }
 
+fn normalize_collection_platform(source_platform: Option<&str>) -> String {
+    source_platform
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| "boss".to_string())
+}
+
+fn collection_browser_profile_path(
+    app_data_dir: &std::path::Path,
+    source_platform: &str,
+) -> Option<String> {
+    let normalized_platform = normalize_collection_platform(Some(source_platform));
+    match normalized_platform.as_str() {
+        "boss" => Some(storage::boss_browser_profile_path(app_data_dir)),
+        "linuxdo" => Some(storage::linuxdo_browser_profile_path(app_data_dir)),
+        _ => None,
+    }
+    .map(|path| path.to_string_lossy().to_string())
+}
+
+fn collection_uses_optional_session(source_platform: &str) -> bool {
+    matches!(
+        normalize_collection_platform(Some(source_platform)).as_str(),
+        "boss" | "v2ex" | "linuxdo"
+    )
+}
+
 #[tauri::command]
 pub fn crawl_auto_start(
     sidecar: State<SidecarManager>,
-    task: SearchTaskPayload,
+    mut task: SearchTaskPayload,
 ) -> Result<(), String> {
     let conn = db::init_db(sidecar.app_data_dir()).map_err(|e| e.to_string())?;
     let run_id = models::new_collection_run_id();
-    let source_platform = task
-        .source_platform
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("boss")
-        .to_string();
+    let source_platform = normalize_collection_platform(task.source_platform.as_deref());
+    task.source_platform = Some(source_platform.clone());
     models::create_collection_run(
         &conn,
         &models::NewCollectionRun {
@@ -80,7 +103,7 @@ pub fn crawl_auto_start(
     )
     .map_err(|e| e.to_string())?;
 
-    let session = match if source_platform == "v2ex" {
+    let session = match if collection_uses_optional_session(&source_platform) {
         Ok(load_session_optional(sidecar.app_data_dir()))
     } else {
         load_session(sidecar.app_data_dir())
@@ -103,10 +126,13 @@ pub fn crawl_auto_start(
             return Err(err);
         }
     };
+    let user_data_dir = collection_browser_profile_path(sidecar.app_data_dir(), &source_platform);
+
     if let Err(err) = sidecar.send(&CommandIn::CrawlAutoStart(CrawlAutoStartPayload {
         session,
         task,
         run_id: Some(run_id.clone()),
+        user_data_dir,
     })) {
         let message = err.to_string();
         let _ = models::fail_collection_run(&conn, &run_id, &message);
@@ -127,9 +153,91 @@ pub fn crawl_auto_start(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boss_collection_uses_boss_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        let expected = storage::boss_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            collection_browser_profile_path(app_data_dir, "boss").as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
+    fn boss_collection_profile_normalizes_platform_case() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        let expected = storage::boss_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(normalize_collection_platform(Some(" Boss ")), "boss");
+        assert_eq!(
+            collection_browser_profile_path(app_data_dir, " Boss ").as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
+    fn linuxdo_collection_uses_linuxdo_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        let expected = storage::linuxdo_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            collection_browser_profile_path(app_data_dir, "linuxdo").as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
+    fn linuxdo_collection_profile_normalizes_platform_case() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        let expected = storage::linuxdo_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            collection_browser_profile_path(app_data_dir, " LinuxDo ").as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
+    fn feed_collection_without_browser_profile_stays_none() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        assert_eq!(collection_browser_profile_path(tmp.path(), "v2ex"), None);
+    }
+
+    #[test]
+    fn boss_collection_can_start_with_optional_session() {
+        assert!(collection_uses_optional_session("boss"));
+        assert!(collection_uses_optional_session(" Boss "));
+        assert!(collection_uses_optional_session("v2ex"));
+        assert!(collection_uses_optional_session(" V2EX "));
+        assert!(collection_uses_optional_session("linuxdo"));
+        assert!(collection_uses_optional_session(" LinuxDo "));
+        assert!(!collection_uses_optional_session("liepin"));
+    }
+}
+
 #[tauri::command]
 pub fn crawl_stop(sidecar: State<SidecarManager>) -> Result<(), String> {
-    sidecar.send(&CommandIn::Stop).map_err(|e| e.to_string())?;
+    sidecar
+        .stop_collection_by_user()
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -235,24 +343,7 @@ pub fn refresh_pending_job_evidence(
         return Err(message);
     }
 
-    let session = match load_session(sidecar.app_data_dir()) {
-        Ok(session) => session,
-        Err(err) => {
-            let _ = models::record_collection_failure(
-                &conn,
-                &models::NewCollectionFailure {
-                    run_id: None,
-                    source_platform: Some(&source_platform),
-                    event_type: "REFRESH_JOB_EVIDENCE",
-                    keyword: None,
-                    encrypt_job_id: Some(&encrypt_job_id),
-                    reason: &err,
-                    raw_payload: None,
-                },
-            );
-            return Err(err);
-        }
-    };
+    let session = load_session_optional(sidecar.app_data_dir());
 
     let raw_payload = raw_payload_json
         .as_deref()
@@ -263,6 +354,11 @@ pub fn refresh_pending_job_evidence(
             encrypt_job_id: encrypt_job_id.clone(),
             source_url,
             raw_payload,
+            user_data_dir: Some(
+                storage::boss_browser_profile_path(sidecar.app_data_dir())
+                    .to_string_lossy()
+                    .to_string(),
+            ),
         }))
         .map_err(|e| {
             let message = e.to_string();

@@ -7,13 +7,15 @@ import type { RefreshJobEvidencePayloadSchema } from "../protocol.js";
 import {
   buildJobDetailBody,
   buildJobDetailUrl,
+  closeBrowserRespectingHumanVerification,
+  createHumanVerificationTracker,
   fetchJsonFromPage,
-  isAbnormalAccess,
   readApiCode,
   readApiMessage,
+  requestBossJsonWithRiskRecovery,
   safeError,
   setLocalStorage,
-  waitUntilApiOk,
+  waitUntilBossLoginReady,
   waitUntilNoRiskUrl,
 } from "./auto/shared.js";
 import type { ModeContext } from "./auto/types.js";
@@ -47,9 +49,16 @@ function pickLid(payload: RefreshJobEvidencePayload): string | undefined {
 
 export async function runRefreshJobEvidenceMode(
   payload: RefreshJobEvidencePayload,
-  ctx: ModeContext,
+  baseCtx: ModeContext,
 ): Promise<void> {
-  const { browser, page } = await launchBrowser({ headless: false });
+  const verificationTracker = createHumanVerificationTracker(baseCtx);
+  const ctx = verificationTracker.ctx;
+  const { browser, page } = await launchBrowser({
+    headless: false,
+    user_data_dir: payload.user_data_dir,
+    stealth: false,
+    preserve_on_disconnect: true,
+  });
   try {
     await blockNavigation(page, { allow_domain_suffixes: ["zhipin.com"] });
 
@@ -64,6 +73,9 @@ export async function runRefreshJobEvidenceMode(
       await setLocalStorage(page, localStorage as Record<string, string>);
     }
 
+    await page.goto(URLS.USER, { waitUntil: "domcontentloaded" });
+    if (!await waitUntilBossLoginReady(page, ctx, "Boss 登录态已就绪，开始补充岗位证据。")) return;
+
     await page.goto(URLS.GEEK_JOBS, { waitUntil: "domcontentloaded" });
     await waitUntilNoRiskUrl(page, ctx);
     if (ctx.signal.aborted) return;
@@ -73,31 +85,22 @@ export async function runRefreshJobEvidenceMode(
     const detailBody = buildJobDetailBody(payload.encrypt_job_id, lid);
     let detailRaw: any | null = null;
 
-    const detailResGet = await fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 });
+    const detailResGet = await requestBossJsonWithRiskRecovery(page, ctx, "job/detail", () =>
+      fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 }),
+    );
+    if (!detailResGet) return;
     if (detailResGet.json && typeof detailResGet.json === "object" && readApiCode(detailResGet.json) === 0) {
       detailRaw = detailResGet.json;
     } else {
-      const detailResPost = await fetchJsonFromPage(page, detailUrl, {
-        method: "POST",
-        body: detailBody,
-        timeoutMs: 60_000,
-      });
+      const detailResPost = await requestBossJsonWithRiskRecovery(page, ctx, "job/detail", () =>
+        fetchJsonFromPage(page, detailUrl, {
+          method: "POST",
+          body: detailBody,
+          timeoutMs: 60_000,
+        }),
+      );
+      if (!detailResPost) return;
       detailRaw = detailResPost.json;
-      if (detailRaw && typeof detailRaw === "object" && readApiCode(detailRaw) !== 0 && isAbnormalAccess(detailRaw)) {
-        const msg = readApiMessage(detailRaw);
-        ctx.emit({
-          type: "LOGIN_STATUS",
-          payload: {
-            status: "captcha",
-            message: `job/detail 接口返回访问异常：${msg || "code=37"}。请在浏览器窗口完成人机验证后自动重试。`,
-          },
-        });
-        const recovered = await waitUntilApiOk(page, ctx, "job/detail", () =>
-          fetchJsonFromPage(page, detailUrl, { method: "POST", body: detailBody, timeoutMs: 60_000 }),
-        );
-        if (!recovered) return;
-        detailRaw = recovered.json;
-      }
     }
 
     if (!detailRaw || typeof detailRaw !== "object") {
@@ -125,7 +128,7 @@ export async function runRefreshJobEvidenceMode(
   } catch (err) {
     ctx.emit({ type: "ERROR", payload: safeError(err) });
   } finally {
-    await browser.close().catch(() => undefined);
+    await closeBrowserRespectingHumanVerification(browser, ctx, verificationTracker, "Boss 证据补充");
     ctx.emit({ type: "FINISHED" });
   }
 }

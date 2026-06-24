@@ -42,12 +42,7 @@ const JOB_SOURCE_ADAPTER_SPECS: [JobSourceAdapterSpec; 6] = [
     ),
     JobSourceAdapterSpec::new("maimai", "脉脉", SOURCE_ADAPTER_KIND_MANUAL_IMPORT, true),
     JobSourceAdapterSpec::new("v2ex", "V2EX", SOURCE_ADAPTER_KIND_FEED, true),
-    JobSourceAdapterSpec::new(
-        "linuxdo",
-        "LinuxDo",
-        SOURCE_ADAPTER_KIND_MANUAL_IMPORT,
-        true,
-    ),
+    JobSourceAdapterSpec::new("linuxdo", "LinuxDo", SOURCE_ADAPTER_KIND_FEED, true),
 ];
 
 pub(crate) fn supported_job_source_adapters() -> &'static [JobSourceAdapterSpec] {
@@ -170,7 +165,7 @@ mod tests {
         assert_eq!(spec.adapter_kind, "boss");
         assert!(spec.enabled_by_default);
         assert_eq!(specs.len(), 6);
-        for platform in ["liepin", "zhilian", "maimai", "linuxdo"] {
+        for platform in ["liepin", "zhilian", "maimai"] {
             let manual = specs
                 .iter()
                 .find(|spec| spec.platform == platform)
@@ -184,6 +179,12 @@ mod tests {
             .expect("v2ex source spec");
         assert_eq!(v2ex.adapter_kind, SOURCE_ADAPTER_KIND_FEED);
         assert!(v2ex.enabled_by_default);
+        let linuxdo = specs
+            .iter()
+            .find(|spec| spec.platform == "linuxdo")
+            .expect("linuxdo source spec");
+        assert_eq!(linuxdo.adapter_kind, SOURCE_ADAPTER_KIND_FEED);
+        assert!(linuxdo.enabled_by_default);
     }
 
     #[test]

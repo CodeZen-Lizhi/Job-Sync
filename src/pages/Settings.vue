@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { openUrl } from "@tauri-apps/plugin-opener";
 
 import UiSelect from "../components/ui/UiSelect.vue";
 import AiProfileInputs from "../components/ai/AiProfileInputs.vue";
-import { CRAWL_TASK_TYPE_LOGIN, JOB_SOURCE_PLATFORM_OPTIONS } from "../lib/crawl";
+import { CRAWL_TASK_TYPE_LOGIN, formatLocalDateTime, JOB_SOURCE_PLATFORM_OPTIONS } from "../lib/crawl";
 import { runtime } from "../lib/runtime";
 import { invoke, isTauri } from "../lib/tauri";
 import { useCopy } from "../lib/useCopy";
@@ -114,8 +113,10 @@ const loginStatusByPlatform = ref<Record<string, boolean | null>>({
   linuxdo: null,
 });
 const loginLoadingPlatform = ref<string | null>(null);
+const loginRefreshingPlatform = ref<string | null>(null);
 const loginLoading = ref(false);
 const loginError = ref<string | null>(null);
+const loginMessage = ref<string | null>(null);
 const sidecarRunning = computed(() => runtime.sidecarTask.running);
 const diagnosticsLoading = ref(false);
 const saving = ref(false);
@@ -133,7 +134,7 @@ const previewJobSources = JOB_SOURCE_PLATFORM_OPTIONS.map((source) => ({
 }));
 const visibleJobSources = computed(() => (jobSources.value.length > 0 ? jobSources.value : previewJobSources));
 const loginCapablePlatforms = new Set(["boss", "linuxdo"]);
-const automatedLoginPlatforms = new Set(["boss"]);
+const automatedLoginPlatforms = new Set(["boss", "linuxdo"]);
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -244,7 +245,7 @@ function platformCapabilityHint(source: JobSourceEntry): string {
     return "启用后可在采集配置中作为本次自动采集来源；登录态在本页按平台管理。";
   }
   if (source.platform === "linuxdo") {
-    return "LinuxDo 受 Cloudflare 保护；请用本机浏览器登录，避免自动化浏览器触发人机验证。";
+    return "LinuxDo 受 Cloudflare 保护；请点“打开”在应用内浏览器里完成登录，采集会复用同一 profile。";
   }
   if (source.adapter_kind === "feed") {
     return "启用后可在采集配置中作为公开 Feed 自动采集来源；无需平台登录。";
@@ -253,9 +254,14 @@ function platformCapabilityHint(source: JobSourceEntry): string {
 }
 
 function platformLoginLabel(source: JobSourceEntry): string {
+  if (source.platform === "linuxdo") {
+    const status = loginStatusByPlatform.value[source.platform] ?? null;
+    if (status === true) return "LinuxDo 已登录";
+    if (status === false) return "LinuxDo 未登录";
+    return "浏览器登录";
+  }
   if (source.adapter_kind === "feed") return "无需登录";
   if (!loginCapablePlatforms.has(source.platform)) return "登录预留";
-  if (source.platform === "linuxdo") return "浏览器登录";
   const platformName = source.display_name || source.platform;
   const status = loginStatusByPlatform.value[source.platform] ?? null;
   if (status === true) return `${platformName} 已登录`;
@@ -264,13 +270,24 @@ function platformLoginLabel(source: JobSourceEntry): string {
 }
 
 function platformLoginBadgeClass(source: JobSourceEntry): string {
+  if (source.platform === "linuxdo") {
+    const status = loginStatusByPlatform.value[source.platform] ?? null;
+    if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
+    if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
+    return "bg-cyan-400/10 text-cyan-300 ring-cyan-400/20";
+  }
   if (source.adapter_kind === "feed") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
   if (!loginCapablePlatforms.has(source.platform)) return "bg-slate-400/10 text-slate-300 ring-slate-400/20";
-  if (source.platform === "linuxdo") return "bg-cyan-400/10 text-cyan-300 ring-cyan-400/20";
   const status = loginStatusByPlatform.value[source.platform] ?? null;
   if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
   if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
   return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
+}
+
+function loginPlatformName(platform: string): string {
+  const normalized = platform.trim().toLowerCase();
+  return visibleJobSources.value.find((source) => source.platform === normalized)?.display_name
+    || (normalized === "boss" ? "Boss 直聘" : normalized === "linuxdo" ? "LinuxDo" : normalized);
 }
 
 async function loadModels(): Promise<void> {
@@ -321,18 +338,29 @@ async function setJobSourceEnabled(source: JobSourceEntry, enabled: boolean): Pr
   }
 }
 
-async function refreshPlatformLogin(sourcePlatform = "boss"): Promise<void> {
+async function refreshPlatformLogin(sourcePlatform = "boss", showMessage = false): Promise<void> {
   loginError.value = null;
+  if (showMessage) loginMessage.value = null;
   const platform = sourcePlatform.trim().toLowerCase() || "boss";
   if (!tauri) {
     loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: null };
+    if (showMessage) loginMessage.value = `${loginPlatformName(platform)} 登录状态只在桌面端可刷新。`;
     return;
   }
+  if (showMessage) loginRefreshingPlatform.value = platform;
   try {
     const status = await invoke<boolean>("get_login_status", { sourcePlatform: platform });
     loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: status };
+    if (showMessage) {
+      loginMessage.value = `${loginPlatformName(platform)} 登录状态已刷新：${status ? "已登录" : "未登录"}`;
+    }
   } catch (e) {
     loginError.value = e instanceof Error ? e.message : String(e);
+    if (showMessage) loginMessage.value = null;
+  } finally {
+    if (showMessage && loginRefreshingPlatform.value === platform) {
+      loginRefreshingPlatform.value = null;
+    }
   }
 }
 
@@ -344,18 +372,6 @@ async function startPlatformLogin(source: JobSourceEntry): Promise<void> {
   loginError.value = null;
   if (!loginCapablePlatforms.has(source.platform)) return;
   if (!tauri) return;
-
-  if (source.platform === "linuxdo") {
-    loginLoadingPlatform.value = source.platform;
-    try {
-      await openUrl("https://linux.do/");
-    } catch (e) {
-      loginError.value = e instanceof Error ? e.message : String(e);
-    } finally {
-      loginLoadingPlatform.value = null;
-    }
-    return;
-  }
 
   loginLoadingPlatform.value = source.platform;
   loginLoading.value = true;
@@ -574,7 +590,7 @@ watch(
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium text-content-primary">{{ source.display_name }}</div>
               <div class="mt-0.5 text-xs text-content-muted">
-                平台：{{ source.platform }} · 适配器：{{ source.adapter_kind }} · 更新：{{ source.updated_at }}
+                平台：{{ source.platform }} · 适配器：{{ source.adapter_kind }} · 更新：{{ formatLocalDateTime(source.updated_at) }}
               </div>
               <div class="mt-1 text-xs text-content-muted">{{ platformCapabilityHint(source) }}</div>
             </div>
@@ -611,10 +627,10 @@ watch(
                   v-if="automatedLoginPlatforms.has(source.platform)"
                   class="ui-btn-secondary px-3 py-1.5 text-xs"
                   type="button"
-                  :disabled="!tauri || !source.enabled"
-                  @click="refreshPlatformLogin(source.platform)"
+                  :disabled="!tauri || !source.enabled || loginRefreshingPlatform !== null"
+                  @click="refreshPlatformLogin(source.platform, true)"
                 >
-                  刷新登录
+                  {{ loginRefreshingPlatform === source.platform ? "检查中…" : "刷新状态" }}
                 </button>
               </template>
               <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>无需登录</button>
@@ -622,6 +638,7 @@ watch(
             </div>
           </div>
         </div>
+        <div v-if="loginMessage" class="mt-3 ui-status-success p-3 text-xs">{{ loginMessage }}</div>
         <div v-if="loginError" class="mt-3 ui-status-danger p-3 text-xs">{{ loginError }}</div>
       </div>
     </div>
@@ -647,14 +664,14 @@ watch(
       <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">网络代理</div>
       <div class="ui-panel-muted p-5">
         <label class="block space-y-1">
-          <div class="text-xs font-medium text-content-muted">Worker 代理 URL（可选）</div>
+          <div class="text-xs font-medium text-content-muted">网络代理 URL（可选）</div>
           <input
             v-model="proxyUrl"
             class="ui-input w-full"
             placeholder="例如：http://127.0.0.1:7890"
           />
           <div class="text-xs text-content-muted">
-            保存后会注入到采集与 AI worker 的 HTTP_PROXY、HTTPS_PROXY 和 ALL_PROXY；本地 localhost 会保持直连。
+            保存后会用于采集、AI worker 和 Telegram 通知；本地 localhost 会保持直连。
           </div>
         </label>
       </div>

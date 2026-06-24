@@ -184,10 +184,10 @@ export function useFilterProfile() {
   });
   const sourcePlatformModeHint = computed(() => {
     const selected = normalizedSourcePlatforms.value;
-    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "允许 Boss 和 V2EX 等已支持自动采集来源进入筛选和 Top 20；保存并重算后对已有岗位生效。";
+    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "允许 Boss、V2EX、LinuxDo 等已支持自动采集来源进入筛选和 Top 20；保存并重算后对已有岗位生效。";
     if (sameSet(selected, BOSS_ONLY_SOURCE_PLATFORMS)) return "只允许 Boss 岗位进入筛选和 Top 20；保存并重算后对已有岗位生效。";
     if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "只允许非 Boss 保留来源岗位进入筛选和 Top 20；保存并重算后对已有岗位生效。";
-    if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许 Boss 和所有外部保留来源岗位进入筛选和 Top 20；保存并重算后生效。";
+    if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许所有来源岗位进入筛选和 Top 20；保存并重算后生效。";
     if (selected.length > 0) return `当前允许来源：${selected.join("、")}；保存并重算后生效。`;
     return "来源为空时不会按来源限制岗位；保存并重算后生效。";
   });
