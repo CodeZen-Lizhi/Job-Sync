@@ -296,7 +296,8 @@ describe("Boss auto collection contract", () => {
     const evidenceSource = readWorkerFile("src/modes/evidenceRefresh.ts");
 
     assert.match(runSource, /launchBrowser\(\{\s*headless:\s*false,\s*user_data_dir:\s*payload\.user_data_dir,\s*stealth:\s*false,\s*preserve_on_disconnect:\s*true,\s*\}\)/);
-    assert.match(loginSource, /stealth:\s*sourcePlatform !== "boss"/);
+    assert.match(loginSource, /launchManualBrowserWindow/);
+    assert.match(loginSource, /preserve_on_disconnect:\s*true/);
     assert.match(loginSource, /preserve_on_disconnect:\s*sourcePlatform === "boss"/);
     assert.match(evidenceSource, /launchBrowser\(\{\s*headless:\s*false,\s*user_data_dir:\s*payload\.user_data_dir,\s*stealth:\s*false,\s*preserve_on_disconnect:\s*true,\s*\}\)/);
     assert.match(evidenceSource, /waitUntilBossLoginReady\(page, ctx, "Boss 登录态已就绪，开始补充岗位证据。"\)/);

@@ -1,5 +1,5 @@
 import type { Browser, Page, Target } from "puppeteer";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -68,6 +68,12 @@ export type LaunchBrowserOptions = {
   preserve_on_disconnect?: boolean;
 };
 
+export type LaunchManualBrowserOptions = {
+  executable_path?: string;
+  user_data_dir: string;
+  url: string;
+};
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -86,6 +92,26 @@ function findFreePort(): Promise<number> {
         }
       });
     });
+  });
+}
+
+export function launchManualBrowserWindow(options: LaunchManualBrowserOptions): ChildProcess {
+  const executablePath = options.executable_path ?? resolveBundledBrowserExecutablePath() ?? undefined;
+  if (!executablePath) {
+    throw new Error("未找到可用的 Chrome / Edge。请在设置里配置本机浏览器路径后再打开登录页。");
+  }
+
+  mkdirSync(options.user_data_dir, { recursive: true });
+  const browserArgs = [
+    `--user-data-dir=${options.user_data_dir}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    options.url,
+  ];
+
+  return spawn(executablePath, browserArgs, {
+    env: process.env,
+    stdio: "ignore",
   });
 }
 

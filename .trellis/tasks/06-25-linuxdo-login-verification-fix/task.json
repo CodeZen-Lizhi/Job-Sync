@@ -1,7 +1,7 @@
 {
-  "id": "linuxdo-auto-collection",
-  "name": "linuxdo-auto-collection",
-  "title": "LinuxDo 自动采集",
+  "id": "linuxdo-login-verification-fix",
+  "name": "linuxdo-login-verification-fix",
+  "title": "LinuxDo 登录验证页修复",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -10,7 +10,7 @@
   "priority": "P2",
   "creator": "lizhi",
   "assignee": "lizhi",
-  "createdAt": "2026-06-22",
+  "createdAt": "2026-06-25",
   "completedAt": null,
   "branch": null,
   "base_branch": "remote-job-intelligence",
@@ -18,10 +18,8 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "06-25-linuxdo-login-verification-fix"
-  ],
-  "parent": null,
+  "children": [],
+  "parent": "06-22-linuxdo-auto-collection",
   "relatedFiles": [],
   "notes": "",
   "meta": {}

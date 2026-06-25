@@ -42,6 +42,13 @@ type PageFetchResult = {
   error?: string;
 };
 
+export type LinuxDoBrowserApiReadiness = {
+  ready: boolean;
+  blocked: boolean;
+  status: number;
+  message: string;
+};
+
 type LinuxDoHttpResponse = {
   status: number;
   body: string;
@@ -629,6 +636,31 @@ async function fetchFromBrowserPage(page: Page, url: string, timeoutMs = API_REQ
   );
 }
 
+export async function checkLinuxDoBrowserApiReadiness(
+  page: Page,
+  categoryUrl = DEFAULT_CATEGORY_URL,
+  timeoutMs = 15_000,
+): Promise<LinuxDoBrowserApiReadiness> {
+  const result = await fetchFromBrowserPage(page, categoryJsonUrl(categoryUrl, 1), timeoutMs);
+  if (result.json) {
+    return {
+      ready: true,
+      blocked: false,
+      status: result.status,
+      message: "LinuxDo 浏览器资料已可读取 Discourse JSON。",
+    };
+  }
+  const blocked = result.status === 403 || result.status === 429 || isLinuxDoCloudflareChallengeText(result.text);
+  return {
+    ready: false,
+    blocked,
+    status: result.status,
+    message: blocked
+      ? `LinuxDo 浏览器资料还不能读取 Discourse JSON（HTTP ${result.status || 0}），请在打开的浏览器窗口完成验证。`
+      : `LinuxDo 浏览器资料返回的 Discourse JSON 不可解析（HTTP ${result.status || 0}），等待页面会话恢复。`,
+  };
+}
+
 async function pageLooksLikeChallenge(page: Page): Promise<boolean> {
   try {
     const title = await page.title();
@@ -666,18 +698,15 @@ async function waitForBrowserApiReady(page: Page, categoryUrl: string, ctx: Mode
   const started = Date.now();
   let logged = false;
   while (!ctx.signal.aborted) {
-    const result = await fetchFromBrowserPage(page, categoryJsonUrl(categoryUrl, 1), 15_000);
-    if (result.json) return;
-    const blocked = result.status === 403 || result.status === 429 || isLinuxDoCloudflareChallengeText(result.text);
+    const readiness = await checkLinuxDoBrowserApiReadiness(page, categoryUrl, 15_000);
+    if (readiness.ready) return;
     if (!logged) {
       logged = true;
       ctx.emit({
         type: "LOG",
         payload: {
           level: "warn",
-          message: blocked
-            ? `LinuxDo 浏览器资料还不能读取 Discourse JSON（HTTP ${result.status || 0}），请在打开的浏览器窗口完成验证。`
-            : `LinuxDo 浏览器资料返回的 Discourse JSON 不可解析（HTTP ${result.status || 0}），等待页面会话恢复。`,
+          message: readiness.message,
         },
       });
     }

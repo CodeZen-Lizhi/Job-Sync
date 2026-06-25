@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 
 import {
   buildLinuxDoNormalizedPayload,
+  checkLinuxDoBrowserApiReadiness,
   classifyLinuxDoTopic,
   fetchLinuxDoCategoryEntries,
   fetchLinuxDoTopicDetail,
@@ -93,6 +94,41 @@ describe("LinuxDo feed collector", () => {
   it("detects Cloudflare challenge text", () => {
     assert.equal(isLinuxDoCloudflareChallengeText("<title>Just a moment...</title><script>_cf_chl_opt={}</script>"), true);
     assert.equal(isLinuxDoCloudflareChallengeText("<html><body>正常帖子列表</body></html>"), false);
+  });
+
+  it("treats browser-context Discourse JSON as LinuxDo API readiness", async () => {
+    const page = {
+      evaluate: async () => ({
+        status: 200,
+        json: { topic_list: { topics: [] } },
+        text: "{\"topic_list\":{\"topics\":[]}}",
+        contentType: "application/json",
+      }),
+    };
+
+    const readiness = await checkLinuxDoBrowserApiReadiness(page as any, "https://linux.do/c/job/27", 100);
+
+    assert.equal(readiness.ready, true);
+    assert.equal(readiness.blocked, false);
+    assert.equal(readiness.status, 200);
+  });
+
+  it("keeps Cloudflare-blocked browser-context API reads in blocked state", async () => {
+    const page = {
+      evaluate: async () => ({
+        status: 403,
+        json: null,
+        text: "<html><title>Verify you are human</title><body>Cloudflare</body></html>",
+        contentType: "text/html",
+      }),
+    };
+
+    const readiness = await checkLinuxDoBrowserApiReadiness(page as any, "https://linux.do/c/job/27", 100);
+
+    assert.equal(readiness.ready, false);
+    assert.equal(readiness.blocked, true);
+    assert.equal(readiness.status, 403);
+    assert.match(readiness.message, /完成验证/);
   });
 
   it("classifies hiring topics without treating keywords alone as success", () => {

@@ -118,6 +118,10 @@ const loginLoading = ref(false);
 const loginError = ref<string | null>(null);
 const loginMessage = ref<string | null>(null);
 const sidecarRunning = computed(() => runtime.sidecarTask.running);
+const liveLoginMessage = computed(() => {
+  if (runtime.sidecarTask.type !== CRAWL_TASK_TYPE_LOGIN) return null;
+  return runtime.login.message ?? (runtime.login.status ? `登录状态：${runtime.login.status}` : null);
+});
 const diagnosticsLoading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
@@ -256,8 +260,8 @@ function platformCapabilityHint(source: JobSourceEntry): string {
 function platformLoginLabel(source: JobSourceEntry): string {
   if (source.platform === "linuxdo") {
     const status = loginStatusByPlatform.value[source.platform] ?? null;
-    if (status === true) return "LinuxDo 已登录";
-    if (status === false) return "LinuxDo 未登录";
+    if (status === true) return "LinuxDo 已可采集";
+    if (status === false) return "LinuxDo 未就绪";
     return "浏览器登录";
   }
   if (source.adapter_kind === "feed") return "无需登录";
@@ -282,6 +286,13 @@ function platformLoginBadgeClass(source: JobSourceEntry): string {
   if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
   if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
   return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
+}
+
+function liveLoginMessageClass(): string {
+  if (runtime.login.status === "valid" || runtime.login.status === "ok") return "ui-status-success";
+  if (runtime.login.status === "captcha" || runtime.login.status === "invalid") return "ui-status-warning";
+  if (runtime.login.status === "denied") return "ui-status-danger";
+  return "ui-status-warning";
 }
 
 function loginPlatformName(platform: string): string {
@@ -352,7 +363,10 @@ async function refreshPlatformLogin(sourcePlatform = "boss", showMessage = false
     const status = await invoke<boolean>("get_login_status", { sourcePlatform: platform });
     loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: status };
     if (showMessage) {
-      loginMessage.value = `${loginPlatformName(platform)} 登录状态已刷新：${status ? "已登录" : "未登录"}`;
+      const statusLabel = platform === "linuxdo"
+        ? status ? "已可采集" : "未就绪"
+        : status ? "已登录" : "未登录";
+      loginMessage.value = `${loginPlatformName(platform)} 登录状态已刷新：${statusLabel}`;
     }
   } catch (e) {
     loginError.value = e instanceof Error ? e.message : String(e);
@@ -539,6 +553,13 @@ watch(
     void refreshSupportedLoginStatuses();
   },
 );
+
+watch(
+  () => runtime.finishedCounter,
+  () => {
+    void refreshSupportedLoginStatuses();
+  },
+);
 </script>
 
 <template>
@@ -638,6 +659,7 @@ watch(
             </div>
           </div>
         </div>
+        <div v-if="liveLoginMessage" class="mt-3 p-3 text-xs" :class="liveLoginMessageClass()">{{ liveLoginMessage }}</div>
         <div v-if="loginMessage" class="mt-3 ui-status-success p-3 text-xs">{{ loginMessage }}</div>
         <div v-if="loginError" class="mt-3 ui-status-danger p-3 text-xs">{{ loginError }}</div>
       </div>

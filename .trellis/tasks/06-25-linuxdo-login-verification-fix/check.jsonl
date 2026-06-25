@@ -1,0 +1,2 @@
+{"file":".trellis/spec/boss-crawler-worker/frontend/collection-source-contracts.md","reason":"Verify LinuxDo readiness is not reported as success while Cloudflare blocks JSON"}
+{"file":".trellis/spec/boss-crawler-worker/frontend/external-dependency-diagnostics.md","reason":"Verify Settings status output stays redacted and side-effect-light"}
