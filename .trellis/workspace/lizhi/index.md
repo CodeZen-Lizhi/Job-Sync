@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
-- **Last Active**: 2026-06-19
+- **Total Sessions**: 17
+- **Last Active**: 2026-06-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~550 | Active |
+| `journal-1.md` | ~581 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-06-26 | Job-Sync 打包验证 | - | `remote-job-intelligence` |
 | 16 | 2026-06-19 | AI 采后审核与职位库筛选收口 | `4e3d237` | `remote-job-intelligence` |
 | 15 | 2026-06-17 | 采集批次汇总与待确认补证据 | `80ff6c5` | `remote-job-intelligence` |
 | 14 | 2026-06-17 | 收口采集后置筛选后台流程 | `fae2eb1`, `6521543` | `remote-job-intelligence` |

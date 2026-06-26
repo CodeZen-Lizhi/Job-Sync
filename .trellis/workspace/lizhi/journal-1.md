@@ -548,3 +548,34 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Job-Sync 打包验证
+
+**Date**: 2026-06-26
+**Task**: Job-Sync 打包验证
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成 Job-Sync 的 release 打包验证，生成 macOS .app 和 .dmg，并确认签名、内置 worker runtime 和 DMG 校验通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
