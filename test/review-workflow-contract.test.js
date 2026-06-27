@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 
 function readProjectFile(path) {
   return readFileSync(resolve(root, path), "utf8");
+}
+
+function projectFileExists(path) {
+  return existsSync(resolve(root, path));
 }
 
 function invokedCommands(source) {
@@ -136,7 +140,6 @@ describe("review workflow contract", () => {
     const greeting = readProjectFile("src-tauri/src/commands/ai/greeting.rs");
     const aiCommand = readProjectFile("src-tauri/src/commands/ai.rs");
     const postCollectionJudge = readProjectFile("src-tauri/src/commands/ai/post_collection_judge.rs");
-    const reportMeta = readProjectFile("src-tauri/src/commands/ai/report_meta.rs");
     const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
     const workerPrompt = readProjectFile("packages/boss-crawler-worker/src/ai/prompt.ts");
     const workerSingle = readProjectFile("packages/boss-crawler-worker/src/modes/ai/single.ts");
@@ -160,8 +163,6 @@ describe("review workflow contract", () => {
     assert.match(aiShared, /matched_stack/);
     assert.match(aiShared, /matched_resume_evidence/);
     assert.match(aiShared, /company_score/);
-    assert.match(aiShared, /pub\(super\) fn attach_job_ai_context/);
-    assert.match(aiShared, /pub\(super\) fn serialize_job_ai_context/);
 
     assert.match(aiCommand, /generate_greeting_message/);
     assert.match(aiCommand, /recompute_ai_post_collection_judgement/);
@@ -169,8 +170,6 @@ describe("review workflow contract", () => {
     assert.match(postCollectionJudge, /recompute_default_filter_profile_for_job_on_conn/);
     assert.match(postCollectionJudge, /recompute_default_filter_profile_on_conn/);
     assert.match(postCollectionJudge, /AiPostCollectionJudgePayload/);
-    assert.match(reportMeta, /compute_ai_report_meta_fields/);
-    assert.match(reportMeta, /is_group_report/);
     assert.match(greeting, /let job_context = load_job_ai_context/);
     assert.match(greeting, /score_reason\["resume"\]\["matched_stack"\]\[0\]/);
     assert.match(greeting, /review_context: job_context\.review_context/);
@@ -481,42 +480,70 @@ describe("review workflow contract", () => {
     const appShell = readProjectFile("src/App.vue");
     const crawlPage = readProjectFile("src/pages/Crawl.vue");
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
-    const reportsPage = readProjectFile("src/pages/AiReports.vue");
-    const reportsLogic = readProjectFile("src/lib/useAiReportsPage.ts");
 
     assert.match(appShell, /精准求职工作台/);
     assert.match(crawlPage, /岗位采集/);
     assert.match(crawlPage, /只写入职位库/);
     assert.match(jobsPage, /职位库工作台/);
     assert.match(jobsPage, /自动采集先保留岗位事实/);
-    assert.match(reportsPage, /岗位研究报告/);
-    assert.match(reportsPage, /辅助人工筛选候选岗位/);
-    assert.match(reportsPage, /查看岗位候选库/);
-    assert.match(reportsLogic, /function goReviewJob/);
-    assert.match(reportsLogic, /function goReviewQueue/);
   });
 
-  it("links single-job AI reports back to manual job confirmation without applying automatically", () => {
-    const reportsPage = readProjectFile("src/pages/AiReports.vue");
-    const reportsLogic = readProjectFile("src/lib/useAiReportsPage.ts");
+  it("removes standalone AI report and resume workspace routes and commands", () => {
+    const appShell = readProjectFile("src/App.vue");
+    const router = readProjectFile("src/router.ts");
+    const jobsPage = readProjectFile("src/pages/Jobs.vue");
+    const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const tauriLib = readProjectFile("src-tauri/src/lib.rs");
+    const aiCommand = readProjectFile("src-tauri/src/commands/ai.rs");
+    const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
+    const workerMain = readProjectFile("packages/boss-crawler-worker/src/main.ts");
+
+    for (const removedPath of [
+      "src/pages/AiReports.vue",
+      "src/pages/ResumeWorkspace.vue",
+      "src/lib/useAiReportsPage.ts",
+      "src/lib/useResumeWorkspacePage.ts",
+      "src/lib/resumeWorkspace.ts",
+      "src-tauri/src/commands/resume_workspace.rs",
+      "packages/boss-crawler-worker/src/modes/resumeWorkspace.ts",
+    ]) {
+      assert.equal(projectFileExists(removedPath), false, `${removedPath} should be removed`);
+    }
+
+    for (const removedText of ["简历优化", "分析结果", "/resume-workspace", "/ai-reports"]) {
+      assert.doesNotMatch(appShell, new RegExp(removedText));
+      assert.doesNotMatch(router, new RegExp(removedText));
+      assert.doesNotMatch(jobsPage, new RegExp(removedText));
+      assert.doesNotMatch(jobsLogic, new RegExp(removedText));
+    }
+
+    for (const removedCommand of [
+      "list_ai_reports",
+      "get_ai_report",
+      "clear_ai_reports",
+      "get_resume_workspace_state",
+      "create_resume_workspace",
+      "diagnose_resume_workspace",
+      "rewrite_resume_workspace_module",
+      "export_resume_workspace_pdf",
+    ]) {
+      assert.doesNotMatch(aiCommand, new RegExp(removedCommand));
+      assert.doesNotMatch(tauriLib, new RegExp(removedCommand));
+    }
+
+    assert.doesNotMatch(workerProtocol, /RESUME_DIAGNOSE/);
+    assert.doesNotMatch(workerProtocol, /RESUME_REWRITE_MODULE/);
+    assert.doesNotMatch(workerMain, /runResumeDiagnoseMode|runResumeRewriteModuleMode/);
+  });
+
+  it("keeps jobs page manual confirmation without applying automatically", () => {
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
 
-    assert.match(reportsPage, /回到岗位确认/);
-    assert.match(reportsLogic, /const reviewJobId = computed/);
-    assert.match(reportsLogic, /meta\.kind === "group"/);
-    assert.match(reportsLogic, /function goReviewJob/);
-    assert.match(reportsLogic, /router\.push\(\{ path: "\/jobs", query: \{ jobId \} \}\)/);
-
-    assert.match(jobsLogic, /useRoute/);
-    assert.match(jobsLogic, /route\.query\.jobId/);
-    assert.match(jobsLogic, /async function loadLinkedJobFromRoute/);
-    assert.match(jobsLogic, /invoke<JobRow \| null>\("get_job"/);
-    assert.match(jobsLogic, /expandedJobId\.value = job\.encrypt_job_id/);
-    assert.match(jobsLogic, /await loadJobDetail\(job\.encrypt_job_id\)/);
-    assert.match(jobsPage, /定位岗位/);
-    assert.match(jobsPage, /来自外部入口的岗位会在这里单独定位/);
-    assert.match(jobsPage, /linkedJob/);
+    assert.match(jobsPage, /职位库工作台/);
+    assert.match(jobsLogic, /async function updateReviewStatus/);
+    assert.match(jobsLogic, /status === "ready_to_apply"/);
+    assert.match(jobsLogic, /确认准备投递/);
     assert.doesNotMatch(jobsLogic, /submit.*resume|auto.*apply|batch.*apply/i);
   });
 
@@ -524,8 +551,7 @@ describe("review workflow contract", () => {
     const workerPrompt = readProjectFile("packages/boss-crawler-worker/src/ai/prompt.ts");
     const workerSchema = readProjectFile("packages/boss-crawler-worker/src/modes/ai/schemas.ts");
     const workerNormalize = readProjectFile("packages/boss-crawler-worker/src/modes/ai/normalizeResume.ts");
-    const aiReportTypes = readProjectFile("src/lib/aiReport.ts");
-    const resumeReportView = readProjectFile("src/components/ai-reports/AiResumeReportView.vue");
+    const jobsTypes = readProjectFile("src/lib/jobs.ts");
     const workerAiContract = readProjectFile("packages/boss-crawler-worker/test/ai-contract.test.ts");
 
     for (const field of [
@@ -540,19 +566,13 @@ describe("review workflow contract", () => {
       assert.match(workerPrompt, new RegExp(field));
       assert.match(workerSchema, new RegExp(field));
       assert.match(workerNormalize, new RegExp(field));
-      assert.match(aiReportTypes, new RegExp(field));
-      assert.match(resumeReportView, new RegExp(field));
+      assert.match(jobsTypes, new RegExp(field));
       assert.match(workerAiContract, new RegExp(field));
     }
 
     assert.match(workerPrompt, /matched_resume_evidence 必须引用简历原文中的具体经历或项目/);
     assert.match(workerNormalize, /matchedResumeEvidence/);
     assert.match(workerNormalize, /matchScore: resumeMatchScore/);
-    assert.match(resumeReportView, /Resume Match 结构化证据/);
-    assert.match(resumeReportView, /匹配技术栈/);
-    assert.match(resumeReportView, /匹配岗位方向/);
-    assert.match(resumeReportView, /简历证据/);
-    assert.match(resumeReportView, /未明确覆盖/);
   });
 
   it("keeps candidate score reasons carrying structured resume-match evidence into job cards", () => {
@@ -588,43 +608,6 @@ describe("review workflow contract", () => {
     assert.match(jobItem, /aiAuditReasonText/);
     assert.match(jobItem, /aiPostCollectionJudgementText/);
     assert.doesNotMatch(jobItem, /scoreResumeMatchedStack|scoreResumeMatchedDirection|scoreResumeEvidence|scoreResumeMissingPoints|简历判断依据|补充说明|公司判断依据/);
-  });
-
-  it("links group AI reports back to the unified job candidate list", () => {
-    const reportsPage = readProjectFile("src/pages/AiReports.vue");
-    const reportsLogic = readProjectFile("src/lib/useAiReportsPage.ts");
-
-    assert.match(reportsLogic, /const canGoReviewQueue = computed\(\(\) => selectedMetaSnapshot\.value\?\.kind === "group"\)/);
-    assert.match(reportsLogic, /function goReviewQueue/);
-    assert.match(reportsLogic, /router\.push\(\{ path: "\/jobs" \}\)/);
-    assert.match(reportsPage, /canGoReviewQueue/);
-    assert.match(reportsPage, /查看岗位候选库/);
-  });
-
-  it("returns candidate resume-match analysis to the unified jobs page", () => {
-    const reportsPage = readProjectFile("src/pages/AiReports.vue");
-    const reportsLogic = readProjectFile("src/lib/useAiReportsPage.ts");
-    const jobsPage = readProjectFile("src/pages/Jobs.vue");
-
-    assert.match(reportsPage, /回到岗位确认/);
-    assert.match(reportsPage, /查看岗位候选库/);
-    assert.match(reportsLogic, /function goReviewJob/);
-    assert.match(reportsLogic, /function goReviewQueue/);
-    assert.match(reportsLogic, /router\.push\(\{ path: "\/jobs", query: \{ jobId \} \}\)/);
-    assert.match(jobsPage, /职位库工作台/);
-    assert.match(jobsPage, /采后结果分区/);
-  });
-
-  it("does not treat hashed group report ids as expected job ids in coverage checks", () => {
-    const reportsPage = readProjectFile("src/pages/AiReports.vue");
-    const aiReportTypes = readProjectFile("src/lib/aiReport.ts");
-    const aiShared = readProjectFile("src-tauri/src/commands/ai/shared.rs");
-
-    assert.match(aiShared, /format!\("group:\{\}", hex::encode\(hasher\.finalize\(\)\)\)/);
-    assert.match(aiReportTypes, /placeholderCount \?\? 0/);
-    assert.match(aiReportTypes, /expectedJobIds\.every/);
-    assert.doesNotMatch(reportsPage, /reports\.filter\(\(meta\) => meta\.kind === 'group'\)\.map\(\(meta\) => meta\.encrypt_job_id\)/);
-    assert.doesNotMatch(reportsPage, /:expected-job-ids/);
   });
 
   it("keeps blacklist actions and filtering available from the unified jobs page", () => {
@@ -793,7 +776,7 @@ describe("review workflow contract", () => {
     assert.match(crawlCommand, /create_collection_run/);
     assert.match(crawlCommand, /pub fn crawl_stop[\s\S]*stop_collection_by_user\(\)/);
     assert.match(crawlCommand, /RefreshJobEvidencePayload/);
-    assert.match(crawlCommand, /pub fn refresh_pending_job_evidence[\s\S]*let session = load_session_optional\(sidecar\.app_data_dir\(\)\)/);
+    assert.match(crawlCommand, /pub fn refresh_pending_job_evidence[\s\S]*let session = load_session_optional\(sidecar\.app_data_dir\(\), "boss"\)/);
     assert.match(sidecar, /active_collection_run/);
     assert.match(sidecar, /pub fn stop_collection_by_user/);
     assert.match(sidecar, /pub fn stop_collection_by_user[\s\S]*record_collection_failure\([\s\S]*&conn,[\s\S]*Some\(active_run\),[\s\S]*"STOP"/);
@@ -810,7 +793,7 @@ describe("review workflow contract", () => {
     assert.match(crawlPageLogic, /list_collection_runs/);
     assert.match(crawlPageLogic, /list_collection_failures/);
     assert.match(jobsPageLogic, /refreshPendingJobEvidence/);
-    assert.match(jobsPage, /AI 重算当前页/);
+    assert.doesNotMatch(jobsPage, /AI 重算当前页/);
     assert.match(jobItem, /copy-link/);
     assert.match(jobItem, /open-source-url/);
     assert.doesNotMatch(jobsPageLogic, /apply_job|send_greeting|open_chat/);
@@ -1059,8 +1042,8 @@ describe("review workflow contract", () => {
     assert.match(greetingCommand, /ensure_greeting_allowed_review_status/);
     assert.match(greetingCommand, /ready_to_apply/);
     assert.match(greetingCommand, /greeting_requires_manual_ready_to_apply_review_status/);
-    assert.match(greetingCommand, /get_final_resume_text_for_job/);
-    assert.match(greetingCommand, /else if linked_final_resume_text\.is_some\(\)/);
+    assert.doesNotMatch(greetingCommand, /get_final_resume_text_for_job/);
+    assert.doesNotMatch(greetingCommand, /linked_final_resume_text/);
     assert.match(greetingCommand, /ensure_greeting_has_candidate_context/);
     assert.match(greetingCommand, /请先提供简历或当前情况说明，或先为该岗位生成简历匹配报告/);
     assert.match(greetingCommand, /greeting_requires_candidate_context_or_match_report/);
@@ -1121,20 +1104,10 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
     assert.match(jobsLogic, /通过筛选规则/);
     assert.match(jobsLogic, /【JobPilot 投递材料包】/);
-    assert.match(jobsLogic, /简历工作区：\/resume-workspace\?jobId=/);
-    assert.match(jobsLogic, /getResumeWorkspaceStatusForJob/);
-    assert.match(jobsLogic, /async function loadResumeWorkspaceStatus/);
-    assert.match(jobsLogic, /loadResumeWorkspaceStatusesForJobs\(applicationReadyJobs\.value\)/);
-    assert.match(jobsLogic, /function buildResumeWorkspaceTrace/);
-    assert.match(jobsLogic, /简历工作区状态：\$\{buildResumeWorkspaceTrace\(resumeWorkspaceStatus\)\}/);
-    assert.match(jobsLogic, /最终简历：\$\{hasFinalResume \? "已生成" : "待在简历工作区生成"\}/);
-    assert.match(jobsLogic, /PDF：\$\{hasExportedPdf \? resumeWorkspaceStatus\?\.last_exported_pdf_path : "待导出"\}/);
     assert.match(jobsLogic, /待 AI 生成或手动粘贴/);
     assert.match(jobsLogic, /投递准备清单：\\n/);
     assert.match(jobsLogic, /投递准备预检：\\n/);
     assert.match(jobsLogic, /仍有 \$\{gaps\.length\} 项待补齐/);
-    assert.match(jobsLogic, /最终简历：尚未生成岗位定制最终稿/);
-    assert.match(jobsLogic, /PDF：尚未导出岗位定制 PDF/);
     assert.match(jobsLogic, /打招呼草稿：尚未生成或粘贴可编辑草稿/);
     assert.match(jobsLogic, /尚未生成或粘贴，请先点击“定制打招呼”或手动填写。/);
     assert.match(jobsLogic, /人工确认：/);
@@ -1143,12 +1116,12 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /简历匹配报告：/);
     assert.match(jobsLogic, /function buildResumeMatchEvidenceTrace/);
     assert.match(jobsLogic, /formatResumeMatchEvidence\(parseScoreReasonJson\(scoreReasonJson\)\)/);
-    assert.match(jobsLogic, /Resume Match 证据：\\n\$\{resumeMatchEvidence\}/);
+    assert.match(jobsLogic, /Resume Match 证据：\\n\$\{buildResumeMatchEvidenceTrace\(job\.score_reason_json\)\}/);
     assert.match(jobsLogic, /打招呼草稿/);
     assert.match(jobsLogic, /打招呼证据：\\n\$\{buildGreetingEvidenceTrace\(greeting\)\}/);
     assert.match(jobsLogic, /function buildReadyToApplyConfirmationMessage/);
-    assert.match(jobsLogic, /buildApplicationChecklist\(job, greetingDraft, resumeWorkspaceStatus\)/);
-    assert.match(jobsLogic, /formatApplicationReadinessPreflight\(job, greetingDraft, resumeWorkspaceStatus\)/);
+    assert.match(jobsLogic, /buildApplicationChecklist\(job, greetingDraft\)/);
+    assert.match(jobsLogic, /formatApplicationReadinessPreflight\(job, greetingDraft\)/);
     assert.match(jobsLogic, /待分析，建议先生成简历匹配报告/);
     assert.match(jobsLogic, /投递准备预检：\\n\$\{readinessPreflight\}/);
     assert.match(jobsLogic, /投递准备清单：\\n\$\{checklist\}/);
@@ -1170,8 +1143,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /await openUrl\(url\)/);
     assert.match(jobsLogic, /window\.open\(url, "_blank", "noopener,noreferrer"\)/);
     assert.match(jobsLogic, /打开来源链接失败/);
-    assert.match(jobsLogic, /getResumeWorkspaceStatusForJob\(job\.encrypt_job_id\)/);
-    assert.match(jobsLogic, /buildApplicationPacket\(\s*job,\s*greetingDrafts\.get\(job\.encrypt_job_id\),\s*resumeWorkspaceStatus,\s*greetingCache\.get\(job\.encrypt_job_id\),\s*\)/);
+    assert.match(jobsLogic, /buildApplicationPacket\(job, greetingDrafts\.get\(job\.encrypt_job_id\), greetingCache\.get\(job\.encrypt_job_id\)\)/);
     assert.match(jobsLogic, /buildApplicationPacket\([\s\S]{0,240}sourcePlatformModeTrace\(\)[\s\S]{0,80}\]\.join\("\\n"\)/);
     assert.match(jobsLogic, /buildApplicationChecklist/);
     assert.match(jobsLogic, /buildApplicationReadinessGaps/);
@@ -1187,10 +1159,8 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /buildReadyToApplyConfirmationMessage/);
     assert.match(jobsLogic, /async function applyReviewStatus/);
     assert.match(jobsLogic, /status === "ready_to_apply"/);
-    assert.match(jobsLogic, /resumeWorkspaceStatuses\.has\(job\.encrypt_job_id\)/);
-    assert.match(jobsLogic, /await loadResumeWorkspaceStatus\(job\.encrypt_job_id\)/);
-    assert.match(jobsLogic, /buildReadyToApplyConfirmationMessage\(job, greetingDrafts\.get\(job\.encrypt_job_id\), resumeWorkspaceStatus\)/);
-    assert.match(jobsLogic, /buildReadyToApplyConfirmationMessage\(job, greetingDrafts\.get\(job\.encrypt_job_id\), resumeWorkspaceStatus\)[\s\S]{0,120}sourcePlatformModeTrace\(\)/);
+    assert.match(jobsLogic, /buildReadyToApplyConfirmationMessage\(job, greetingDrafts\.get\(job\.encrypt_job_id\)\)/);
+    assert.match(jobsLogic, /buildReadyToApplyConfirmationMessage\(job, greetingDrafts\.get\(job\.encrypt_job_id\)\)[\s\S]{0,120}sourcePlatformModeTrace\(\)/);
     assert.match(jobsLogic, /确认准备投递/);
     assert.match(jobsLogic, /status === "applied"/);
     assert.match(jobsLogic, /确认已在外部平台手动完成/);
@@ -1279,71 +1249,6 @@ describe("review workflow contract", () => {
       assert.doesNotMatch(jobsPageView, new RegExp(removedEntry));
     }
     assert.doesNotMatch(jobsPageLogic, /auto.*apply|batch.*apply|submit.*resume|send.*resume/i);
-  });
-
-  it("keeps resume workspace AI failures explicit and retryable", () => {
-    const resumeWorkspaceLogic = readProjectFile("src/lib/useResumeWorkspacePage.ts");
-    const resumeWorkspaceView = readProjectFile("src/pages/ResumeWorkspace.vue");
-
-    assert.match(resumeWorkspaceLogic, /结构化输出解析失败/);
-    assert.match(resumeWorkspaceLogic, /retryCurrentAction/);
-    assert.match(resumeWorkspaceLogic, /retryActionLabel/);
-    assert.match(resumeWorkspaceLogic, /重试诊断/);
-    assert.match(resumeWorkspaceLogic, /重试生成最终稿/);
-    assert.match(resumeWorkspaceLogic, /重试导出 PDF/);
-    assert.match(resumeWorkspaceView, /errorTitle/);
-    assert.match(resumeWorkspaceView, /errorHint/);
-    assert.match(resumeWorkspaceView, /retryCurrentAction/);
-  });
-
-  it("keeps AI report generation failures explicit and retryable", () => {
-    const reportsPage = readProjectFile("src/pages/AiReports.vue");
-    const reportsLogic = readProjectFile("src/lib/useAiReportsPage.ts");
-
-    assert.match(reportsPage, /岗位研究报告/);
-    assert.match(reportsPage, /查看岗位候选库/);
-    assert.match(reportsPage, /回到岗位确认/);
-    assert.match(reportsLogic, /function goReviewJob/);
-    assert.match(reportsLogic, /function goReviewQueue/);
-  });
-
-  it("keeps filtered jobs linked into the resume workspace context", () => {
-    const resumeWorkspaceLogic = readProjectFile("src/lib/useResumeWorkspacePage.ts");
-    const resumeWorkspaceView = readProjectFile("src/pages/ResumeWorkspace.vue");
-    const resumeWorkspaceHeader = readProjectFile("src/components/resume-workspace/ResumeWorkspaceHeader.vue");
-    const sourcePanel = readProjectFile("src/components/resume-workspace/ResumeWorkspaceSourcePanel.vue");
-    const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
-    const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
-    const originalNavEntries = resumeWorkspaceLogic.match(/\{ key: "original", label: "原始简历"/g) ?? [];
-
-    assert.match(jobsLogic, /path: "\/resume-workspace", query: \{ jobId \}/);
-    assert.match(jobsLogic, /createResumeWorkspace/);
-    assert.match(jobsLogic, /switchResumeWorkspace/);
-    assert.match(jobsLogic, /existingStatus\?\.workspace_id/);
-    assert.match(jobsLogic, /linked_job_id: jobId/);
-    assert.match(jobsLogic, /buildResumeWorkspaceTitle/);
-    assert.match(resumeWorkspaceHeader, /回到岗位确认/);
-    assert.match(resumeWorkspaceHeader, /联动岗位/);
-    assert.match(resumeWorkspaceLogic, /route\.query\.jobId/);
-    assert.match(resumeWorkspaceLogic, /useRouter/);
-    assert.match(resumeWorkspaceLogic, /draft\.value\.linked_job_id = job\.encrypt_job_id/);
-    assert.match(resumeWorkspaceLogic, /linkedJob\.value\?\.encrypt_job_id \?\? draft\.value\.linked_job_id \?\? null/);
-    assert.match(resumeWorkspaceLogic, /router\.push\(\{ path: "\/jobs", query: \{ jobId \} \}\)/);
-    assert.match(resumeWorkspaceLogic, /last_exported_pdf_path = path/);
-    assert.match(resumeWorkspaceLogic, /last_exported_pdf_at = new Date\(\)\.toISOString\(\)/);
-    assert.match(resumeWorkspaceLogic, /LINKED_JOB_CONTEXT_PREFIX/);
-    assert.match(resumeWorkspaceLogic, /岗位ID：\$\{job\.encrypt_job_id\}/);
-    assert.match(resumeWorkspaceLogic, /get_job/);
-    assert.match(resumeWorkspaceLogic, /get_job_detail/);
-    assert.match(resumeWorkspaceLogic, /mergeLinkedJobContext/);
-    assert.match(resumeWorkspaceLogic, /reapplyLinkedJobContextForActiveWorkspace/);
-    assert.match(resumeWorkspaceLogic, /await reapplyLinkedJobContextForActiveWorkspace\(\)/);
-    assert.match(resumeWorkspaceView, /linkedJobContextApplied/);
-    assert.match(resumeWorkspaceView, /goLinkedJobReview/);
-    assert.match(resumeWorkspaceHeader, /回到岗位确认/);
-    assert.match(resumeWorkspaceHeader, /goLinkedJobReview/);
-    assert.match(sourcePanel, /已联动岗位/);
-    assert.equal(originalNavEntries.length, 1);
   });
 
   it("keeps the unified job source registry visible with manual import adapters", () => {
@@ -1483,8 +1388,8 @@ describe("review workflow contract", () => {
     assert.match(desktopSmokeSeedScript, /--data-dir \$\{dataDir\}/);
     assert.match(desktopSmokeSeedScript, /smoke-go-sre-top/);
     assert.match(desktopSmokeSeedScript, /smoke-ai-infra-ready/);
-    assert.match(desktopSmokeSeedScript, /resume-workspaces/);
-    assert.match(desktopSmokeSeedScript, /smoke-resume-ready\.pdf/);
+    assert.doesNotMatch(desktopSmokeSeedScript, /resume-workspaces/);
+    assert.doesNotMatch(desktopSmokeSeedScript, /smoke-resume-ready\.pdf/);
     assert.match(tauriPaths, /parse_data_dir_arg/);
     assert.match(tauriPaths, /"--data-dir"/);
     assert.match(tauriPaths, /"--job-sync-data-dir"/);

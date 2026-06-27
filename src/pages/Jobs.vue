@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Activity, BrainCircuit, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
+import { Activity, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
 import JobsJobItem from "../components/jobs/JobsJobItem.vue";
@@ -10,9 +10,6 @@ import { useJobsPage } from "../lib/useJobsPage";
 const {
   tauri,
   error,
-  linkedJob,
-  linkedJobLoading,
-  linkedJobError,
   jobCandidates,
   jobCandidatesTotal,
   jobCandidatesLoading,
@@ -38,9 +35,6 @@ const {
   greetingDrafts,
   greetingErrors,
   greetingLoading,
-  aiPostCollectionJudging,
-  aiPostCollectionJudgingJobIds,
-  aiPostCollectionJudgeMessage,
   JOB_TIME_RANGE_OPTIONS,
   PROCESSED_FILTER_OPTIONS,
   JOB_STATUS_FILTER_OPTIONS,
@@ -65,7 +59,6 @@ const {
   updateCommunicationStatus,
   updateReviewNotes,
   updateCompanyReviewStatus,
-  recomputeAiPostCollectionJudgement,
 } = useJobsPage();
 
 type JobLibraryBucket = "recommended" | "confirm" | "filtered" | "processed" | "all";
@@ -224,39 +217,6 @@ onMounted(() => {
 
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。查询命令不可用。</div>
     <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
-    <section v-if="linkedJob || linkedJobLoading || linkedJobError" class="ui-panel overflow-hidden">
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border/90 px-4 py-3">
-        <div>
-          <h2 class="text-sm font-semibold text-content-primary">定位岗位</h2>
-          <p class="mt-1 text-xs text-content-muted">来自外部入口的岗位会在这里单独定位。</p>
-        </div>
-      </div>
-      <div v-if="linkedJobLoading" class="px-4 py-5 text-sm text-content-muted">正在加载岗位…</div>
-      <div v-else-if="linkedJobError" class="px-4 py-5 text-sm text-rose-700">{{ linkedJobError }}</div>
-      <JobsJobItem
-        v-else-if="linkedJob"
-        :job="linkedJob"
-        :expanded="expandedJobId === linkedJob.encrypt_job_id"
-        :detail-loading="detailLoading === linkedJob.encrypt_job_id"
-        :detail="expandedJobId === linkedJob.encrypt_job_id ? expandedDetail : null"
-        :ai-audit-status-override="aiPostCollectionJudgingJobIds.has(linkedJob.encrypt_job_id) ? 'processing' : null"
-        :greeting-draft="greetingDrafts.get(linkedJob.encrypt_job_id) ?? ''"
-        :greeting-error="greetingErrors.get(linkedJob.encrypt_job_id) ?? undefined"
-        :greeting-loading="greetingLoading === linkedJob.encrypt_job_id"
-        @toggle-detail="(jobId) => toggleDetail(jobId)"
-        @copy-link="(job) => copy(jobSourceUrl(job))"
-        @open-source-url="(job) => openJobSourceUrl(job)"
-        @update-review="(job, status) => updateReviewStatus(job, status)"
-        @restore-review-candidate="(job) => restoreReviewCandidate(job)"
-        @update-communication="(job, status) => updateCommunicationStatus(job, status)"
-        @update-review-notes="(job) => updateReviewNotes(job)"
-        @update-company-review="(job, status) => updateCompanyReviewStatus(job, status)"
-        @generate-greeting="(job) => generateGreeting(job)"
-        @copy-greeting="(job) => copyGreeting(job)"
-        @copy-application-packet="(job) => copyApplicationPacket(job)"
-      />
-    </section>
-
     <section class="ui-panel overflow-hidden">
       <div class="ui-section-header">
         <div>
@@ -278,20 +238,6 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-2 border-t border-border/90 px-4 py-3">
-        <button
-          type="button"
-          class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
-          :disabled="!tauri || aiPostCollectionJudging || displayedJobs.length === 0"
-          title="用 AI 重算当前页岗位的采后判断；硬规则命中的岗位会保留原结果"
-          @click="recomputeAiPostCollectionJudgement(displayedJobs.map((job) => job.encrypt_job_id))"
-        >
-          <BrainCircuit class="h-3.5 w-3.5" aria-hidden="true" />
-          {{ aiPostCollectionJudging ? "AI 判断中" : "AI 重算当前页" }}
-        </button>
-        <span v-if="aiPostCollectionJudgeMessage" class="text-xs text-content-muted">{{ aiPostCollectionJudgeMessage }}</span>
-      </div>
-
       <div class="grid gap-3 p-4 md:grid-cols-[1.4fr_1fr]">
         <div class="ui-card-soft p-4">
           <div class="flex items-start gap-3">
@@ -466,7 +412,6 @@ onMounted(() => {
           :expanded="expandedJobId === job.encrypt_job_id"
           :detail-loading="detailLoading === job.encrypt_job_id"
           :detail="expandedJobId === job.encrypt_job_id ? expandedDetail : null"
-          :ai-audit-status-override="aiPostCollectionJudgingJobIds.has(job.encrypt_job_id) ? 'processing' : null"
           :greeting-draft="greetingDrafts.get(job.encrypt_job_id) ?? ''"
           :greeting-error="greetingErrors.get(job.encrypt_job_id) ?? undefined"
           :greeting-loading="greetingLoading === job.encrypt_job_id"

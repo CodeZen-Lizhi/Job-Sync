@@ -14,8 +14,6 @@ const schemaPath = path.join(projectRoot, "src-tauri", "src", "db", "schema.sql"
 const now = new Date();
 const today = now.toISOString().slice(0, 10);
 const nowIso = now.toISOString();
-const exportedPdfPath = path.join(dataDir, "exports", "smoke-resume-ready.pdf");
-const workspaceId = "smoke-resume-ready";
 
 function sqlString(value) {
   if (value === null || value === undefined) return "NULL";
@@ -180,7 +178,7 @@ function filterReasons() {
   ]);
 }
 
-function aiReports() {
+function jobAiReportRows() {
   return [
     {
       encrypt_job_id: "smoke-go-sre-top",
@@ -363,77 +361,11 @@ function buildSql() {
     );
   }
 
-  for (const report of aiReports()) {
+  for (const report of jobAiReportRows()) {
     sql.push(insert("ai_report", report));
   }
 
   return `${sql.join("\n")}\n`;
-}
-
-async function writeResumeWorkspaceFixture() {
-  const workspaceDir = path.join(dataDir, "resume-workspaces");
-  await fs.mkdir(path.dirname(exportedPdfPath), { recursive: true });
-  await fs.mkdir(workspaceDir, { recursive: true });
-  await fs.writeFile(
-    exportedPdfPath,
-    "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n",
-    "utf8",
-  );
-
-  const draft = {
-    source_mode: "text",
-    original_resume_text: "Go / Kubernetes / SRE / AI Infra 平台工程师烟测简历",
-    original_resume_file: null,
-    basic_profile: {
-      name: "Smoke Candidate",
-      gender: "",
-      birth_or_age: "",
-      education: "本科",
-      phone: "",
-      email: "smoke@example.com",
-    },
-    context_text: "目标岗位：AI Infra、Go、SRE、云原生平台工程。",
-    linked_job_id: "smoke-ai-infra-ready",
-    diagnosis: {
-      overall_summary: "烟测诊断：简历与 AI Infra 平台工程方向匹配。",
-      summary: { assessment: "聚焦 Go 与平台工程", missing_info: [], suggestions: [] },
-      projects: { assessment: "包含 Kubernetes 平台经历", missing_info: [], suggestions: [] },
-      experience: { assessment: "具备 SRE 与 DevOps 背景", missing_info: [], suggestions: [] },
-      skills: { assessment: "技术栈覆盖 Go/Kubernetes/Prometheus", missing_info: [], suggestions: [] },
-      next_steps: ["人工核对最终 PDF 后再投递"],
-    },
-    summary: { input: "", followup_input: "", candidate: null, notes: [], checklist: [], confirmed: "Go / Kubernetes / AI Infra 平台工程师，关注稳定性、可观测性与工程效率。", updated_at: nowIso },
-    projects: { input: "", followup_input: "", candidate: null, notes: [], checklist: [], confirmed: "主导 Kubernetes 平台治理、Prometheus 可观测性建设和 CI/CD 自动化。", updated_at: nowIso },
-    experience: { input: "", followup_input: "", candidate: null, notes: [], checklist: [], confirmed: "负责 Go 服务治理、SRE 值班体系和基础设施自动化落地。", updated_at: nowIso },
-    skills: { input: "", followup_input: "", candidate: null, notes: [], checklist: [], confirmed: "Go, Kubernetes, Docker, Prometheus, Terraform, Linux, CI/CD。", updated_at: nowIso },
-    final_resume_text: "Smoke Candidate\n\nGo / Kubernetes / AI Infra 平台工程师\n\n项目：Kubernetes 平台治理与 Prometheus 可观测性建设。",
-    last_exported_pdf_path: exportedPdfPath,
-    last_exported_pdf_at: nowIso,
-    updated_at: nowIso,
-  };
-
-  const index = {
-    active_workspace_id: workspaceId,
-    workspaces: [
-      {
-        id: workspaceId,
-        title: "AI Infra 投递烟测简历",
-        source_mode: "text",
-        source_name: "文本简历",
-        created_at: nowIso,
-        updated_at: nowIso,
-        has_diagnosis: true,
-        confirmed_modules: 4,
-        has_final_resume: true,
-        linked_job_id: "smoke-ai-infra-ready",
-        last_exported_pdf_path: exportedPdfPath,
-        last_exported_pdf_at: nowIso,
-      },
-    ],
-  };
-
-  await fs.writeFile(path.join(workspaceDir, "index.json"), `${JSON.stringify(index, null, 2)}\n`, "utf8");
-  await fs.writeFile(path.join(workspaceDir, `${workspaceId}.json`), `${JSON.stringify(draft, null, 2)}\n`, "utf8");
 }
 
 async function main() {
@@ -442,7 +374,6 @@ async function main() {
   const schema = await fs.readFile(schemaPath, "utf8");
   await runCommand("sqlite3", [dbPath], { input: schema });
   await runCommand("sqlite3", [dbPath], { input: buildSql() });
-  await writeResumeWorkspaceFixture();
 
   process.stdout.write(`Desktop smoke data seeded at: ${dataDir}\n`);
   process.stdout.write(

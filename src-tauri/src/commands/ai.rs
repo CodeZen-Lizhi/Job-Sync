@@ -3,15 +3,12 @@ mod config;
 mod greeting;
 mod models;
 mod post_collection_judge;
-mod report_meta;
-mod reports;
 mod shared;
 mod worker;
 
 use serde_json::Value;
 
 pub use models::ModelInfo;
-pub use report_meta::AiReportMeta;
 
 pub(in crate::commands) fn resolve_effective_openai_base_url(
     saved_settings: Option<&crate::settings::AppSettings>,
@@ -84,27 +81,6 @@ pub async fn recompute_ai_post_collection_judgement(
         app, job_ids, limit, api_key, base_url, model, api_mode, debug,
     )
     .await
-}
-
-#[tauri::command]
-pub fn list_ai_reports(
-    app: tauri::AppHandle,
-    limit: Option<u32>,
-    offset: Option<u32>,
-    kind: Option<String>,
-    query: Option<String>,
-) -> Result<Vec<AiReportMeta>, String> {
-    reports::list_ai_reports(app, limit, offset, kind, query)
-}
-
-#[tauri::command]
-pub fn clear_ai_reports(app: tauri::AppHandle) -> Result<u64, String> {
-    reports::clear_ai_reports(app)
-}
-
-#[tauri::command]
-pub fn get_ai_report(app: tauri::AppHandle, id: i64) -> Result<Value, String> {
-    reports::get_ai_report(app, id)
 }
 
 #[tauri::command]

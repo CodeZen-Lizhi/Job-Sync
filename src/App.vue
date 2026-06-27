@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import type { Component } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
-import { Bot, Database, FileSliders, FileText, Scan, Settings } from "lucide-vue-next";
+import { Bot, Database, FileSliders, Scan, Settings } from "lucide-vue-next";
 
 import TitleBar from "./components/layout/TitleBar.vue";
 
@@ -27,13 +27,6 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "AI",
-    items: [
-      { to: "/resume-workspace", label: "简历优化", icon: FileText },
-      { to: "/ai-reports", label: "分析结果", icon: FileText },
-    ],
-  },
-  {
     label: "系统",
     items: [{ to: "/settings", label: "设置", icon: Settings }],
   },
@@ -46,7 +39,7 @@ const navItemExactActiveClass =
   "border-slate-900 bg-slate-900 !text-white hover:!border-slate-900 hover:!bg-slate-900 hover:!text-white before:!opacity-100 [&_.nav-icon]:!text-white [&_.nav-label]:font-semibold";
 
 const route = useRoute();
-const contentMaxWidthClass = computed(() => (route.path === "/ai-reports" || route.path === "/jobs" || route.path === "/crawl-config" ? "max-w-6xl" : "max-w-5xl"));
+const contentMaxWidthClass = computed(() => (route.path === "/jobs" || route.path === "/crawl-config" ? "max-w-6xl" : "max-w-5xl"));
 </script>
 
 <template>

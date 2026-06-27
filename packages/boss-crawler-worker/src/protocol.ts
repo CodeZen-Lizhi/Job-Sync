@@ -91,24 +91,6 @@ export const AiPostCollectionJudgePayloadSchema = z.object({
   filter_reason: z.any().optional(),
 });
 
-export const ResumeDiagnosePayloadSchema = z.object({
-  resume_text: z.string().min(1),
-  context_text: z.string().optional(),
-  resume_files: z.string().optional(),
-});
-
-export const ResumeRewriteModulePayloadSchema = z.object({
-  module: z.enum(["summary", "projects", "experience", "skills"]),
-  resume_text: z.string().min(1),
-  context_text: z.string().optional(),
-  resume_files: z.string().optional(),
-  module_input: z.string().min(1),
-  confirmed_summary: z.string().optional(),
-  confirmed_projects: z.string().optional(),
-  confirmed_experience: z.string().optional(),
-  confirmed_skills: z.string().optional(),
-});
-
 export const CommandInSchema = z.union([
   z.object({ type: z.literal("LOGIN_START"), payload: LoginStartPayloadSchema }),
   z.object({
@@ -132,8 +114,6 @@ export const CommandInSchema = z.union([
   z.object({ type: z.literal("AI_GREETING"), payload: AiGreetingPayloadSchema }),
   z.object({ type: z.literal("AI_COMPANY_SCORE_BATCH"), payload: AiCompanyScoreBatchPayloadSchema }),
   z.object({ type: z.literal("AI_POST_COLLECTION_JUDGE"), payload: AiPostCollectionJudgePayloadSchema }),
-  z.object({ type: z.literal("RESUME_DIAGNOSE"), payload: ResumeDiagnosePayloadSchema }),
-  z.object({ type: z.literal("RESUME_REWRITE_MODULE"), payload: ResumeRewriteModulePayloadSchema }),
   z.object({ type: z.literal("STOP") }),
   z.object({ type: z.literal("PAUSE") }),
   z.object({ type: z.literal("RESUME") }),

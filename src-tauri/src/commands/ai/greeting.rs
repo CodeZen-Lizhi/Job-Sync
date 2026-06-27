@@ -5,7 +5,7 @@ use tauri::AppHandle;
 use crate::{
     db,
     ipc::protocol::{AiGreetingPayload, CommandIn},
-    paths, resume_text, resume_workspaces, settings,
+    paths, resume_text, settings,
 };
 
 use super::{
@@ -90,13 +90,9 @@ fn run_generate_greeting(
 
     let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
     ensure_greeting_allowed_review_status(&conn, &encrypt_job_id)?;
-    let linked_final_resume_text =
-        resume_workspaces::get_final_resume_text_for_job(&app_data_dir, &encrypt_job_id)?;
     let (resume_text_source, resolved_resume_files) =
         if explicit_resume_text.is_some() || explicit_resume_files.is_some() {
             (explicit_resume_text, explicit_resume_files)
-        } else if linked_final_resume_text.is_some() {
-            (linked_final_resume_text, None)
         } else {
             (settings_resume_text, settings_resume_files)
         };

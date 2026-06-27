@@ -1,11 +1,9 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 
-import AiReports from "./pages/AiReports.vue";
 import CrawlConfig from "./pages/CrawlConfig.vue";
 import Crawl from "./pages/Crawl.vue";
 import Jobs from "./pages/Jobs.vue";
 import Settings from "./pages/Settings.vue";
-import ResumeWorkspace from "./pages/ResumeWorkspace.vue";
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -15,8 +13,6 @@ export const router = createRouter({
     { path: "/crawl-config", component: CrawlConfig },
     { path: "/jobs", component: Jobs },
     { path: "/export", redirect: "/jobs" },
-    { path: "/resume-workspace", component: ResumeWorkspace },
-    { path: "/ai-reports", component: AiReports },
     { path: "/settings", component: Settings },
   ],
 });

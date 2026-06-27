@@ -163,42 +163,6 @@ pub struct AiPostCollectionJudgePayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResumeDiagnosePayload {
-    pub resume_text: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_text: Option<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resume_files: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResumeRewriteModulePayload {
-    pub module: String,
-    pub resume_text: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub context_text: Option<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub resume_files: Option<String>,
-    pub module_input: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub confirmed_summary: Option<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub confirmed_projects: Option<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub confirmed_experience: Option<String>,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub confirmed_skills: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum CommandIn {
     #[serde(rename = "LOGIN_START")]
@@ -221,10 +185,6 @@ pub enum CommandIn {
     AiCompanyScoreBatch(AiCompanyScoreBatchPayload),
     #[serde(rename = "AI_POST_COLLECTION_JUDGE")]
     AiPostCollectionJudge(AiPostCollectionJudgePayload),
-    #[serde(rename = "RESUME_DIAGNOSE")]
-    ResumeDiagnose(ResumeDiagnosePayload),
-    #[serde(rename = "RESUME_REWRITE_MODULE")]
-    ResumeRewriteModule(ResumeRewriteModulePayload),
     #[serde(rename = "STOP")]
     Stop,
     #[serde(rename = "PAUSE")]

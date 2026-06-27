@@ -6,18 +6,11 @@ mod commands;
 mod db;
 mod ipc;
 mod paths;
-mod resume_pdf_support;
-mod resume_pdf_template;
 mod resume_text;
-mod resume_workspace;
-mod resume_workspaces;
 mod settings;
 mod sidecar;
 mod storage;
 mod worker;
-
-#[cfg(test)]
-mod resume_workspace_tests;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -87,27 +80,13 @@ pub fn run() {
             commands::ai::generate_greeting_message,
             commands::ai::generate_ai_company_scores,
             commands::ai::recompute_ai_post_collection_judgement,
-            commands::ai::list_ai_reports,
-            commands::ai::clear_ai_reports,
-            commands::ai::get_ai_report,
             commands::ai::list_models,
             commands::settings::get_settings,
             commands::settings::diagnose_external_dependencies,
             commands::settings::set_browser_executable_path,
             commands::settings::set_ai_settings,
             commands::settings::save_settings,
-            commands::settings::save_collection_config,
-            commands::resume_workspace::get_resume_workspace_state,
-            commands::resume_workspace::get_resume_workspace_status_for_job,
-            commands::resume_workspace::create_resume_workspace,
-            commands::resume_workspace::switch_resume_workspace,
-            commands::resume_workspace::rename_resume_workspace,
-            commands::resume_workspace::delete_resume_workspace,
-            commands::resume_workspace::save_resume_workspace_draft,
-            commands::resume_workspace::diagnose_resume_workspace,
-            commands::resume_workspace::rewrite_resume_workspace_module,
-            commands::resume_workspace::assemble_resume_workspace,
-            commands::resume_workspace::export_resume_workspace_pdf
+            commands::settings::save_collection_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
