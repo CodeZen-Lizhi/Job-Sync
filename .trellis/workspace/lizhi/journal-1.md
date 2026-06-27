@@ -579,3 +579,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: 简历库与岗位关联
+
+**Date**: 2026-06-27
+**Task**: 简历库与岗位关联
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+实现主导航简历库、默认简历、岗位关联、职位库跳转和打招呼简历解析优先级。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ff736d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
