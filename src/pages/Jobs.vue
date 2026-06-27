@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { Activity, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
@@ -11,6 +12,7 @@ const {
   tauri,
   error,
   jobCandidates,
+  resumeStatusByJobId,
   jobCandidatesTotal,
   jobCandidatesLoading,
   jobCandidateSearch,
@@ -64,6 +66,8 @@ const {
 type JobLibraryBucket = "recommended" | "confirm" | "filtered" | "processed" | "all";
 
 const activeJobLibraryBucket = ref<JobLibraryBucket>("recommended");
+const router = useRouter();
+const route = useRoute();
 
 const bucketOptions: Array<{ value: JobLibraryBucket; label: string; description: string }> = [
   {
@@ -189,9 +193,44 @@ function clearCurrentViewFilters(): void {
   refreshCandidates();
 }
 
-onMounted(() => {
-  applyBucket("recommended");
-});
+function openResumeLibrary(jobId: string): void {
+  const status = resumeStatusByJobId.get(jobId);
+  const query = status?.resume_id ? { resumeId: status.resume_id } : { jobId };
+  void router.push({ path: "/resume-library", query });
+}
+
+async function focusJobFromRoute(jobId: string): Promise<void> {
+  activeJobLibraryBucket.value = "all";
+  jobCandidateBucket.value = "all";
+  jobCandidateProcessedFilter.value = "all";
+  jobCandidateSearch.value = jobId;
+  jobCandidateTimeRange.value = "custom";
+  jobCandidateCustomStartDate.value = "";
+  jobCandidateCustomEndDate.value = "";
+  selectedJobStatusFilters.value = [];
+  selectedAiAuditFilters.value = [];
+  selectedSourcePlatformFilters.value = [];
+  selectedCollectionMethodFilters.value = [];
+  await loadJobCandidates();
+  if (expandedJobId.value !== jobId && jobCandidates.value.some((job) => job.encrypt_job_id === jobId)) {
+    await toggleDetail(jobId);
+  }
+}
+
+watch(
+  () => [route.path, route.query.jobId],
+  ([path, jobId]) => {
+    if (path !== "/jobs") return;
+    if (typeof jobId === "string" && jobId.trim()) {
+      void focusJobFromRoute(jobId.trim());
+      return;
+    }
+    if (jobCandidates.value.length === 0) {
+      applyBucket("recommended");
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -415,6 +454,7 @@ onMounted(() => {
           :greeting-draft="greetingDrafts.get(job.encrypt_job_id) ?? ''"
           :greeting-error="greetingErrors.get(job.encrypt_job_id) ?? undefined"
           :greeting-loading="greetingLoading === job.encrypt_job_id"
+          :resume-status="resumeStatusByJobId.get(job.encrypt_job_id)"
           @toggle-detail="(jobId) => toggleDetail(jobId)"
           @copy-link="(job) => copy(jobSourceUrl(job))"
           @open-source-url="(job) => openJobSourceUrl(job)"
@@ -426,6 +466,7 @@ onMounted(() => {
           @generate-greeting="(job) => generateGreeting(job)"
           @copy-greeting="(job) => copyGreeting(job)"
           @copy-application-packet="(job) => copyApplicationPacket(job)"
+          @open-resume="(job) => openResumeLibrary(job.encrypt_job_id)"
         />
       </div>
 

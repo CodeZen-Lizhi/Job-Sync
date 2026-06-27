@@ -46,6 +46,7 @@ import {
   restoreExpandedState,
   SEARCH_JOB_LIMIT,
 } from "./jobsPageHelpers";
+import { getResumeStatusesForJobs, type ResumeJobLinkStatus } from "./resumeLibrary";
 import { runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
 
@@ -589,6 +590,7 @@ export function useJobsPage() {
   const groups = ref<KeywordGroup[]>([]);
   const flatResults = ref<JobRow[]>([]);
   const jobCandidates = ref<JobRow[]>([]);
+  const resumeStatusByJobId = reactive<Map<string, ResumeJobLinkStatus>>(new Map());
   const jobCandidatesTotal = ref(0);
   const jobCandidatesLoading = ref(false);
   const jobCandidateSearch = ref("");
@@ -813,6 +815,7 @@ export function useJobsPage() {
       });
       jobCandidates.value = page.jobs;
       jobCandidatesTotal.value = page.total;
+      await loadResumeStatusesForJobs(page.jobs);
       if (jobCandidatePage.value > jobCandidateTotalPages.value) {
         jobCandidatePage.value = jobCandidateTotalPages.value;
         await loadJobCandidates({ keepPage: true });
@@ -821,6 +824,15 @@ export function useJobsPage() {
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
       jobCandidatesLoading.value = false;
+    }
+  }
+
+  async function loadResumeStatusesForJobs(jobs: JobRow[]): Promise<void> {
+    resumeStatusByJobId.clear();
+    if (!tauri || jobs.length === 0) return;
+    const statuses = await getResumeStatusesForJobs(jobs.map((job) => job.encrypt_job_id));
+    for (const status of statuses) {
+      resumeStatusByJobId.set(status.encrypt_job_id, status);
     }
   }
   function toggleJobStatusFilter(value: JobStatusFilter): void {
@@ -1753,6 +1765,7 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     groups,
     flatResults,
     jobCandidates,
+    resumeStatusByJobId,
     jobCandidatesTotal,
     jobCandidatesLoading,
     jobCandidateSearch,

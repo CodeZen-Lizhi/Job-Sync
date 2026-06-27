@@ -5,7 +5,7 @@ use tauri::AppHandle;
 use crate::{
     db,
     ipc::protocol::{AiGreetingPayload, CommandIn},
-    paths, resume_text, settings,
+    paths, resume_library, resume_text, settings,
 };
 
 use super::{
@@ -73,12 +73,6 @@ fn run_generate_greeting(
 
     let explicit_resume_text = opt_trimmed(resume_text);
     let explicit_resume_files = opt_trimmed(resume_files);
-    let settings_resume_text = saved_settings
-        .as_ref()
-        .and_then(|settings| opt_trimmed(Some(settings.ai_resume_text.clone())));
-    let settings_resume_files = saved_settings
-        .as_ref()
-        .and_then(|settings| opt_trimmed(Some(settings.ai_resume_files.clone())));
     let resolved_context_text = opt_trimmed(context_text).or_else(|| {
         saved_settings
             .as_ref()
@@ -94,12 +88,18 @@ fn run_generate_greeting(
         if explicit_resume_text.is_some() || explicit_resume_files.is_some() {
             (explicit_resume_text, explicit_resume_files)
         } else {
-            (settings_resume_text, settings_resume_files)
+            let resolved = resume_library::resolve_resume_text_for_job(&app_data_dir, &encrypt_job_id)?;
+            (
+                resolved.map(|resume| resume.body),
+                None,
+            )
         };
     let resolved_resume_text = match (resume_text_source, resolved_resume_files.as_deref()) {
         (Some(text), files) => Some(resume_text::resolve_resume_text(&text, files)?),
         (None, Some(files)) => Some(resume_text::resolve_resume_text("", Some(files))?),
-        (None, None) => None,
+        (None, None) => {
+            return Err("请先在简历库为该岗位关联简历，或手工设置一份默认简历。".to_string());
+        }
     };
 
     let job_detail_raw = load_job_detail_raw(&conn, &encrypt_job_id)?;

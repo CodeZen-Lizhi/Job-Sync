@@ -64,6 +64,18 @@ _Avoid_: Job library
 The persistent collection of jobs gathered or imported from platforms, including jobs that do not pass the current filter profile.
 _Avoid_: Candidate queue
 
+**Resume library**:
+The dedicated page for creating, editing, deleting, and selecting resumes.
+_Avoid_: Resume workspace
+
+**Default resume**:
+The fallback resume used when a job has no linked resume.
+_Avoid_: Base resume, fallback profile
+
+**Job resume link**:
+A job's single primary resume association used when resume-aware actions need a resume for that job.
+_Avoid_: Multi-resume job link, resume workspace link
+
 ## Example Dialogue
 
 Product: "I want to collect backend jobs in Shanghai with Go and Kubernetes."

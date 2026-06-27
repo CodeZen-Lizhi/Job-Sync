@@ -6,6 +6,7 @@ mod commands;
 mod db;
 mod ipc;
 mod paths;
+mod resume_library;
 mod resume_text;
 mod settings;
 mod sidecar;
@@ -81,6 +82,16 @@ pub fn run() {
             commands::ai::generate_ai_company_scores,
             commands::ai::recompute_ai_post_collection_judgement,
             commands::ai::list_models,
+            commands::resume_library::get_resume_library_state,
+            commands::resume_library::create_resume,
+            commands::resume_library::update_resume,
+            commands::resume_library::delete_resume,
+            commands::resume_library::set_default_resume,
+            commands::resume_library::link_resume_to_jobs,
+            commands::resume_library::unlink_resume_from_job,
+            commands::resume_library::get_resume_status_for_job,
+            commands::resume_library::get_resume_statuses_for_jobs,
+            commands::resume_library::get_resume_job_summaries,
             commands::settings::get_settings,
             commands::settings::diagnose_external_dependencies,
             commands::settings::set_browser_executable_path,

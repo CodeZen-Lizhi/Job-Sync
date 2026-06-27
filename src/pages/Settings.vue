@@ -2,7 +2,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 
 import UiSelect from "../components/ui/UiSelect.vue";
-import AiProfileInputs from "../components/ai/AiProfileInputs.vue";
 import { CRAWL_TASK_TYPE_LOGIN, formatLocalDateTime, JOB_SOURCE_PLATFORM_OPTIONS } from "../lib/crawl";
 import { runtime } from "../lib/runtime";
 import { invoke, isTauri } from "../lib/tauri";
@@ -25,7 +24,6 @@ interface AppSettings {
   telegram_chat_id?: string | null;
   has_telegram_chat_id?: boolean | null;
   proxy_url?: string | null;
-  ai_resume_text?: string | null;
   ai_profile_updated_at?: string | null;
 }
 
@@ -100,7 +98,6 @@ const hasSavedTelegramBotToken = ref(false);
 const telegramChatId = ref("");
 const hasSavedTelegramChatId = ref(false);
 const proxyUrl = ref("");
-const resumeText = ref("");
 
 const models = ref<ModelInfo[]>([]);
 const jobSources = ref<JobSourceEntry[]>([]);
@@ -205,7 +202,6 @@ async function loadSettings(): Promise<void> {
       ? settings.has_telegram_chat_id
       : !!settings.telegram_chat_id;
     proxyUrl.value = settings.proxy_url ?? "";
-    if (!resumeText.value.trim() && settings.ai_resume_text) resumeText.value = settings.ai_resume_text;
     if (settings.openai_api_mode) {
       const m = settings.openai_api_mode.trim().toLowerCase();
       if (m === "responses") apiMode.value = "responses";
@@ -487,7 +483,6 @@ async function save(): Promise<void> {
       telegramBotToken: telegramBotToken.value.trim() || (hasSavedTelegramBotToken.value ? null : ""),
       telegramChatId: telegramChatId.value.trim() || (hasSavedTelegramChatId.value ? null : ""),
       proxyUrl: proxyUrl.value.trim() || null,
-      aiResumeText: resumeText.value.trim() || null,
       aiContextText: "",
       aiResumeFiles: "",
     });
@@ -844,13 +839,6 @@ watch(
       </div>
     </div>
 
-    <!-- AI Resume Config -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">简历</div>
-      <AiProfileInputs
-        v-model:resumeText="resumeText"
-      />
-    </div>
     <!-- External Notification Config -->
     <div class="space-y-3">
       <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">外部通知</div>

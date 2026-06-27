@@ -4,4 +4,5 @@ pub mod crawl;
 pub mod export;
 pub mod filter_profile;
 pub mod jobs;
+pub mod resume_library;
 pub mod settings;

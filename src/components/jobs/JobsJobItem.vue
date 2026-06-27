@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, toRefs, watch } from "vue";
-import { ChevronDown } from "lucide-vue-next";
+import { ChevronDown, FileText } from "lucide-vue-next";
 import {
   aiAuditStatusLabel,
   companyReviewStatusLabel,
@@ -19,6 +19,7 @@ import {
   type ReviewStatus,
 } from "../../lib/jobs";
 import { formatDate } from "../../lib/jobsPageHelpers";
+import type { ResumeJobLinkStatus } from "../../lib/resumeLibrary";
 
 const props = withDefaults(
   defineProps<{
@@ -32,6 +33,7 @@ const props = withDefaults(
     greetingDraft?: string;
     greetingError?: GreetingErrorState;
     greetingLoading?: boolean;
+    resumeStatus?: ResumeJobLinkStatus;
   }>(),
   {
     rowPaddingClass: "px-4",
@@ -40,6 +42,7 @@ const props = withDefaults(
     greetingDraft: "",
     greetingError: undefined,
     greetingLoading: false,
+    resumeStatus: undefined,
   },
 );
 
@@ -57,6 +60,7 @@ defineEmits<{
   (e: "generate-greeting", job: JobRow): void;
   (e: "copy-greeting", job: JobRow): void;
   (e: "copy-application-packet", job: JobRow): void;
+  (e: "open-resume", job: JobRow): void;
 }>();
 
 const filterReason = computed(() => parseFilterReasonJson(props.job.filter_reason_json));
@@ -95,6 +99,18 @@ const canGenerateGreeting = computed(
   () => props.job.review_status === "ready_to_apply" || props.job.review_status === "applied",
 );
 const hasGreetingDraft = computed(() => props.greetingDraft.trim().length > 0);
+const resumeBadgeText = computed(() => {
+  if (props.resumeStatus?.resume_title) return `简历：${props.resumeStatus.resume_title}`;
+  if (props.resumeStatus?.default_resume_title) return `默认：${props.resumeStatus.default_resume_title}`;
+  return "关联简历";
+});
+const resumeBadgeClass = computed(() =>
+  props.resumeStatus?.resume_id
+    ? "!bg-white !text-emerald-700 !ring-emerald-200"
+    : props.resumeStatus?.default_resume_id
+      ? "!bg-white !text-amber-700 !ring-amber-200"
+      : "!bg-white !text-slate-600 !ring-slate-200",
+);
 const descriptionOpen = ref(false);
 
 watch(
@@ -139,6 +155,15 @@ watch(
         >
           AI 结果：{{ aiAuditStatusLabel(aiAuditStatus) }}
         </span>
+        <button
+          type="button"
+          class="ui-badge inline-flex items-center gap-1 transition-colors hover:bg-slate-50"
+          :class="resumeBadgeClass"
+          @click.stop="$emit('open-resume', job)"
+        >
+          <FileText class="h-3 w-3" aria-hidden="true" />
+          {{ resumeBadgeText }}
+        </button>
       </div>
 
       <div class="flex shrink-0 items-center gap-1.5" @click.stop>
