@@ -45,6 +45,7 @@ export function useResumeLibraryPage() {
   const formTitle = ref("");
   const formBody = ref("");
   const isCreating = ref(false);
+  const isEditing = ref(false);
   const highlightedResumeId = ref<string | null>(null);
   const pendingJobId = ref<string | null>(typeof route.query.jobId === "string" ? route.query.jobId : null);
   const linkModalOpen = ref(false);
@@ -72,6 +73,7 @@ export function useResumeLibraryPage() {
   function applyState(next: ResumeLibraryState): void {
     state.value = next;
     isCreating.value = false;
+    isEditing.value = false;
     formTitle.value = next.selected_resume?.title ?? "";
     formBody.value = next.selected_resume?.body ?? "";
     if (next.active_resume_id) {
@@ -111,8 +113,26 @@ export function useResumeLibraryPage() {
 
   function startCreate(): void {
     isCreating.value = true;
+    isEditing.value = true;
     formTitle.value = "";
     formBody.value = "";
+  }
+
+  function startEdit(): void {
+    const selected = selectedResume.value;
+    if (!selected) return;
+    isCreating.value = false;
+    isEditing.value = true;
+    formTitle.value = selected.title;
+    formBody.value = selected.body;
+  }
+
+  function cancelEdit(): void {
+    const selected = selectedResume.value;
+    isCreating.value = false;
+    isEditing.value = false;
+    formTitle.value = selected?.title ?? "";
+    formBody.value = selected?.body ?? "";
   }
 
   async function saveResume(): Promise<void> {
@@ -128,6 +148,7 @@ export function useResumeLibraryPage() {
       if (state.value.active_resume_id) {
         await router.replace({ path: "/resume-library", query: { ...route.query, resumeId: state.value.active_resume_id } });
       }
+      isEditing.value = false;
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -266,6 +287,7 @@ export function useResumeLibraryPage() {
     formTitle,
     formBody,
     isCreating,
+    isEditing,
     hasResumes,
     isDirty,
     highlightedResumeId,
@@ -279,6 +301,8 @@ export function useResumeLibraryPage() {
     load,
     selectResume,
     startCreate,
+    startEdit,
+    cancelEdit,
     saveResume,
     removeSelectedResume,
     makeSelectedDefault,

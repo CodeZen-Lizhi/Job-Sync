@@ -577,8 +577,12 @@ pub fn save_settings(
     current.openai_model = opt_trimmed(openai_model);
     current.openai_api_mode = opt_trimmed(openai_api_mode);
     current.openai_temperature = clamp_temperature(openai_temperature);
-    current.openai_prompt_extra = opt_trimmed(openai_prompt_extra).unwrap_or_default();
-    current.openai_schema_extra = opt_trimmed(openai_schema_extra).unwrap_or_default();
+    if let Some(value) = openai_prompt_extra {
+        current.openai_prompt_extra = opt_trimmed(Some(value)).unwrap_or_default();
+    }
+    if let Some(value) = openai_schema_extra {
+        current.openai_schema_extra = opt_trimmed(Some(value)).unwrap_or_default();
+    }
     current.ai_greeting_prompt_extra = opt_trimmed(ai_greeting_prompt_extra).unwrap_or_default();
     if let Some(bot_token) = telegram_bot_token {
         current.telegram_bot_token = opt_trimmed(Some(bot_token));
