@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::Result;
 
-use super::common::now_rfc3339;
+use super::{
+    common::now_rfc3339, job_list_summary_projection::refresh_company_job_list_summary_projections,
+};
 
 const COMPANY_RISK_TERMS: &[(&str, &str, &str, f64)] = &[
     ("外包", "outsourcing_risk", "职位信息出现外包相关描述", 25.0),
@@ -175,6 +177,7 @@ pub(crate) fn upsert_company_score_from_source(
             updated_at,
         ],
     )?;
+    refresh_company_job_list_summary_projections(conn, company_name)?;
     Ok(())
 }
 
@@ -225,10 +228,12 @@ pub(crate) fn upsert_company_score(
             updated_at,
         ],
     )?;
+    refresh_company_job_list_summary_projections(conn, company_name)?;
     Ok(())
 }
 
 pub(crate) fn rebuild_company_scores(conn: &Connection) -> Result<CompanyScoreRebuildSummary> {
+    super::jobs::refresh_all_job_projections(conn)?;
     let mut stmt = conn.prepare(
         r#"
     SELECT
@@ -242,13 +247,11 @@ pub(crate) fn rebuild_company_scores(conn: &Connection) -> Result<CompanyScoreRe
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
+        COALESCE(sp.search_text, ''),
         ' '
       ) AS source_text
     FROM job j
-    LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+    LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
     WHERE j.brand_name IS NOT NULL AND trim(j.brand_name) != ''
     GROUP BY j.brand_name
     ORDER BY j.brand_name ASC
@@ -274,6 +277,7 @@ pub(crate) fn rebuild_company_scores(conn: &Connection) -> Result<CompanyScoreRe
         )?;
         jobs += jobs_count.max(0) as u64;
     }
+    super::job_list_summary_projection::backfill_job_list_summary_projections(conn)?;
 
     let companies = conn.query_row("SELECT COUNT(*) FROM company_score", [], |row| {
         row.get::<_, i64>(0)

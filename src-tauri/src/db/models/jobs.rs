@@ -8,6 +8,10 @@ use super::{
     common::now_rfc3339,
     company_score::upsert_company_score_from_source,
     job_fields::{extract_job_fields_from_detail, extract_job_fields_from_list_item, JobFields},
+    job_list_summary_projection::refresh_job_list_summary_projection,
+    job_projection::upsert_job_detail_projection,
+    job_search_projection::refresh_job_search_projection,
+    job_source_payload::upsert_job_source_payload,
     source_adapter::{normalize_boss_detail, normalize_boss_list_item, NormalizedJobSource},
 };
 
@@ -164,6 +168,7 @@ pub(crate) fn upsert_job_from_detail(
         &last_seen_at,
     )?;
     upsert_company_score_for_fields(conn, &fields, zp_data_json)?;
+    refresh_job_derived_projections(conn, encrypt_job_id, Some(&source.raw_payload_json))?;
     Ok(())
 }
 
@@ -197,6 +202,7 @@ pub(crate) fn upsert_job_from_list_item(
         insert_job_detail_raw_if_missing(conn, encrypt_job_id, &detail_json)?;
     }
     upsert_company_score_for_fields(conn, &fields, &item.to_string())?;
+    refresh_job_derived_projections(conn, encrypt_job_id, Some(&source.raw_payload_json))?;
     Ok(())
 }
 
@@ -249,6 +255,7 @@ pub(crate) fn upsert_job_from_normalized(
         .as_deref()
         .unwrap_or(source.raw_payload_json.as_str());
     upsert_company_score_for_fields(conn, &fields, score_source)?;
+    refresh_job_derived_projections(conn, &input.encrypt_job_id, Some(&source.raw_payload_json))?;
     Ok(())
 }
 
@@ -408,8 +415,9 @@ fn load_job_persistence_snapshot(
         SELECT j.source_platform, j.source_url, j.dedup_key,
                j.position_name, j.boss_name, j.boss_active_status, j.brand_name,
                j.city_name, j.salary_desc, j.experience_name, j.degree_name,
-               j.jd_text, j.raw_payload_json, d.zp_data_json
+               j.jd_text, COALESCE(sp.raw_payload_json, j.raw_payload_json), d.zp_data_json
         FROM job j
+        LEFT JOIN job_source_payload sp ON sp.encrypt_job_id = j.encrypt_job_id
         LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
         WHERE j.encrypt_job_id = ?1
         "#,
@@ -466,6 +474,7 @@ fn upsert_job_detail_raw(
         UPSERT_JOB_DETAIL_RAW_SQL,
         params![encrypt_job_id, zp_data_json, fetched_at],
     )?;
+    upsert_job_detail_projection(conn, encrypt_job_id, zp_data_json)?;
     Ok(())
 }
 
@@ -475,10 +484,13 @@ fn insert_job_detail_raw_if_missing(
     zp_data_json: &str,
 ) -> Result<()> {
     let fetched_at = now_rfc3339();
-    conn.execute(
+    let changed = conn.execute(
         INSERT_JOB_DETAIL_RAW_IF_MISSING_SQL,
         params![encrypt_job_id, zp_data_json, fetched_at],
     )?;
+    if changed > 0 {
+        upsert_job_detail_projection(conn, encrypt_job_id, zp_data_json)?;
+    }
     Ok(())
 }
 
@@ -545,4 +557,26 @@ fn upsert_job_record(
         ],
     )?;
     Ok(())
+}
+
+pub(crate) fn refresh_job_derived_projections(
+    conn: &Connection,
+    encrypt_job_id: &str,
+    raw_payload_json: Option<&str>,
+) -> Result<()> {
+    if let Some(raw_payload_json) = raw_payload_json {
+        upsert_job_source_payload(conn, encrypt_job_id, raw_payload_json)?;
+    }
+    refresh_job_search_projection(conn, encrypt_job_id)?;
+    refresh_job_list_summary_projection(conn, encrypt_job_id)?;
+    Ok(())
+}
+
+pub(crate) fn refresh_all_job_projections(conn: &Connection) -> Result<u64> {
+    let mut changed = 0_u64;
+    changed += super::job_source_payload::backfill_job_source_payloads(conn)?;
+    changed += super::job_projection::backfill_job_detail_projections(conn)?;
+    changed += super::job_search_projection::backfill_job_search_projections(conn)?;
+    changed += super::job_list_summary_projection::backfill_job_list_summary_projections(conn)?;
+    Ok(changed)
 }

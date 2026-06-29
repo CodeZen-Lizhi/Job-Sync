@@ -3,7 +3,11 @@ mod common;
 mod company_score;
 mod filter_results;
 mod job_fields;
+mod job_list_summary_projection;
+mod job_projection;
 mod job_review;
+mod job_search_projection;
+mod job_source_payload;
 mod jobs;
 mod source_adapter;
 mod source_links;
@@ -28,12 +32,26 @@ pub(crate) use filter_results::{
     upsert_default_filter_profile, upsert_filter_profile, upsert_job_filter_result, FilterProfile,
     DEFAULT_FILTER_PROFILE_ID,
 };
+#[cfg(test)]
+pub(crate) use job_list_summary_projection::{
+    backfill_job_list_summary_projections, refresh_job_list_summary_projection,
+};
+#[cfg(test)]
+pub(crate) use job_projection::backfill_job_detail_projections;
+#[cfg(test)]
+pub(crate) use job_projection::upsert_job_detail_projection;
 pub(crate) use job_review::{
     set_job_review_notes, upsert_company_review_state, upsert_job_blacklist,
     upsert_job_review_state, BLACKLIST_KIND_COMPANY, BLACKLIST_KIND_JOB, BLACKLIST_KIND_KEYWORD,
 };
+#[cfg(test)]
+pub(crate) use job_search_projection::backfill_job_search_projections;
+#[cfg(test)]
+pub(crate) use job_source_payload::backfill_job_source_payloads;
+#[cfg(test)]
+pub(crate) use job_source_payload::get_job_source_payload;
 pub(crate) use jobs::{
-    rebuild_all_job_fields, upsert_job_from_detail_with_outcome,
+    rebuild_all_job_fields, refresh_all_job_projections, upsert_job_from_detail_with_outcome,
     upsert_job_from_list_item_with_outcome, upsert_job_from_normalized_with_outcome,
     NormalizedJobInput,
 };

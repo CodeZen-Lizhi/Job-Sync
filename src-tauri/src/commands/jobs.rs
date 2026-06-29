@@ -35,6 +35,7 @@ pub fn list_job_candidates(
     collection_methods: Option<Vec<String>>,
     limit: Option<u32>,
     offset: Option<u32>,
+    cursor: Option<String>,
 ) -> Result<JobCandidatePage, String> {
     queries::list_job_candidates(
         app,
@@ -49,6 +50,7 @@ pub fn list_job_candidates(
         collection_methods,
         limit,
         offset,
+        cursor,
     )
 }
 

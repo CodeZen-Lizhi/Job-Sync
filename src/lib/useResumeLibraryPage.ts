@@ -7,13 +7,15 @@ import {
   createResume,
   deleteResume,
   getResumeJobSummaries,
-  getResumeLibraryState,
+  getResumeLibraryOverview,
+  getResumeRecord,
   linkResumeToJobs,
   listRecommendedJobsForResumeLinking,
   setDefaultResume,
   unlinkResumeFromJob,
   updateResume,
   type ResumeJobSummary,
+  type ResumeLibraryOverview,
   type ResumeLibraryState,
 } from "./resumeLibrary";
 import { isTauri } from "./tauri";
@@ -53,9 +55,15 @@ export function useResumeLibraryPage() {
   const linkJobs = ref<LinkJobOption[]>([]);
   const selectedJobIds = ref<Set<string>>(new Set());
   const pinnedJobSummaries = ref<ResumeJobSummary[]>([]);
+  let detailRequestId = 0;
 
   const resumes = computed(() => state.value.resumes);
-  const selectedResume = computed(() => state.value.selected_resume);
+  const selectedResume = computed(() => {
+    if (state.value.selected_resume) return state.value.selected_resume;
+    const selectedId = state.value.active_resume_id;
+    const item = selectedId ? state.value.resumes.find((resume) => resume.id === selectedId) : null;
+    return item ? { ...item, body: "" } : null;
+  });
   const linkedJobs = computed(() => state.value.linked_jobs);
   const hasResumes = computed(() => resumes.value.length > 0);
   const isDirty = computed(() => {
@@ -84,12 +92,59 @@ export function useResumeLibraryPage() {
     }
   }
 
+  function applyOverview(next: ResumeLibraryOverview): void {
+    detailRequestId += 1;
+    const currentSelected = state.value.selected_resume;
+    state.value = {
+      resumes: next.resumes,
+      active_resume_id: next.active_resume_id,
+      default_resume_id: next.default_resume_id,
+      selected_resume: currentSelected?.id === next.selected_resume_id ? currentSelected : null,
+      linked_jobs: next.linked_jobs,
+    };
+    isCreating.value = false;
+    isEditing.value = false;
+    if (!state.value.selected_resume) {
+      formTitle.value = next.resumes.find((resume) => resume.id === next.selected_resume_id)?.title ?? "";
+      formBody.value = "";
+    }
+    if (next.active_resume_id) {
+      highlightedResumeId.value = next.active_resume_id;
+      window.setTimeout(() => {
+        if (highlightedResumeId.value === next.active_resume_id) highlightedResumeId.value = null;
+      }, 1800);
+    }
+  }
+
+  async function loadSelectedResumeRecord(resumeId: string | null): Promise<void> {
+    detailRequestId += 1;
+    const requestId = detailRequestId;
+    if (!tauri || !resumeId) {
+      state.value.selected_resume = null;
+      formTitle.value = "";
+      formBody.value = "";
+      return;
+    }
+    if (state.value.selected_resume?.id === resumeId) {
+      formTitle.value = state.value.selected_resume.title;
+      formBody.value = state.value.selected_resume.body;
+      return;
+    }
+
+    const record = await getResumeRecord(resumeId);
+    if (requestId !== detailRequestId) return;
+    state.value.selected_resume = record;
+    formTitle.value = record?.title ?? "";
+    formBody.value = record?.body ?? "";
+  }
+
   async function load(selectedResumeId?: string | null): Promise<void> {
     error.value = null;
     if (!tauri) return;
     loading.value = true;
     try {
-      applyState(await getResumeLibraryState(selectedResumeId));
+      const overview = await getResumeLibraryOverview(selectedResumeId);
+      applyOverview(overview);
       await loadPinnedJobSummary();
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -108,7 +163,6 @@ export function useResumeLibraryPage() {
 
   async function selectResume(resumeId: string): Promise<void> {
     await router.replace({ path: "/resume-library", query: { ...route.query, resumeId } });
-    await load(resumeId);
   }
 
   function startCreate(): void {
@@ -118,13 +172,22 @@ export function useResumeLibraryPage() {
     formBody.value = "";
   }
 
-  function startEdit(): void {
+  async function ensureSelectedResumeLoaded(): Promise<void> {
     const selected = selectedResume.value;
     if (!selected) return;
+    await loadSelectedResumeRecord(selected.id);
+  }
+
+  async function startEdit(): Promise<void> {
+    const selected = selectedResume.value;
+    if (!selected) return;
+    await ensureSelectedResumeLoaded();
+    const loaded = state.value.selected_resume;
+    if (!loaded) return;
     isCreating.value = false;
     isEditing.value = true;
-    formTitle.value = selected.title;
-    formBody.value = selected.body;
+    formTitle.value = loaded.title;
+    formBody.value = loaded.body;
   }
 
   function cancelEdit(): void {
@@ -302,6 +365,7 @@ export function useResumeLibraryPage() {
     selectResume,
     startCreate,
     startEdit,
+    ensureSelectedResumeLoaded,
     cancelEdit,
     saveResume,
     removeSelectedResume,

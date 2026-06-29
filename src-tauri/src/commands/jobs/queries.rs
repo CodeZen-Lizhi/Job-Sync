@@ -60,8 +60,7 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         ) THEN 1 ELSE 0 END,
         (
@@ -82,30 +81,24 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
           ORDER BY kb.id DESC
           LIMIT 1
         ),
-        (
-          SELECT ar.match_score
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
+        COALESCE(
+          lsp.resume_match_score,
+          (
+            SELECT ar.match_score
+            FROM ai_report ar
+            WHERE ar.encrypt_job_id = j.encrypt_job_id
+              AND ar.match_score IS NOT NULL
+              AND (ar.kind = 'resume' OR ar.kind IS NULL)
+            ORDER BY ar.created_at DESC, ar.id DESC
+            LIMIT 1
+          )
         ),
-        (
-          SELECT ar.result_json
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
+        NULL,
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
               COALESCE(j.boss_active_status, '') || ' ' ||
@@ -114,13 +107,12 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
-        cs.company_score,
-        cs.risk_flags_json,
-        cs.evidence_json,
-        cs.confidence,
+        substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
+        substr(COALESCE(sp.search_text, ''), 1, 2000),
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -155,15 +147,32 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
 	        ),
-	        j.boss_active_status
-	      FROM job j
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
-      LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
+		        j.boss_active_status,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_source_link method_link
+          WHERE method_link.encrypt_job_id = j.encrypt_job_id
+            AND (
+              method_link.keyword IS NOT NULL
+              OR method_link.filters_json IS NOT NULL
+            )
+        ) THEN 'automatic' ELSE 'manual' END,
+        lsp.ai_audit_status,
+        lsp.ai_audit_summary,
+        lsp.filter_summary,
+        lsp.resume_match_score,
+        lsp.preference_score,
+        COALESCE(lsp.company_score, cs.company_score),
+        lsp.score_reason_json
+		      FROM job j
+	      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
+	      LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
-      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
-      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
-      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+	      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+	      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_list_summary_projection lsp ON lsp.encrypt_job_id = j.encrypt_job_id
       WHERE (?1 IS NULL
         OR j.encrypt_job_id LIKE ?1
         OR j.source_platform LIKE ?1
@@ -178,8 +187,7 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
         OR j.experience_name LIKE ?1
         OR j.degree_name LIKE ?1
         OR j.jd_text LIKE ?1
-        OR j.raw_payload_json LIKE ?1
-        OR d.zp_data_json LIKE ?1
+        OR sp.search_text LIKE ?1
       )
         AND (?2 IS NULL OR j.city_name = ?2)
       ORDER BY
@@ -196,8 +204,7 @@ const LIST_JOBS_LIKE_SQL: &str = r#"
         COALESCE((j.experience_name LIKE ?1), 0) DESC,
         COALESCE((j.degree_name LIKE ?1), 0) DESC,
         COALESCE((j.jd_text LIKE ?1), 0) DESC,
-        COALESCE((j.raw_payload_json LIKE ?1), 0) DESC,
-        COALESCE((d.zp_data_json LIKE ?1), 0) DESC,
+        COALESCE((sp.search_text LIKE ?1), 0) DESC,
         j.last_seen_at DESC
       LIMIT ?3 OFFSET ?4
 "#;
@@ -239,8 +246,7 @@ const LIST_JOBS_FTS_SQL: &str = r#"
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         ) THEN 1 ELSE 0 END,
         (
@@ -261,30 +267,24 @@ const LIST_JOBS_FTS_SQL: &str = r#"
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
           ORDER BY kb.id DESC
           LIMIT 1
         ),
-        (
-          SELECT ar.match_score
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
+        COALESCE(
+          lsp.resume_match_score,
+          (
+            SELECT ar.match_score
+            FROM ai_report ar
+            WHERE ar.encrypt_job_id = j.encrypt_job_id
+              AND ar.match_score IS NOT NULL
+              AND (ar.kind = 'resume' OR ar.kind IS NULL)
+            ORDER BY ar.created_at DESC, ar.id DESC
+            LIMIT 1
+          )
         ),
-        (
-          SELECT ar.result_json
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
+        NULL,
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
               COALESCE(j.boss_active_status, '') || ' ' ||
@@ -293,13 +293,12 @@ const LIST_JOBS_FTS_SQL: &str = r#"
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
-        cs.company_score,
-        cs.risk_flags_json,
-        cs.evidence_json,
-        cs.confidence,
+        substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
+        substr(COALESCE(sp.search_text, ''), 1, 2000),
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -334,16 +333,33 @@ const LIST_JOBS_FTS_SQL: &str = r#"
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
 	        ),
-	        j.boss_active_status
-	      FROM job_fts f
-      INNER JOIN job j ON j.encrypt_job_id = f.encrypt_job_id
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+		        j.boss_active_status,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_source_link method_link
+          WHERE method_link.encrypt_job_id = j.encrypt_job_id
+            AND (
+              method_link.keyword IS NOT NULL
+              OR method_link.filters_json IS NOT NULL
+            )
+        ) THEN 'automatic' ELSE 'manual' END,
+        lsp.ai_audit_status,
+        lsp.ai_audit_summary,
+        lsp.filter_summary,
+        lsp.resume_match_score,
+        lsp.preference_score,
+        COALESCE(lsp.company_score, cs.company_score),
+        lsp.score_reason_json
+		      FROM job_fts f
+	      INNER JOIN job j ON j.encrypt_job_id = f.encrypt_job_id
+	      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
-      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
-      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
-      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+	      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+	      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_list_summary_projection lsp ON lsp.encrypt_job_id = j.encrypt_job_id
       WHERE f MATCH ?1
         AND (?2 IS NULL OR j.city_name = ?2)
       ORDER BY bm25(f) ASC, j.last_seen_at DESC
@@ -362,7 +378,7 @@ const JOB_COLLECTION_METHOD_SQL: &str = r#"
         ) THEN 'automatic' ELSE 'manual' END
 "#;
 
-const JOB_CANDIDATE_BASE_SQL: &str = r#"
+const JOB_CANDIDATE_BASE_SQL_PREFIX: &str = r#"
       SELECT
         j.encrypt_job_id,
         COALESCE(NULLIF(j.source_platform, ''), 'boss'),
@@ -381,70 +397,22 @@ const JOB_CANDIDATE_BASE_SQL: &str = r#"
         CASE WHEN cb.id IS NOT NULL THEN 1 ELSE 0 END,
         CASE WHEN jb.id IS NOT NULL THEN 1 ELSE 0 END,
         COALESCE(jb.reason, cb.reason),
-        CASE WHEN EXISTS (
-          SELECT 1
-          FROM job_blacklist kb
-          WHERE kb.kind = 'keyword'
-            AND trim(kb.value) != ''
-            AND lower(
-              COALESCE(j.source_platform, '') || ' ' ||
-              COALESCE(j.source_url, '') || ' ' ||
-              COALESCE(j.dedup_key, '') || ' ' ||
-              COALESCE(j.position_name, '') || ' ' ||
-              COALESCE(j.boss_name, '') || ' ' ||
-              COALESCE(j.boss_active_status, '') || ' ' ||
-              COALESCE(j.brand_name, '') || ' ' ||
-              COALESCE(j.city_name, '') || ' ' ||
-              COALESCE(j.salary_desc, '') || ' ' ||
-              COALESCE(j.experience_name, '') || ' ' ||
-              COALESCE(j.degree_name, '') || ' ' ||
-              COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
-            ) LIKE '%' || lower(kb.value) || '%'
-        ) THEN 1 ELSE 0 END,
-        (
-          SELECT COALESCE(kb.reason, '命中关键词黑名单：' || kb.value)
-          FROM job_blacklist kb
-          WHERE kb.kind = 'keyword'
-            AND trim(kb.value) != ''
-            AND lower(
-              COALESCE(j.source_platform, '') || ' ' ||
-              COALESCE(j.source_url, '') || ' ' ||
-              COALESCE(j.dedup_key, '') || ' ' ||
-              COALESCE(j.position_name, '') || ' ' ||
-              COALESCE(j.boss_name, '') || ' ' ||
-              COALESCE(j.boss_active_status, '') || ' ' ||
-              COALESCE(j.brand_name, '') || ' ' ||
-              COALESCE(j.city_name, '') || ' ' ||
-              COALESCE(j.salary_desc, '') || ' ' ||
-              COALESCE(j.experience_name, '') || ' ' ||
-              COALESCE(j.degree_name, '') || ' ' ||
-              COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
-            ) LIKE '%' || lower(kb.value) || '%'
-          ORDER BY kb.id DESC
-          LIMIT 1
+"#;
+
+const JOB_CANDIDATE_BASE_SQL_MID: &str = r#"
+        COALESCE(
+          lsp.resume_match_score,
+          (
+            SELECT ar.match_score
+            FROM ai_report ar
+            WHERE ar.encrypt_job_id = j.encrypt_job_id
+              AND ar.match_score IS NOT NULL
+              AND (ar.kind = 'resume' OR ar.kind IS NULL)
+            ORDER BY ar.created_at DESC, ar.id DESC
+            LIMIT 1
+          )
         ),
-        (
-          SELECT ar.match_score
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
-        (
-          SELECT ar.result_json
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
+        NULL,
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
         COALESCE(j.boss_active_status, '') || ' ' ||
@@ -453,13 +421,14 @@ const JOB_CANDIDATE_BASE_SQL: &str = r#"
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
-        cs.company_score,
-        cs.risk_flags_json,
-        cs.evidence_json,
-        cs.confidence,
+        substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
+"#;
+
+const JOB_CANDIDATE_BASE_SQL_SUFFIX: &str = r#"
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -497,31 +466,21 @@ const JOB_CANDIDATE_BASE_SQL: &str = r#"
         j.boss_active_status,
 "#;
 
-const JOB_CANDIDATE_FROM_SQL: &str = r#"
+const JOB_CANDIDATE_BASE_FROM_SQL: &str = r#"
       FROM job j
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
       LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
       LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
-      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
 "#;
 
-const JOB_PROCESSED_SQL: &str = r#"
-      (
-        COALESCE(rs.review_status, 'pending') != 'pending'
-        OR COALESCE(rs.communication_status, 'not_contacted') != 'not_contacted'
-        OR NULLIF(TRIM(COALESCE(rs.notes, '')), '') IS NOT NULL
-        OR COALESCE(crs.review_status, 'pending') != 'pending'
-        OR jb.id IS NOT NULL
-        OR cb.id IS NOT NULL
-        OR EXISTS (
-          SELECT 1
-          FROM job_blacklist kb
-          WHERE kb.kind = 'keyword'
-            AND trim(kb.value) != ''
-            AND lower(
+const JOB_CANDIDATE_ROW_EXTRA_FROM_SQL: &str = r#"
+      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+      LEFT JOIN job_list_summary_projection lsp ON lsp.encrypt_job_id = j.encrypt_job_id
+"#;
+
+const JOB_CANDIDATE_KEYWORD_TEXT_SQL: &str = r#"
               COALESCE(j.source_platform, '') || ' ' ||
               COALESCE(j.source_url, '') || ' ' ||
               COALESCE(j.dedup_key, '') || ' ' ||
@@ -534,12 +493,80 @@ const JOB_PROCESSED_SQL: &str = r#"
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
-            ) LIKE '%' || lower(kb.value) || '%'
-        )
-      )
+              COALESCE(sp.search_text, '')
 "#;
+
+fn keyword_blacklist_exists_sql() -> String {
+    format!(
+        r#"EXISTS (
+          SELECT 1
+          FROM job_blacklist kb
+          WHERE kb.kind = 'keyword'
+            AND trim(kb.value) != ''
+            AND lower({JOB_CANDIDATE_KEYWORD_TEXT_SQL}) LIKE '%' || lower(kb.value) || '%'
+        )"#
+    )
+}
+
+fn keyword_blacklist_reason_sql() -> String {
+    format!(
+        r#"(
+          SELECT COALESCE(kb.reason, '命中关键词黑名单：' || kb.value)
+          FROM job_blacklist kb
+          WHERE kb.kind = 'keyword'
+            AND trim(kb.value) != ''
+            AND lower({JOB_CANDIDATE_KEYWORD_TEXT_SQL}) LIKE '%' || lower(kb.value) || '%'
+          ORDER BY kb.id DESC
+          LIMIT 1
+        )"#
+    )
+}
+
+fn keyword_blacklist_columns_sql(has_keyword_blacklist: bool) -> String {
+    if has_keyword_blacklist {
+        format!(
+            "CASE WHEN {} THEN 1 ELSE 0 END,\n        {},",
+            keyword_blacklist_exists_sql(),
+            keyword_blacklist_reason_sql()
+        )
+    } else {
+        "0,\n        NULL,".to_string()
+    }
+}
+
+fn build_job_candidate_from_sql(include_projection: bool, include_row_extras: bool) -> String {
+    let mut sql = JOB_CANDIDATE_BASE_FROM_SQL.to_string();
+    if include_projection {
+        sql.push_str(
+            "      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id\n",
+        );
+    }
+    if include_row_extras {
+        sql.push_str(JOB_CANDIDATE_ROW_EXTRA_FROM_SQL);
+    }
+    sql
+}
+
+fn job_processed_sql(has_keyword_blacklist: bool) -> String {
+    let keyword_clause = if has_keyword_blacklist {
+        format!("OR {}", keyword_blacklist_exists_sql())
+    } else {
+        String::new()
+    };
+    format!(
+        r#"
+      (
+        COALESCE(rs.review_status, 'pending') != 'pending'
+        OR COALESCE(rs.communication_status, 'not_contacted') != 'not_contacted'
+        OR NULLIF(TRIM(COALESCE(rs.notes, '')), '') IS NOT NULL
+        OR COALESCE(crs.review_status, 'pending') != 'pending'
+        OR jb.id IS NOT NULL
+        OR cb.id IS NOT NULL
+        {keyword_clause}
+      )
+"#
+    )
+}
 
 fn clean_filter_values(values: Option<Vec<String>>) -> Vec<String> {
     values
@@ -561,7 +588,18 @@ fn placeholders(count: usize) -> String {
         .join(", ")
 }
 
+fn has_active_keyword_blacklist(conn: &Connection) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM job_blacklist WHERE kind = 'keyword' AND trim(value) != '')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|value| value != 0)
+    .map_err(|e| e.to_string())
+}
+
 fn build_job_candidate_filters(
+    has_active_keyword_blacklist_value: bool,
     bucket: Option<String>,
     query: Option<String>,
     start_date: Option<String>,
@@ -571,9 +609,11 @@ fn build_job_candidate_filters(
     ai_audit_filters: Option<Vec<String>>,
     source_platforms: Option<Vec<String>>,
     collection_methods: Option<Vec<String>>,
-) -> (String, Vec<SqlValue>) {
+) -> (String, Vec<SqlValue>, bool) {
     let mut where_parts = vec!["1 = 1".to_string()];
     let mut params = Vec::new();
+    let mut needs_projection = has_active_keyword_blacklist_value;
+    let processed_sql = job_processed_sql(has_active_keyword_blacklist_value);
 
     match bucket.as_deref().map(str::trim) {
         Some("recommended") => where_parts.push(
@@ -582,7 +622,7 @@ fn build_job_candidate_filters(
             AND COALESCE(json_extract(r.reason_json, '$.bucket'), 'recommended') = 'recommended'
             AND NOT "#
                 .to_string()
-                + JOB_PROCESSED_SQL,
+                + &processed_sql,
         ),
         Some("pending_confirmation") | Some("confirm") => where_parts.push(
             "COALESCE(json_extract(r.reason_json, '$.bucket'), '') = 'pending_confirmation'"
@@ -602,7 +642,7 @@ fn build_job_candidate_filters(
             "#
             .to_string(),
         ),
-        Some("processed") => where_parts.push(JOB_PROCESSED_SQL.to_string()),
+        Some("processed") => where_parts.push(processed_sql.clone()),
         _ => {}
     }
 
@@ -610,6 +650,7 @@ fn build_job_candidate_filters(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     {
+        needs_projection = true;
         let like = format!("%{query}%");
         where_parts.push(
             r#"(
@@ -626,12 +667,11 @@ fn build_job_candidate_filters(
               OR j.experience_name LIKE ?
               OR j.degree_name LIKE ?
               OR j.jd_text LIKE ?
-              OR j.raw_payload_json LIKE ?
-              OR d.zp_data_json LIKE ?
+              OR sp.search_text LIKE ?
             )"#
             .to_string(),
         );
-        for _ in 0..15 {
+        for _ in 0..14 {
             params.push(SqlValue::Text(like.clone()));
         }
     }
@@ -653,8 +693,8 @@ fn build_job_candidate_filters(
     }
 
     match processed.as_deref().map(str::trim) {
-        Some("processed") => where_parts.push(JOB_PROCESSED_SQL.to_string()),
-        Some("unprocessed") => where_parts.push(format!("NOT {JOB_PROCESSED_SQL}")),
+        Some("processed") => where_parts.push(processed_sql.clone()),
+        Some("unprocessed") => where_parts.push(format!("NOT {processed_sql}")),
         _ => {}
     }
 
@@ -676,31 +716,14 @@ fn build_job_candidate_filters(
                     .push("NULLIF(TRIM(COALESCE(rs.notes, '')), '') IS NOT NULL".to_string()),
                 "company_not_fit" => status_parts
                     .push("COALESCE(crs.review_status, 'pending') = 'manual_not_fit'".to_string()),
-                "blacklisted" => status_parts.push(
-                    "(jb.id IS NOT NULL OR cb.id IS NOT NULL OR EXISTS (
-                      SELECT 1
-                      FROM job_blacklist kb
-                      WHERE kb.kind = 'keyword'
-                        AND trim(kb.value) != ''
-                        AND lower(
-                          COALESCE(j.source_platform, '') || ' ' ||
-                          COALESCE(j.source_url, '') || ' ' ||
-                          COALESCE(j.dedup_key, '') || ' ' ||
-                          COALESCE(j.position_name, '') || ' ' ||
-                          COALESCE(j.boss_name, '') || ' ' ||
-                          COALESCE(j.boss_active_status, '') || ' ' ||
-                          COALESCE(j.brand_name, '') || ' ' ||
-                          COALESCE(j.city_name, '') || ' ' ||
-                          COALESCE(j.salary_desc, '') || ' ' ||
-                          COALESCE(j.experience_name, '') || ' ' ||
-                          COALESCE(j.degree_name, '') || ' ' ||
-                          COALESCE(j.jd_text, '') || ' ' ||
-                          COALESCE(j.raw_payload_json, '') || ' ' ||
-                          COALESCE(d.zp_data_json, '')
-                        ) LIKE '%' || lower(kb.value) || '%'
-                    ))"
-                    .to_string(),
-                ),
+                "blacklisted" => status_parts.push(if has_active_keyword_blacklist_value {
+                    format!(
+                        "(jb.id IS NOT NULL OR cb.id IS NOT NULL OR {})",
+                        keyword_blacklist_exists_sql()
+                    )
+                } else {
+                    "(jb.id IS NOT NULL OR cb.id IS NOT NULL)".to_string()
+                }),
                 _ => {}
             }
         }
@@ -747,7 +770,7 @@ fn build_job_candidate_filters(
         push_text_values(&mut params, &methods);
     }
 
-    (where_parts.join(" AND "), params)
+    (where_parts.join(" AND "), params, needs_projection)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -764,6 +787,7 @@ pub fn list_job_candidates(
     collection_methods: Option<Vec<String>>,
     limit: Option<u32>,
     offset: Option<u32>,
+    cursor: Option<String>,
 ) -> Result<JobCandidatePage, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
     let conn = open_conn(&app_data_dir)?;
@@ -780,6 +804,7 @@ pub fn list_job_candidates(
         collection_methods,
         limit,
         offset,
+        cursor,
     )
 }
 
@@ -797,12 +822,15 @@ pub(super) fn list_job_candidates_on_conn(
     collection_methods: Option<Vec<String>>,
     limit: Option<u32>,
     offset: Option<u32>,
+    cursor: Option<String>,
 ) -> Result<JobCandidatePage, String> {
     let _ = filter_profile::recompute_missing_default_filter_profile_on_conn(conn)?;
     let score_weights = load_score_weights(conn);
     let limit = limit.unwrap_or(20).clamp(1, 100);
     let offset = offset.unwrap_or(0);
-    let (where_sql, params) = build_job_candidate_filters(
+    let has_keyword_blacklist = has_active_keyword_blacklist(conn)?;
+    let (mut where_sql, mut params, needs_projection) = build_job_candidate_filters(
+        has_keyword_blacklist,
         bucket,
         query,
         start_date,
@@ -813,8 +841,17 @@ pub(super) fn list_job_candidates_on_conn(
         source_platforms,
         collection_methods,
     );
+    if let Some((last_seen_at, encrypt_job_id)) = decode_job_candidate_cursor(cursor.as_deref())? {
+        where_sql.push_str(
+            " AND (COALESCE(j.last_seen_at, '') < ? OR (COALESCE(j.last_seen_at, '') = ? AND j.encrypt_job_id > ?))",
+        );
+        params.push(SqlValue::Text(last_seen_at.clone()));
+        params.push(SqlValue::Text(last_seen_at));
+        params.push(SqlValue::Text(encrypt_job_id));
+    }
 
-    let count_sql = format!("SELECT COUNT(*) {JOB_CANDIDATE_FROM_SQL} WHERE {where_sql}");
+    let count_from_sql = build_job_candidate_from_sql(needs_projection, false);
+    let count_sql = format!("SELECT COUNT(*) {count_from_sql} WHERE {where_sql}");
     let total = conn
         .query_row(&count_sql, params_from_iter(params.iter()), |row| {
             row.get::<_, i64>(0)
@@ -824,10 +861,28 @@ pub(super) fn list_job_candidates_on_conn(
     let mut row_params = params.clone();
     row_params.push(SqlValue::Integer(limit as i64));
     row_params.push(SqlValue::Integer(offset as i64));
+    let row_from_sql = build_job_candidate_from_sql(needs_projection, true);
+    let keyword_blacklist_columns = keyword_blacklist_columns_sql(has_keyword_blacklist);
+    let detail_score_source_sql = if needs_projection {
+        "substr(COALESCE(sp.search_text, ''), 1, 2000)"
+    } else {
+        "''"
+    };
     let rows_sql = format!(
-        "{JOB_CANDIDATE_BASE_SQL}
-        {JOB_COLLECTION_METHOD_SQL}
-        {JOB_CANDIDATE_FROM_SQL}
+        "{JOB_CANDIDATE_BASE_SQL_PREFIX}
+        {keyword_blacklist_columns}
+        {JOB_CANDIDATE_BASE_SQL_MID}
+        {detail_score_source_sql},
+        {JOB_CANDIDATE_BASE_SQL_SUFFIX}
+        {JOB_COLLECTION_METHOD_SQL},
+        lsp.ai_audit_status,
+        lsp.ai_audit_summary,
+        lsp.filter_summary,
+        lsp.resume_match_score,
+        lsp.preference_score,
+        COALESCE(lsp.company_score, cs.company_score),
+        lsp.score_reason_json
+        {row_from_sql}
         WHERE {where_sql}
         ORDER BY j.last_seen_at DESC, j.encrypt_job_id ASC
         LIMIT ? OFFSET ?"
@@ -844,11 +899,50 @@ pub(super) fn list_job_candidates_on_conn(
     }
 
     Ok(JobCandidatePage {
+        next_cursor: jobs.last().and_then(encode_job_candidate_cursor),
         jobs,
         total,
         limit,
         offset,
     })
+}
+
+fn encode_job_candidate_cursor(job: &JobRow) -> Option<String> {
+    let last_seen_at = job.last_seen_at.as_deref()?.trim();
+    if last_seen_at.is_empty() || job.encrypt_job_id.trim().is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}|{}",
+        escape_cursor_part(last_seen_at),
+        escape_cursor_part(&job.encrypt_job_id)
+    ))
+}
+
+fn decode_job_candidate_cursor(cursor: Option<&str>) -> Result<Option<(String, String)>, String> {
+    let Some(cursor) = cursor.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let (last_seen_at, encrypt_job_id) = split_cursor(cursor)?;
+    if last_seen_at.trim().is_empty() || encrypt_job_id.trim().is_empty() {
+        return Err("无效的岗位分页游标".to_string());
+    }
+    Ok(Some((last_seen_at, encrypt_job_id)))
+}
+
+fn escape_cursor_part(value: &str) -> String {
+    value.replace('%', "%25").replace('|', "%7C")
+}
+
+fn unescape_cursor_part(value: &str) -> String {
+    value.replace("%7C", "|").replace("%25", "%")
+}
+
+fn split_cursor(cursor: &str) -> Result<(String, String), String> {
+    let Some((left, right)) = cursor.split_once('|') else {
+        return Err("无效的岗位分页游标".to_string());
+    };
+    Ok((unescape_cursor_part(left), unescape_cursor_part(right)))
 }
 
 fn list_jobs_like(
@@ -1228,8 +1322,7 @@ pub fn list_jobs_by_source(
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         ) THEN 1 ELSE 0 END,
         (
@@ -1250,30 +1343,24 @@ pub fn list_jobs_by_source(
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
           ORDER BY kb.id DESC
           LIMIT 1
         ),
-        (
-          SELECT ar.match_score
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
+        COALESCE(
+          lsp.resume_match_score,
+          (
+            SELECT ar.match_score
+            FROM ai_report ar
+            WHERE ar.encrypt_job_id = j.encrypt_job_id
+              AND ar.match_score IS NOT NULL
+              AND (ar.kind = 'resume' OR ar.kind IS NULL)
+            ORDER BY ar.created_at DESC, ar.id DESC
+            LIMIT 1
+          )
         ),
-        (
-          SELECT ar.result_json
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
+        NULL,
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
               COALESCE(j.boss_active_status, '') || ' ' ||
@@ -1282,13 +1369,12 @@ pub fn list_jobs_by_source(
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
-        cs.company_score,
-        cs.risk_flags_json,
-        cs.evidence_json,
-        cs.confidence,
+        substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
+        substr(COALESCE(sp.search_text, ''), 1, 2000),
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -1323,16 +1409,33 @@ pub fn list_jobs_by_source(
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
 	        ),
-	        j.boss_active_status
-	      FROM job j
-      INNER JOIN job_source_link s ON s.encrypt_job_id = j.encrypt_job_id
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+		        j.boss_active_status,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_source_link method_link
+          WHERE method_link.encrypt_job_id = j.encrypt_job_id
+            AND (
+              method_link.keyword IS NOT NULL
+              OR method_link.filters_json IS NOT NULL
+            )
+        ) THEN 'automatic' ELSE 'manual' END,
+        lsp.ai_audit_status,
+        lsp.ai_audit_summary,
+        lsp.filter_summary,
+        lsp.resume_match_score,
+        lsp.preference_score,
+        COALESCE(lsp.company_score, cs.company_score),
+        lsp.score_reason_json
+		      FROM job j
+	      INNER JOIN job_source_link s ON s.encrypt_job_id = j.encrypt_job_id
+	      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result f ON f.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
-      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
-      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
-      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+	      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+	      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_list_summary_projection lsp ON lsp.encrypt_job_id = j.encrypt_job_id
       WHERE s.keyword = ?1
       ORDER BY j.last_seen_at DESC
       "#
@@ -1375,8 +1478,7 @@ pub fn list_jobs_by_source(
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         ) THEN 1 ELSE 0 END,
         (
@@ -1397,30 +1499,24 @@ pub fn list_jobs_by_source(
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
           ORDER BY kb.id DESC
           LIMIT 1
         ),
-        (
-          SELECT ar.match_score
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
+        COALESCE(
+          lsp.resume_match_score,
+          (
+            SELECT ar.match_score
+            FROM ai_report ar
+            WHERE ar.encrypt_job_id = j.encrypt_job_id
+              AND ar.match_score IS NOT NULL
+              AND (ar.kind = 'resume' OR ar.kind IS NULL)
+            ORDER BY ar.created_at DESC, ar.id DESC
+            LIMIT 1
+          )
         ),
-        (
-          SELECT ar.result_json
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
+        NULL,
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
               COALESCE(j.boss_active_status, '') || ' ' ||
@@ -1429,13 +1525,12 @@ pub fn list_jobs_by_source(
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
-        cs.company_score,
-        cs.risk_flags_json,
-        cs.evidence_json,
-        cs.confidence,
+        substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
+        substr(COALESCE(sp.search_text, ''), 1, 2000),
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -1470,15 +1565,32 @@ pub fn list_jobs_by_source(
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
 	        ),
-	        j.boss_active_status
-	      FROM job j
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+		        j.boss_active_status,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_source_link method_link
+          WHERE method_link.encrypt_job_id = j.encrypt_job_id
+            AND (
+              method_link.keyword IS NOT NULL
+              OR method_link.filters_json IS NOT NULL
+            )
+        ) THEN 'automatic' ELSE 'manual' END,
+        lsp.ai_audit_status,
+        lsp.ai_audit_summary,
+        lsp.filter_summary,
+        lsp.resume_match_score,
+        lsp.preference_score,
+        COALESCE(lsp.company_score, cs.company_score),
+        lsp.score_reason_json
+		      FROM job j
+	      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result f ON f.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
-      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
-      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
-      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+	      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+	      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_list_summary_projection lsp ON lsp.encrypt_job_id = j.encrypt_job_id
       WHERE NOT EXISTS (
         SELECT 1 FROM job_source_link s
         WHERE s.encrypt_job_id = j.encrypt_job_id AND s.keyword IS NOT NULL
@@ -1564,8 +1676,7 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         ) THEN 1 ELSE 0 END,
         (
@@ -1586,30 +1697,24 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
           ORDER BY kb.id DESC
           LIMIT 1
         ),
-        (
-          SELECT ar.match_score
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
+        COALESCE(
+          lsp.resume_match_score,
+          (
+            SELECT ar.match_score
+            FROM ai_report ar
+            WHERE ar.encrypt_job_id = j.encrypt_job_id
+              AND ar.match_score IS NOT NULL
+              AND (ar.kind = 'resume' OR ar.kind IS NULL)
+            ORDER BY ar.created_at DESC, ar.id DESC
+            LIMIT 1
+          )
         ),
-        (
-          SELECT ar.result_json
-          FROM ai_report ar
-          WHERE ar.encrypt_job_id = j.encrypt_job_id
-            AND ar.match_score IS NOT NULL
-            AND (ar.kind = 'resume' OR ar.kind IS NULL)
-          ORDER BY ar.created_at DESC, ar.id DESC
-          LIMIT 1
-        ),
+        NULL,
         COALESCE(j.position_name, '') || ' ' ||
         COALESCE(j.boss_name, '') || ' ' ||
               COALESCE(j.boss_active_status, '') || ' ' ||
@@ -1618,13 +1723,12 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
         COALESCE(j.salary_desc, '') || ' ' ||
         COALESCE(j.experience_name, '') || ' ' ||
         COALESCE(j.degree_name, '') || ' ' ||
-        COALESCE(j.jd_text, '') || ' ' ||
-        COALESCE(j.raw_payload_json, '') || ' ' ||
-        COALESCE(d.zp_data_json, ''),
-        cs.company_score,
-        cs.risk_flags_json,
-        cs.evidence_json,
-        cs.confidence,
+        substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
+        substr(COALESCE(sp.search_text, ''), 1, 2000),
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -1659,15 +1763,32 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
 	        ),
-	        j.boss_active_status
-	      FROM job j
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+		        j.boss_active_status,
+        CASE WHEN EXISTS (
+          SELECT 1
+          FROM job_source_link method_link
+          WHERE method_link.encrypt_job_id = j.encrypt_job_id
+            AND (
+              method_link.keyword IS NOT NULL
+              OR method_link.filters_json IS NOT NULL
+            )
+        ) THEN 'automatic' ELSE 'manual' END,
+        lsp.ai_audit_status,
+        lsp.ai_audit_summary,
+        lsp.filter_summary,
+        lsp.resume_match_score,
+        lsp.preference_score,
+        COALESCE(lsp.company_score, cs.company_score),
+        lsp.score_reason_json
+		      FROM job j
+	      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
-      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
-      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
-      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_blacklist jb ON jb.kind = 'job' AND jb.value = j.encrypt_job_id
+	      LEFT JOIN job_blacklist cb ON cb.kind = 'company' AND cb.value = j.brand_name
+	      LEFT JOIN company_score cs ON cs.company_name = j.brand_name
+	      LEFT JOIN job_list_summary_projection lsp ON lsp.encrypt_job_id = j.encrypt_job_id
       WHERE r.eligible = 1
         AND jb.id IS NULL
         AND cb.id IS NULL
@@ -1690,8 +1811,7 @@ fn query_review_candidates_on_conn(conn: &Connection) -> Result<Vec<JobRow>, Str
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         )
         AND COALESCE(rs.review_status, 'pending') NOT IN ('favorited', 'ready_to_apply', 'ignored', 'applied')
@@ -1941,7 +2061,7 @@ fn count_eligible_jobs(conn: &Connection) -> Result<i64, String> {
         r#"
       SELECT COUNT(*)
       FROM job j
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
@@ -1969,8 +2089,7 @@ fn count_eligible_jobs(conn: &Connection) -> Result<i64, String> {
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         )
         AND COALESCE(rs.review_status, 'pending') NOT IN ('ignored', 'applied')
@@ -2385,6 +2504,8 @@ mod tests {
             ],
         )
         .expect("seed ai report");
+        models::refresh_job_list_summary_projection(conn, encrypt_job_id)
+            .expect("refresh list summary after ai report");
     }
 
     fn seed_eligible_candidate(conn: &Connection, encrypt_job_id: &str) {
@@ -2447,6 +2568,7 @@ mod tests {
             None,
             Some(1),
             Some(1),
+            None,
         )
         .expect("list candidate page");
 
@@ -2455,6 +2577,215 @@ mod tests {
         assert_eq!(page.offset, 1);
         assert_eq!(page.jobs.len(), 1);
         assert_eq!(page.jobs[0].encrypt_job_id, "job_recent_b");
+    }
+
+    #[test]
+    fn list_job_candidates_cursor_pages_stably_with_duplicate_timestamps() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        for job_id in ["job_cursor_a", "job_cursor_b", "job_cursor_c"] {
+            seed_job_fixture_with_last_seen(
+                &conn,
+                job_id,
+                "Cursor Co",
+                "Go 游标岗位",
+                "2026-06-14T10:00:00Z",
+            );
+            seed_eligible_candidate(&conn, job_id);
+            seed_resume_score(&conn, job_id, 80.0);
+        }
+
+        let first = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(2),
+            Some(0),
+            None,
+        )
+        .expect("first cursor page");
+        assert_eq!(
+            first
+                .jobs
+                .iter()
+                .map(|job| job.encrypt_job_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["job_cursor_a", "job_cursor_b"]
+        );
+        let cursor = first.next_cursor.clone().expect("next cursor");
+
+        let second = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(2),
+            Some(0),
+            Some(cursor),
+        )
+        .expect("second cursor page");
+        assert_eq!(second.jobs.len(), 1);
+        assert_eq!(second.jobs[0].encrypt_job_id, "job_cursor_c");
+    }
+
+    #[test]
+    fn list_job_candidates_skips_detail_join_until_detail_search_is_needed() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        seed_job_fixture_with_last_seen(
+            &conn,
+            "job_detail_keyword",
+            "Detail Co",
+            "Go 平台工程师",
+            "2026-06-14T10:00:00Z",
+        );
+        seed_eligible_candidate(&conn, "job_detail_keyword");
+        seed_resume_score(&conn, "job_detail_keyword", 80.0);
+        let detail_json =
+            r#"{"jobInfo":{"positionName":"Go 平台工程师","description":"OnlyDetailNeedle"}}"#;
+        conn.execute(
+            "UPDATE job_detail_raw SET zp_data_json = ?2 WHERE encrypt_job_id = ?1",
+            params!["job_detail_keyword", detail_json],
+        )
+        .expect("seed detail-only keyword");
+        models::upsert_job_detail_projection(&conn, "job_detail_keyword", detail_json)
+            .expect("refresh detail projection");
+        models::backfill_job_search_projections(&conn).expect("refresh search projection");
+
+        let has_keyword_blacklist = has_active_keyword_blacklist(&conn).expect("blacklist flag");
+        assert!(!has_keyword_blacklist);
+        let (where_sql, params, needs_detail) = build_job_candidate_filters(
+            has_keyword_blacklist,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        assert!(!needs_detail);
+        let from_sql = build_job_candidate_from_sql(needs_detail, false);
+        let plan_sql = format!("EXPLAIN QUERY PLAN SELECT COUNT(*) {from_sql} WHERE {where_sql}");
+        let plan = conn
+            .prepare(&plan_sql)
+            .expect("prepare query plan")
+            .query_map(params_from_iter(params.iter()), |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("query plan")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect query plan")
+            .join("\n");
+        assert!(
+            !plan.contains("job_detail_raw"),
+            "normal candidate count should not touch job_detail_raw:\n{plan}"
+        );
+
+        let search_page = list_job_candidates_on_conn(
+            &conn,
+            None,
+            Some("OnlyDetailNeedle".to_string()),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(20),
+            Some(0),
+            None,
+        )
+        .expect("search detail text");
+        assert_eq!(search_page.total, 1);
+        assert_eq!(search_page.jobs[0].encrypt_job_id, "job_detail_keyword");
+
+        let (search_where_sql, search_params, search_needs_projection) =
+            build_job_candidate_filters(
+                has_keyword_blacklist,
+                None,
+                Some("OnlyDetailNeedle".to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+        assert!(search_needs_projection);
+        let search_from_sql = build_job_candidate_from_sql(search_needs_projection, false);
+        let search_plan_sql = format!(
+            "EXPLAIN QUERY PLAN SELECT COUNT(*) {search_from_sql} WHERE {search_where_sql}"
+        );
+        let search_plan = conn
+            .prepare(&search_plan_sql)
+            .expect("prepare search query plan")
+            .query_map(params_from_iter(search_params.iter()), |row| {
+                row.get::<_, String>(3)
+            })
+            .expect("query search plan")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect search plan")
+            .join("\n");
+        assert!(
+            search_plan.contains("job_search_projection"),
+            "detail search should use search projection:\n{search_plan}"
+        );
+        assert!(
+            !search_plan.contains("job_detail_raw"),
+            "detail search should not touch raw detail JSON:\n{search_plan}"
+        );
+
+        models::upsert_job_blacklist(
+            &conn,
+            models::BLACKLIST_KIND_KEYWORD,
+            "OnlyDetailNeedle",
+            Some("命中详情关键词"),
+        )
+        .expect("seed detail keyword blacklist");
+        let blacklisted_page = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(vec!["blacklisted".to_string()]),
+            None,
+            None,
+            None,
+            Some(20),
+            Some(0),
+            None,
+        )
+        .expect("list blacklisted detail keyword");
+        assert_eq!(blacklisted_page.total, 1);
+        assert!(blacklisted_page.jobs[0].keyword_blacklisted);
+        assert_eq!(
+            blacklisted_page.jobs[0].blacklist_reason.as_deref(),
+            Some("命中详情关键词")
+        );
     }
 
     #[test]
@@ -2539,6 +2870,7 @@ mod tests {
             Some(vec!["automatic".to_string()]),
             Some(20),
             Some(0),
+            None,
         )
         .expect("list automatic processed candidates");
 
@@ -2568,6 +2900,7 @@ mod tests {
             Some(vec!["manual".to_string()]),
             Some(20),
             Some(0),
+            None,
         )
         .expect("list manual unprocessed candidates");
         assert_eq!(manual_unprocessed.total, 1);
@@ -2590,6 +2923,7 @@ mod tests {
             None,
             Some(20),
             Some(0),
+            None,
         )
         .expect("list v2ex candidates");
         assert_eq!(v2ex.total, 1);
@@ -2691,6 +3025,7 @@ mod tests {
             None,
             Some(20),
             Some(0),
+            None,
         )
         .expect("list recommended");
         assert_eq!(
@@ -2715,6 +3050,7 @@ mod tests {
             None,
             Some(20),
             Some(0),
+            None,
         )
         .expect("list pending bucket");
         assert_eq!(pending.jobs[0].encrypt_job_id, "job_pending");
@@ -2732,6 +3068,7 @@ mod tests {
             None,
             Some(20),
             Some(0),
+            None,
         )
         .expect("list filtered bucket");
         assert_eq!(filtered.jobs[0].encrypt_job_id, "job_filtered");
@@ -2749,6 +3086,7 @@ mod tests {
             None,
             Some(20),
             Some(0),
+            None,
         )
         .expect("list rejected ai audit");
         assert_eq!(ai_rejected.jobs[0].encrypt_job_id, "job_filtered");
@@ -2766,6 +3104,7 @@ mod tests {
             None,
             Some(20),
             Some(0),
+            None,
         )
         .expect("list pending ai audit");
         assert_eq!(ai_pending.jobs[0].encrypt_job_id, "job_pending");

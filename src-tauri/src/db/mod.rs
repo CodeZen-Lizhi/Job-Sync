@@ -26,15 +26,19 @@ pub fn db_path(app_data_dir: &Path) -> PathBuf {
 
 fn open_db(app_data_dir: &Path) -> Result<Connection> {
     fs::create_dir_all(app_data_dir)?;
-
     let path = db_path(app_data_dir);
     let conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
-    migrate::migrate(&conn)?;
     Ok(conn)
 }
 
 pub fn init_db(app_data_dir: &Path) -> Result<Connection> {
+    let conn = open_db(app_data_dir)?;
+    migrate::migrate(&conn)?;
+    Ok(conn)
+}
+
+pub fn connect_db(app_data_dir: &Path) -> Result<Connection> {
     open_db(app_data_dir)
 }
 

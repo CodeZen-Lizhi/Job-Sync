@@ -1,7 +1,10 @@
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
-use super::{models::supported_job_source_adapters, Result};
+use super::{
+    models::{refresh_all_job_projections, supported_job_source_adapters},
+    Result,
+};
 
 const JOB_FTS_TABLE: &str = "job_fts";
 const JOB_FTS_CREATE_SQL: &str = r#"
@@ -20,6 +23,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS job_fts USING fts5(
 "#;
 
 const JOB_FTS_TRIGGERS_SQL: &str = r#"
+DROP TRIGGER IF EXISTS trg_job_fts_job_ai;
+DROP TRIGGER IF EXISTS trg_job_fts_job_au;
+DROP TRIGGER IF EXISTS trg_job_fts_job_ad;
+DROP TRIGGER IF EXISTS trg_job_fts_job_detail_raw_ai;
+DROP TRIGGER IF EXISTS trg_job_fts_job_detail_raw_au;
+DROP TRIGGER IF EXISTS trg_job_fts_job_detail_projection_ai;
+DROP TRIGGER IF EXISTS trg_job_fts_job_detail_projection_au;
+DROP TRIGGER IF EXISTS trg_job_fts_job_detail_projection_ad;
+DROP TRIGGER IF EXISTS trg_job_fts_job_search_projection_ai;
+DROP TRIGGER IF EXISTS trg_job_fts_job_search_projection_au;
+DROP TRIGGER IF EXISTS trg_job_fts_job_search_projection_ad;
+
 CREATE TRIGGER IF NOT EXISTS trg_job_fts_job_ai
 AFTER INSERT ON job
 BEGIN
@@ -44,13 +59,7 @@ BEGIN
 	    COALESCE(NEW.salary_desc, ''),
 	    COALESCE(NEW.experience_name, ''),
 	    COALESCE(NEW.degree_name, ''),
-	    COALESCE(NEW.boss_active_status, '') || ' ' ||
-	    COALESCE(NEW.source_platform, '') || ' ' ||
-    COALESCE(NEW.source_url, '') || ' ' ||
-    COALESCE(NEW.dedup_key, '') || ' ' ||
-    COALESCE(NEW.jd_text, '') || ' ' ||
-    COALESCE(NEW.raw_payload_json, '') || ' ' ||
-    COALESCE((SELECT zp_data_json FROM job_detail_raw d WHERE d.encrypt_job_id = NEW.encrypt_job_id), '')
+    COALESCE((SELECT search_text FROM job_search_projection p WHERE p.encrypt_job_id = NEW.encrypt_job_id), '')
   );
 END;
 
@@ -78,13 +87,7 @@ BEGIN
 	    COALESCE(NEW.salary_desc, ''),
 	    COALESCE(NEW.experience_name, ''),
 	    COALESCE(NEW.degree_name, ''),
-	    COALESCE(NEW.boss_active_status, '') || ' ' ||
-	    COALESCE(NEW.source_platform, '') || ' ' ||
-    COALESCE(NEW.source_url, '') || ' ' ||
-    COALESCE(NEW.dedup_key, '') || ' ' ||
-    COALESCE(NEW.jd_text, '') || ' ' ||
-    COALESCE(NEW.raw_payload_json, '') || ' ' ||
-    COALESCE((SELECT zp_data_json FROM job_detail_raw d WHERE d.encrypt_job_id = NEW.encrypt_job_id), '')
+    COALESCE((SELECT search_text FROM job_search_projection p WHERE p.encrypt_job_id = NEW.encrypt_job_id), '')
   );
 END;
 
@@ -94,8 +97,8 @@ BEGIN
   DELETE FROM job_fts WHERE encrypt_job_id = OLD.encrypt_job_id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_job_fts_job_detail_raw_ai
-AFTER INSERT ON job_detail_raw
+CREATE TRIGGER IF NOT EXISTS trg_job_fts_job_search_projection_ai
+AFTER INSERT ON job_search_projection
 BEGIN
   DELETE FROM job_fts WHERE encrypt_job_id = NEW.encrypt_job_id;
   INSERT INTO job_fts(
@@ -117,20 +120,14 @@ BEGIN
     COALESCE(j.city_name, ''),
 	    COALESCE(j.salary_desc, ''),
 	    COALESCE(j.experience_name, ''),
-	    COALESCE(j.degree_name, ''),
-	    COALESCE(j.boss_active_status, '') || ' ' ||
-	    COALESCE(j.source_platform, '') || ' ' ||
-    COALESCE(j.source_url, '') || ' ' ||
-    COALESCE(j.dedup_key, '') || ' ' ||
-    COALESCE(j.jd_text, '') || ' ' ||
-    COALESCE(j.raw_payload_json, '') || ' ' ||
-    NEW.zp_data_json
+    COALESCE(j.degree_name, ''),
+    COALESCE(NEW.search_text, '')
   FROM job j
   WHERE j.encrypt_job_id = NEW.encrypt_job_id;
 END;
 
-CREATE TRIGGER IF NOT EXISTS trg_job_fts_job_detail_raw_au
-AFTER UPDATE ON job_detail_raw
+CREATE TRIGGER IF NOT EXISTS trg_job_fts_job_search_projection_au
+AFTER UPDATE ON job_search_projection
 BEGIN
   DELETE FROM job_fts WHERE encrypt_job_id = NEW.encrypt_job_id;
   INSERT INTO job_fts(
@@ -152,16 +149,39 @@ BEGIN
     COALESCE(j.city_name, ''),
 	    COALESCE(j.salary_desc, ''),
 	    COALESCE(j.experience_name, ''),
-	    COALESCE(j.degree_name, ''),
-	    COALESCE(j.boss_active_status, '') || ' ' ||
-	    COALESCE(j.source_platform, '') || ' ' ||
-    COALESCE(j.source_url, '') || ' ' ||
-    COALESCE(j.dedup_key, '') || ' ' ||
-    COALESCE(j.jd_text, '') || ' ' ||
-    COALESCE(j.raw_payload_json, '') || ' ' ||
-    NEW.zp_data_json
+    COALESCE(j.degree_name, ''),
+    COALESCE(NEW.search_text, '')
   FROM job j
   WHERE j.encrypt_job_id = NEW.encrypt_job_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_job_fts_job_search_projection_ad
+AFTER DELETE ON job_search_projection
+BEGIN
+  DELETE FROM job_fts WHERE encrypt_job_id = OLD.encrypt_job_id;
+  INSERT INTO job_fts(
+    encrypt_job_id,
+    position_name,
+    boss_name,
+    brand_name,
+    city_name,
+    salary_desc,
+    experience_name,
+    degree_name,
+    detail_text
+  )
+  SELECT
+    j.encrypt_job_id,
+    COALESCE(j.position_name, ''),
+    COALESCE(j.boss_name, ''),
+    COALESCE(j.brand_name, ''),
+    COALESCE(j.city_name, ''),
+	    COALESCE(j.salary_desc, ''),
+	    COALESCE(j.experience_name, ''),
+	    COALESCE(j.degree_name, ''),
+    ''
+  FROM job j
+  WHERE j.encrypt_job_id = OLD.encrypt_job_id;
 END;
 "#;
 
@@ -190,11 +210,9 @@ SELECT
 	  COALESCE(j.source_platform, '') || ' ' ||
   COALESCE(j.source_url, '') || ' ' ||
   COALESCE(j.dedup_key, '') || ' ' ||
-  COALESCE(j.jd_text, '') || ' ' ||
-  COALESCE(j.raw_payload_json, '') || ' ' ||
-  COALESCE(d.zp_data_json, '')
+  COALESCE(p.search_text, '')
 FROM job j
-LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id;
+LEFT JOIN job_search_projection p ON p.encrypt_job_id = j.encrypt_job_id;
 "#;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
@@ -236,16 +254,34 @@ fn table_exists(conn: &Connection, table: &str) -> Result<bool> {
 
 fn ensure_job_fts(conn: &Connection) -> Result<()> {
     let existed = table_exists(conn, JOB_FTS_TABLE)?;
+    let already_uses_projection = existed && job_fts_uses_projection(conn)?;
 
     conn.execute_batch(JOB_FTS_CREATE_SQL)?;
     conn.execute_batch(JOB_FTS_TRIGGERS_SQL)?;
 
-    if existed {
+    if existed && already_uses_projection {
         return Ok(());
     }
 
+    conn.execute("DELETE FROM job_fts", [])?;
     conn.execute_batch(JOB_FTS_BACKFILL_SQL)?;
     Ok(())
+}
+
+fn job_fts_uses_projection(conn: &Connection) -> Result<bool> {
+    let uses_projection: bool = conn.query_row(
+        r#"
+        SELECT COUNT(*) > 0
+        FROM sqlite_master
+        WHERE type = 'trigger'
+          AND name = 'trg_job_fts_job_search_projection_ai'
+          AND sql LIKE '%job_search_projection%'
+          AND sql NOT LIKE '%raw_payload_json%'
+        "#,
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(uses_projection)
 }
 
 pub fn migrate(conn: &Connection) -> Result<()> {
@@ -285,9 +321,11 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     )?;
     backfill_v2ex_job_detail_raw(conn)?;
     backfill_company_scores(conn)?;
+    refresh_all_job_projections(conn)?;
 
     // Deduplicate job_source_link rows and add a unique index to prevent future duplicates.
     dedup_job_source_link(conn)?;
+    ensure_performance_indexes(conn)?;
 
     ensure_job_fts(conn)?;
 
@@ -393,6 +431,34 @@ fn backfill_v2ex_job_detail_raw(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_performance_indexes(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+    CREATE INDEX IF NOT EXISTS idx_job_last_seen_id
+      ON job(last_seen_at DESC, encrypt_job_id ASC);
+
+    CREATE INDEX IF NOT EXISTS idx_job_source_link_keyword_job
+      ON job_source_link(keyword, encrypt_job_id);
+
+    CREATE INDEX IF NOT EXISTS idx_ai_report_latest_resume
+      ON ai_report(encrypt_job_id, kind, match_score, created_at DESC, id DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_job_detail_projection_hash
+      ON job_detail_projection(source_hash);
+
+    CREATE INDEX IF NOT EXISTS idx_job_source_payload_hash
+      ON job_source_payload(source_hash);
+
+    CREATE INDEX IF NOT EXISTS idx_job_search_projection_hash
+      ON job_search_projection(job_hash, detail_hash, source_hash);
+
+    CREATE INDEX IF NOT EXISTS idx_job_list_summary_projection_hash
+      ON job_list_summary_projection(source_hash);
+    "#,
+    )?;
+    Ok(())
+}
+
 fn v2ex_post_description(raw_payload: &Value, jd_text: Option<&str>) -> Option<String> {
     raw_payload
         .get("contentHtml")
@@ -459,10 +525,12 @@ fn backfill_company_scores(conn: &Connection) -> Result<()> {
 	      COALESCE(j.experience_name, '') || ' ' ||
 	      COALESCE(j.degree_name, '') || ' ' ||
 	      COALESCE(j.boss_active_status, '') || ' ' ||
-	      COALESCE(d.zp_data_json, '')
+	      COALESCE(sp.search_text, '')
     FROM job j
-    LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+    LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
+    LEFT JOIN company_score cs ON cs.company_name = j.brand_name
     WHERE j.brand_name IS NOT NULL AND trim(j.brand_name) != ''
+      AND cs.company_name IS NULL
     "#,
     )?;
     let rows = stmt.query_map([], |row| {

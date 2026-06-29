@@ -34,6 +34,56 @@ CREATE TABLE IF NOT EXISTS job_detail_raw (
   fetched_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS job_source_payload (
+  encrypt_job_id TEXT PRIMARY KEY,
+  raw_payload_json TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS job_detail_projection (
+  encrypt_job_id TEXT PRIMARY KEY,
+  detail_status TEXT,
+  description_text TEXT,
+  skills_text TEXT,
+  benefits_text TEXT,
+  company_scale TEXT,
+  financing_stage TEXT,
+  industry TEXT,
+  search_text TEXT NOT NULL DEFAULT '',
+  source_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS job_search_projection (
+  encrypt_job_id TEXT PRIMARY KEY,
+  title_text TEXT NOT NULL DEFAULT '',
+  company_text TEXT NOT NULL DEFAULT '',
+  location_text TEXT NOT NULL DEFAULT '',
+  requirement_text TEXT NOT NULL DEFAULT '',
+  source_text TEXT NOT NULL DEFAULT '',
+  search_text TEXT NOT NULL DEFAULT '',
+  job_hash TEXT NOT NULL,
+  detail_hash TEXT,
+  source_hash TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS job_list_summary_projection (
+  encrypt_job_id TEXT PRIMARY KEY,
+  ai_audit_status TEXT NOT NULL DEFAULT 'not_judged',
+  ai_audit_summary TEXT NOT NULL DEFAULT '待 AI 判断',
+  filter_summary TEXT NOT NULL DEFAULT '暂无筛选规则结果',
+  resume_match_score REAL,
+  resume_match_summary TEXT,
+  preference_score REAL NOT NULL DEFAULT 0,
+  company_score REAL NOT NULL DEFAULT 80,
+  company_risk_summary TEXT,
+  score_reason_json TEXT NOT NULL DEFAULT '{}',
+  source_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS job_source_link (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   encrypt_job_id TEXT NOT NULL,
@@ -150,8 +200,29 @@ CREATE TABLE IF NOT EXISTS ai_report (
 CREATE INDEX IF NOT EXISTS idx_ai_report_job_id
   ON ai_report(encrypt_job_id);
 
+CREATE INDEX IF NOT EXISTS idx_ai_report_latest_resume
+  ON ai_report(encrypt_job_id, kind, match_score, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_job_last_seen_id
+  ON job(last_seen_at DESC, encrypt_job_id ASC);
+
 CREATE INDEX IF NOT EXISTS idx_job_source_link_encrypt_job_id
   ON job_source_link(encrypt_job_id);
+
+CREATE INDEX IF NOT EXISTS idx_job_source_link_keyword_job
+  ON job_source_link(keyword, encrypt_job_id);
+
+CREATE INDEX IF NOT EXISTS idx_job_detail_projection_hash
+  ON job_detail_projection(source_hash);
+
+CREATE INDEX IF NOT EXISTS idx_job_source_payload_hash
+  ON job_source_payload(source_hash);
+
+CREATE INDEX IF NOT EXISTS idx_job_search_projection_hash
+  ON job_search_projection(job_hash, detail_hash, source_hash);
+
+CREATE INDEX IF NOT EXISTS idx_job_list_summary_projection_hash
+  ON job_list_summary_projection(source_hash);
 
 CREATE INDEX IF NOT EXISTS idx_collection_run_started_at
   ON collection_run(started_at);

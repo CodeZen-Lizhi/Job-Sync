@@ -369,7 +369,8 @@ describe("review workflow contract", () => {
     assert.match(jobsTypes, /filter_summary: string/);
     assert.match(jobsModels, /#\[serde\(skip_serializing\)\]\s+pub filter_reason_json/);
     assert.match(jobsModels, /pub filter_summary: String/);
-    assert.match(jobsModels, /let filter_summary = summarize_filter_reason/);
+    assert.match(jobsModels, /struct SummaryProjection/);
+    assert.match(jobsModels, /unwrap_or_else\(\|\| summarize_filter_reason/);
     assert.match(jobsLogic, /job\.filter_summary\?\.trim\(\)/);
     assert.doesNotMatch(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
     assert.doesNotMatch(jobItem, /parseFilterReasonJson/);
@@ -413,6 +414,9 @@ describe("review workflow contract", () => {
       "idx_job_source_link_keyword_job",
       "idx_ai_report_latest_resume",
       "idx_job_detail_projection_hash",
+      "idx_job_source_payload_hash",
+      "idx_job_search_projection_hash",
+      "idx_job_list_summary_projection_hash",
     ]) {
       assert.match(schema, new RegExp(indexName));
       assert.match(migrate, new RegExp(indexName));
@@ -424,18 +428,34 @@ describe("review workflow contract", () => {
     const jobProjection = readProjectFile("src-tauri/src/db/models/job_projection.rs");
 
     assert.match(schema, /CREATE TABLE IF NOT EXISTS job_detail_projection/);
+    assert.match(schema, /CREATE TABLE IF NOT EXISTS job_source_payload/);
+    assert.match(schema, /CREATE TABLE IF NOT EXISTS job_search_projection/);
+    assert.match(schema, /CREATE TABLE IF NOT EXISTS job_list_summary_projection/);
     assert.match(jobProjection, /pub\(crate\) fn build_job_detail_projection/);
     assert.match(jobProjection, /pub\(crate\) fn backfill_job_detail_projections/);
     assert.match(jobsModels, /upsert_job_detail_projection\(conn, encrypt_job_id, zp_data_json\)/);
-    assert.match(migrate, /backfill_job_detail_projections\(conn\)\?/);
-    assert.match(migrate, /job_detail_projection p/);
+    assert.match(jobsModels, /refresh_job_derived_projections/);
+    assert.match(migrate, /refresh_all_job_projections\(conn\)\?/);
+    assert.match(jobsModels, /pub\(crate\) fn refresh_all_job_projections/);
+    assert.match(jobsModels, /backfill_job_source_payloads\(conn\)\?/);
+    assert.match(jobsModels, /backfill_job_detail_projections\(conn\)\?/);
+    assert.match(jobsModels, /backfill_job_search_projections\(conn\)\?/);
+    assert.match(jobsModels, /backfill_job_list_summary_projections\(conn\)\?/);
+    assert.match(migrate, /job_search_projection p/);
     assert.doesNotMatch(migrate, /SELECT zp_data_json FROM job_detail_raw d WHERE d\.encrypt_job_id = NEW\.encrypt_job_id/);
     assert.match(migrate, /fn ensure_performance_indexes/);
     assert.match(dbTests, /init_db_creates_library_performance_indexes/);
     assert.match(dbTests, /job_detail_projection_backfill_is_idempotent_and_refreshes_changed_raw_detail/);
+    assert.match(dbTests, /job_source_payload_backfill_and_upsert_keep_raw_payload_cold/);
+    assert.match(dbTests, /job_search_projection_backfill_feeds_fts_without_raw_json/);
     assert.match(jobsQueries, /fn build_job_candidate_from_sql/);
-    assert.match(jobsQueries, /LEFT JOIN job_detail_projection dp ON dp\.encrypt_job_id = j\.encrypt_job_id/);
-    assert.match(jobsQueries, /OR dp\.search_text LIKE \?/);
+    assert.match(jobsQueries, /LEFT JOIN job_search_projection sp ON sp\.encrypt_job_id = j\.encrypt_job_id/);
+    assert.match(jobsQueries, /LEFT JOIN job_list_summary_projection lsp ON lsp\.encrypt_job_id = j\.encrypt_job_id/);
+    assert.match(jobsQueries, /OR sp\.search_text LIKE \?/);
+    assert.doesNotMatch(jobsQueries, /j\.raw_payload_json/);
+    assert.doesNotMatch(jobsQueries, /cs\.evidence_json/);
+    assert.doesNotMatch(jobsQueries, /SELECT ar\.result_json/);
+    assert.match(jobsQueries, /lsp\.score_reason_json/);
     assert.match(jobsQueries, /SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = \?1/);
     assert.match(jobsQueries, /list_job_candidates_skips_detail_join_until_detail_search_is_needed/);
     assert.match(jobsQueries, /detail search should not touch raw detail JSON/);

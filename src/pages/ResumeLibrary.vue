@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
-import { Check, FilePenLine, FileText, Link2, Pencil, Plus, Save, Star, Trash2, X } from "lucide-vue-next";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { Check, ChevronDown, FilePenLine, FileText, Link2, Pencil, Plus, Save, Star, Trash2, X } from "lucide-vue-next";
 import { RouterLink } from "vue-router";
 
 import { useResumeLibraryPage } from "../lib/useResumeLibraryPage";
@@ -28,6 +28,7 @@ const {
   selectedJobIds,
   load,
   selectResume,
+  ensureSelectedResumeLoaded,
   startCreate,
   startEdit,
   cancelEdit,
@@ -46,6 +47,8 @@ const {
 const canSave = computed(() => formTitle.value.trim().length > 0 && formBody.value.trim().length > 0 && !saving.value);
 const previewTitle = computed(() => formTitle.value.trim() || selectedResume.value?.title || "未命名简历");
 const previewBody = computed(() => formBody.value || selectedResume.value?.body || "");
+const renderPreview = ref(false);
+const previewOpen = ref(false);
 
 function escapeHtml(value: string): string {
   return value
@@ -138,10 +141,36 @@ function renderMarkdown(value: string): string {
   return html.join("");
 }
 
-const renderedResumeHtml = computed(() => renderMarkdown(previewBody.value));
+const renderedResumeHtml = computed(() => (renderPreview.value ? renderMarkdown(previewBody.value) : ""));
 
-onMounted(() => {
-  void load();
+watch(
+  previewBody,
+  async () => {
+    renderPreview.value = false;
+    if (!previewOpen.value) return;
+    await nextTick();
+    window.requestAnimationFrame(() => {
+      renderPreview.value = true;
+    });
+  },
+  { immediate: true },
+);
+
+watch(previewOpen, async (open) => {
+  renderPreview.value = false;
+  if (!open) return;
+  await ensureSelectedResumeLoaded();
+  await nextTick();
+  window.requestAnimationFrame(() => {
+    renderPreview.value = true;
+  });
+});
+
+onMounted(async () => {
+  await nextTick();
+  window.requestAnimationFrame(() => {
+    void load();
+  });
 });
 </script>
 
@@ -286,15 +315,23 @@ onMounted(() => {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div class="text-lg font-semibold text-content-primary">{{ previewTitle }}</div>
-                    <div class="mt-1 text-xs text-content-muted">Markdown 已格式化展示</div>
+                    <div class="mt-1 text-xs text-content-muted">{{ previewOpen ? "Markdown 已格式化展示" : "预览已折叠，展开后渲染" }}</div>
                   </div>
-                  <div class="ui-badge !bg-blue-50 !text-blue-700 !ring-blue-200">
+                  <button
+                    type="button"
+                    class="ui-badge !bg-blue-50 !text-blue-700 !ring-blue-200 transition-colors hover:!bg-blue-100"
+                    @click="previewOpen = !previewOpen"
+                  >
                     <FilePenLine class="h-3.5 w-3.5" aria-hidden="true" />
-                    详情
-                  </div>
+                    {{ previewOpen ? "收起详情" : "展开详情" }}
+                    <ChevronDown class="h-3.5 w-3.5 transition-transform" :class="previewOpen ? 'rotate-180' : ''" aria-hidden="true" />
+                  </button>
                 </div>
               </div>
-              <div class="resume-markdown px-5 py-5" v-html="renderedResumeHtml" />
+              <template v-if="previewOpen">
+                <div v-if="renderPreview" class="resume-markdown px-5 py-5" v-html="renderedResumeHtml" />
+                <div v-else class="px-5 py-8 text-sm text-content-muted">正在渲染简历预览…</div>
+              </template>
             </section>
           </div>
 

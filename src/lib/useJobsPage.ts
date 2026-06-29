@@ -1,4 +1,4 @@
-import { computed, onActivated, onDeactivated, onMounted, reactive, ref, watch } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -11,10 +11,8 @@ import { useFilterProfile } from "./filterProfile";
 import {
   companyReviewStatusLabel,
   communicationStatusLabel,
-  formatFilterReasonSummary,
   formatResumeMatchEvidence,
   formatScoreReasonSummary,
-  parseFilterReasonJson,
   parseScoreReasonJson,
   reviewStatusLabel,
 } from "./jobs";
@@ -46,7 +44,13 @@ import {
   restoreExpandedState,
   SEARCH_JOB_LIMIT,
 } from "./jobsPageHelpers";
-import { getResumeStatusesForJobs, type ResumeJobLinkStatus } from "./resumeLibrary";
+import {
+  createResume,
+  getResumeStatusesForJobs,
+  linkResumeToJobs,
+  type OptimizedResumeForJobResult,
+  type ResumeJobLinkStatus,
+} from "./resumeLibrary";
 import { runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
 
@@ -291,16 +295,11 @@ function formatCommunicationTrace(job: JobRow): string {
 }
 
 function formatApplicationFilterTrace(job: JobRow): string {
-  const reason = parseFilterReasonJson(job.filter_reason_json);
-  if (!reason) return "暂无筛选规则结果";
-  const summary = formatFilterReasonSummary(reason);
-  if (reason.eligible === true && (summary === "不满足筛选画像" || summary === "不满足筛选规则")) {
-    return "通过筛选规则";
-  }
-  if (reason.eligible === true) {
-    return `通过筛选规则；${summary}`;
-  }
-  return summary;
+  const summary = job.filter_summary?.trim();
+  if (summary) return summary;
+  if (job.filter_eligible === true) return "通过筛选规则";
+  if (job.filter_eligible === false) return "不满足筛选规则";
+  return "暂无筛选规则结果";
 }
 
 function isProcessedJob(job: JobRow): boolean {
@@ -331,12 +330,10 @@ function buildApplicationReadinessGaps(job: JobRow, greetingDraft?: string): str
   const gaps: string[] = [];
   const hasResumeReport = typeof job.resume_match_score === "number" && Number.isFinite(job.resume_match_score);
   const hasGreetingDraft = !!greetingDraft?.trim();
-  const filterReason = parseFilterReasonJson(job.filter_reason_json);
-
   if (job.review_status !== "ready_to_apply" && job.review_status !== "applied") {
     gaps.push("人工确认：尚未标记准备投递");
   }
-  if (job.filter_eligible === false || filterReason?.eligible === false) {
+  if (job.filter_eligible === false) {
     gaps.push(`采后规则：${formatApplicationFilterTrace(job)}`);
   }
   if (!hasResumeReport) {
@@ -373,39 +370,6 @@ function buildGreetingEvidenceTrace(greeting?: GreetingMessageResult): string {
 
 function buildResumeMatchEvidenceTrace(scoreReasonJson: string | null | undefined): string {
   return formatResumeMatchEvidence(parseScoreReasonJson(scoreReasonJson));
-}
-
-function buildApplicationPacket(
-  job: JobRow,
-  greetingDraft?: string,
-  greeting?: GreetingMessageResult,
-): string {
-  const trimmedGreeting = greetingDraft?.trim();
-  const scoreReason = parseScoreReasonJson(job.score_reason_json);
-  const scoreSummary = formatScoreReasonSummary(scoreReason);
-  const checklist = buildApplicationChecklist(job, trimmedGreeting).map((item) => `- ${item}`).join("\n");
-  const readinessPreflight = formatApplicationReadinessPreflight(job, trimmedGreeting);
-  return [
-    "【JobPilot 投递材料包】",
-    `岗位：${job.position_name ?? job.encrypt_job_id}`,
-    `公司：${job.brand_name ?? "未知"}`,
-    `城市/薪资：${job.city_name ?? "未知"} / ${job.salary_desc ?? "未知"}`,
-    `经验/学历：${job.experience_name ?? "未知"} / ${job.degree_name ?? "未知"}`,
-    `审核状态：${reviewStatusLabel(job.review_status)}`,
-    `沟通状态：${communicationStatusLabel(job.communication_status)}`,
-    `沟通追踪：${formatCommunicationTrace(job)}`,
-    `判断：Final ${formatPacketScore(job.final_score)}，Resume ${formatPacketScore(job.resume_match_score)}，Preference ${formatPacketScore(job.preference_score)}，Company ${formatPacketScore(job.company_score)}`,
-    `判断依据：${scoreSummary}`,
-    `Resume Match 证据：\n${buildResumeMatchEvidenceTrace(job.score_reason_json)}`,
-    `筛选依据：${formatApplicationFilterTrace(job)}`,
-    `来源追踪：${formatSourceTrace(job)}`,
-    `来源链接：${jobSourceUrl(job)}`,
-    `投递准备预检：\n${readinessPreflight}`,
-    `投递准备清单：\n${checklist}`,
-    `打招呼草稿：${trimmedGreeting || "尚未生成或粘贴，请先点击“定制打招呼”或手动填写。"}`,
-    `打招呼证据：\n${buildGreetingEvidenceTrace(greeting)}`,
-    "使用边界：仅供人工确认、复制和手动投递；不会自动发送或投递。",
-  ].join("\n");
 }
 
 function buildReadyToApplyConfirmationMessage(
@@ -502,7 +466,7 @@ function buildReviewCandidatesSummary(jobs: JobRow[]): string {
 }
 
 function buildFilteredJobSummary(job: JobRow): string {
-  const filterSummary = formatFilterReasonSummary(parseFilterReasonJson(job.filter_reason_json));
+  const filterSummary = formatApplicationFilterTrace(job);
   const lines = [
     `岗位：${job.position_name ?? job.encrypt_job_id}`,
     `公司：${job.brand_name ?? "未知"}`,
@@ -646,6 +610,13 @@ export function useJobsPage() {
   const greetingDrafts = reactive<Map<string, string>>(new Map());
   const greetingErrors = reactive<Map<string, GreetingErrorState>>(new Map());
   const greetingLoading = ref<string | null>(null);
+  const optimizedResumeGeneratingJobId = ref<string | null>(null);
+  const optimizedResumePreview = ref<OptimizedResumeForJobResult | null>(null);
+  const optimizedResumeTitle = ref("");
+  const optimizedResumeTargetJob = ref<JobRow | null>(null);
+  const optimizedResumeSaving = ref(false);
+  const optimizedResumeMessage = ref<string | null>(null);
+  const optimizedResumeError = ref<string | null>(null);
   const filterProfileState = useFilterProfile();
   const confirmDialog = reactive<ConfirmDialogState>({
     visible: false,
@@ -657,6 +628,7 @@ export function useJobsPage() {
   });
   let isPageActive = true;
   let hasBeenDeactivated = false;
+  let hasLoadedFilterProfile = false;
   let refreshTimer: number | null = null;
   let pendingRealtimeRefresh = false;
 
@@ -963,6 +935,7 @@ export function useJobsPage() {
     filterProfileLoading.value = true;
     try {
       const profile = await filterProfileState.loadDefaultFilterProfile();
+      hasLoadedFilterProfile = true;
       filterProfileUpdatedAt.value = profile?.updated_at ?? null;
       return profile;
     } catch (cause) {
@@ -1217,17 +1190,74 @@ export function useJobsPage() {
       error.value = cause instanceof Error ? cause.message : String(cause);
     }
   }
-  async function copyApplicationPacket(job: JobRow): Promise<void> {
-    if (job.review_status !== "ready_to_apply" && job.review_status !== "applied") {
-      error.value = "请先人工确认岗位并标记为准备投递，再复制投递材料包。";
-      return;
+  async function generateOptimizedResume(job: JobRow): Promise<void> {
+    if (!tauri) return;
+    error.value = null;
+    optimizedResumeError.value = null;
+    optimizedResumeMessage.value = null;
+    optimizedResumeGeneratingJobId.value = job.encrypt_job_id;
+    try {
+      const result = await invoke<OptimizedResumeForJobResult>("generate_optimized_resume_for_job", {
+        encryptJobId: job.encrypt_job_id,
+        resumeId: null,
+        contextText: null,
+        apiKey: null,
+        baseUrl: null,
+        model: null,
+        apiMode: null,
+        debug: null,
+      });
+      optimizedResumePreview.value = result;
+      optimizedResumeTitle.value = result.title;
+      optimizedResumeTargetJob.value = job;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      optimizedResumeError.value = message;
+      error.value = message;
+    } finally {
+      optimizedResumeGeneratingJobId.value = null;
     }
-    const copied = await copy(
-      [buildApplicationPacket(job, greetingDrafts.get(job.encrypt_job_id), greetingCache.get(job.encrypt_job_id)), sourcePlatformModeTrace()].join("\n"),
-    );
+  }
+  async function copyOptimizedResumeMarkdown(): Promise<void> {
+    const markdown = optimizedResumePreview.value?.optimized_resume_markdown?.trim();
+    if (!markdown) return;
+    const copied = await copy(markdown);
+    optimizedResumeMessage.value = copied ? "已复制岗位版简历 Markdown。" : null;
     if (!copied) {
-      error.value = "复制投递材料包失败，请检查剪贴板权限后重试。";
+      optimizedResumeError.value = "复制岗位版简历失败，请检查剪贴板权限后重试。";
     }
+  }
+  async function saveOptimizedResumeAndLink(): Promise<void> {
+    const preview = optimizedResumePreview.value;
+    const job = optimizedResumeTargetJob.value;
+    if (!preview || !job || optimizedResumeSaving.value) return;
+    const title = optimizedResumeTitle.value.trim() || preview.title.trim() || "岗位版简历";
+    optimizedResumeSaving.value = true;
+    optimizedResumeError.value = null;
+    optimizedResumeMessage.value = null;
+    try {
+      const state = await createResume(title, preview.optimized_resume_markdown);
+      const createdResumeId = state.selected_resume?.id;
+      if (!createdResumeId) {
+        throw new Error("岗位版简历已创建，但未返回新简历 ID，无法关联当前岗位。");
+      }
+      await linkResumeToJobs(createdResumeId, [job.encrypt_job_id]);
+      await loadResumeStatusesForJobs(jobCandidates.value);
+      optimizedResumeMessage.value = "已保存为新简历，并关联当前岗位。";
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      optimizedResumeError.value = message;
+      error.value = message;
+    } finally {
+      optimizedResumeSaving.value = false;
+    }
+  }
+  function closeOptimizedResumePreview(): void {
+    optimizedResumePreview.value = null;
+    optimizedResumeTitle.value = "";
+    optimizedResumeTargetJob.value = null;
+    optimizedResumeMessage.value = null;
+    optimizedResumeError.value = null;
   }
   async function copyApplicationReadySummary(): Promise<void> {
     if (applicationReadyJobs.value.length === 0) {
@@ -1700,7 +1730,6 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     }, "移除");
   }
   onMounted(() => {
-    void loadJobCandidates();
     void loadDefaultFilterProfile();
   });
 
@@ -1708,13 +1737,24 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     isPageActive = true;
     if (!hasBeenDeactivated) return;
     pendingRealtimeRefresh = false;
-    void loadJobCandidates({ keepPage: true });
-    void loadDefaultFilterProfile();
+    if (jobCandidates.value.length === 0) {
+      void loadJobCandidates({ keepPage: true });
+    }
+    if (!hasLoadedFilterProfile) {
+      void loadDefaultFilterProfile();
+    }
   });
 
   onDeactivated(() => {
     isPageActive = false;
     hasBeenDeactivated = true;
+    if (refreshTimer === null) return;
+    window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+  });
+
+  onUnmounted(() => {
+    isPageActive = false;
     if (refreshTimer === null) return;
     window.clearTimeout(refreshTimer);
     refreshTimer = null;
@@ -1825,6 +1865,13 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     greetingDrafts,
     greetingErrors,
     greetingLoading,
+    optimizedResumeGeneratingJobId,
+    optimizedResumePreview,
+    optimizedResumeTitle,
+    optimizedResumeTargetJob,
+    optimizedResumeSaving,
+    optimizedResumeMessage,
+    optimizedResumeError,
     confirmDialog,
     expandedDetail,
     groupKey,
@@ -1866,7 +1913,10 @@ function buildDailyRecommendedCandidateSummary(candidate: JobDailyIntelligenceCa
     generateGreeting,
     updateGreetingDraft,
     copyGreeting,
-    copyApplicationPacket,
+    generateOptimizedResume,
+    copyOptimizedResumeMarkdown,
+    saveOptimizedResumeAndLink,
+    closeOptimizedResumePreview,
     copyApplicationReadySummary,
     copyReviewCandidatesSummary,
     copyCommunicationFollowupSummary,

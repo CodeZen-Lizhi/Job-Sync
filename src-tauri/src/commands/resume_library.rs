@@ -2,7 +2,10 @@ use tauri::AppHandle;
 
 use crate::{
     paths, resume_library,
-    resume_library::{ResumeJobLinkStatus, ResumeJobSummary, ResumeLibraryState},
+    resume_library::{
+        ResumeJobLinkStatus, ResumeJobSummary, ResumeLibraryOverview, ResumeLibraryState,
+        ResumeRecord,
+    },
 };
 
 #[tauri::command]
@@ -12,6 +15,24 @@ pub fn get_resume_library_state(
 ) -> Result<ResumeLibraryState, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
     resume_library::get_state(&app_data_dir, selected_resume_id.as_deref())
+}
+
+#[tauri::command]
+pub fn get_resume_library_overview(
+    app: AppHandle,
+    selected_resume_id: Option<String>,
+) -> Result<ResumeLibraryOverview, String> {
+    let app_data_dir = paths::resolve_data_dir(&app)?;
+    resume_library::get_overview(&app_data_dir, selected_resume_id.as_deref())
+}
+
+#[tauri::command]
+pub fn get_resume_record(
+    app: AppHandle,
+    resume_id: String,
+) -> Result<Option<ResumeRecord>, String> {
+    let app_data_dir = paths::resolve_data_dir(&app)?;
+    resume_library::get_record(&app_data_dir, &resume_id)
 }
 
 #[tauri::command]

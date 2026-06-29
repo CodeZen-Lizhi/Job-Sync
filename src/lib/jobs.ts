@@ -85,7 +85,8 @@ export interface JobRow {
   degree_name: string | null;
   last_seen_at: string | null;
   filter_eligible: boolean | null;
-  filter_reason_json: string | null;
+  filter_reason_json?: string | null;
+  filter_summary: string;
   filter_updated_at: string | null;
   review_status: ReviewStatus | null;
   communication_status: CommunicationStatus | null;
@@ -105,6 +106,8 @@ export interface JobRow {
   preference_score: number;
   company_score: number;
   final_score: number;
+  ai_audit_status: string;
+  ai_audit_summary: string;
   score_reason_json: string;
 }
 
@@ -113,6 +116,7 @@ export interface JobCandidatePage {
   total: number;
   limit: number;
   offset: number;
+  next_cursor?: string | null;
 }
 
 export interface FilterBlockedReason {

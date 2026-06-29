@@ -1,4 +1,4 @@
-use super::{init_db, init_db_for_app_start, models};
+use super::{connect_db, init_db, init_db_for_app_start, models};
 use serde_json::{json, Value};
 
 fn json_string_list(value: &Value, key: &str) -> Vec<String> {
@@ -138,6 +138,73 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
                 .is_some(),
             "{key} should be an array"
         );
+    }
+}
+
+#[test]
+fn connect_db_opens_runtime_connection_without_running_migrations() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = connect_db(&app_data_dir).expect("connect db");
+
+    let has_job_table = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='job'",
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .expect("query sqlite master");
+
+    assert!(!has_job_table);
+}
+
+#[test]
+fn init_db_creates_library_performance_indexes() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    for index_name in [
+        "idx_job_last_seen_id",
+        "idx_job_source_link_keyword_job",
+        "idx_ai_report_latest_resume",
+        "idx_job_detail_projection_hash",
+        "idx_job_source_payload_hash",
+        "idx_job_search_projection_hash",
+        "idx_job_list_summary_projection_hash",
+    ] {
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='index' AND name=?1",
+                [index_name],
+                |row| row.get(0),
+            )
+            .expect("query index");
+        assert!(exists, "{index_name} should exist");
+    }
+
+    let projection_table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name='job_detail_projection'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query projection table");
+    assert!(projection_table_exists);
+
+    for table_name in [
+        "job_source_payload",
+        "job_search_projection",
+        "job_list_summary_projection",
+    ] {
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name=?1",
+                [table_name],
+                |row| row.get(0),
+            )
+            .expect("query projection table");
+        assert!(exists, "{table_name} should exist");
     }
 }
 
@@ -1049,6 +1116,294 @@ fn init_db_backfills_missing_v2ex_job_detail_raw() {
             .and_then(Value::as_str),
         Some("<p>负责 Rust 平台建设</p>")
     );
+
+    let projection_text: String = conn
+        .query_row(
+            "SELECT search_text FROM job_detail_projection WHERE encrypt_job_id = ?1",
+            ["v2ex:654321"],
+            |row| row.get(0),
+        )
+        .expect("query backfilled projection");
+    assert!(projection_text.contains("负责 Rust 平台建设"));
+}
+
+#[test]
+fn job_detail_projection_backfill_is_idempotent_and_refreshes_changed_raw_detail() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    conn.execute(
+        r#"
+      INSERT INTO job_detail_raw (encrypt_job_id, zp_data_json, fetched_at)
+      VALUES (?1, ?2, '2026-06-20T00:00:00Z')
+      "#,
+        rusqlite::params![
+            "projection_refresh_1",
+            r#"{"jobInfo":{"positionName":"投影岗位","postDescription":"OldNeedle"}}"#
+        ],
+    )
+    .expect("insert raw detail");
+
+    let first_changed =
+        models::backfill_job_detail_projections(&conn).expect("backfill projection first");
+    assert_eq!(first_changed, 1);
+
+    let unchanged =
+        models::backfill_job_detail_projections(&conn).expect("backfill projection unchanged");
+    assert_eq!(unchanged, 0);
+
+    conn.execute(
+        "UPDATE job_detail_raw SET zp_data_json = ?2 WHERE encrypt_job_id = ?1",
+        rusqlite::params![
+            "projection_refresh_1",
+            r#"{"jobInfo":{"positionName":"投影岗位","postDescription":"NewNeedle"}}"#
+        ],
+    )
+    .expect("update raw detail");
+    let refreshed =
+        models::backfill_job_detail_projections(&conn).expect("backfill projection refreshed");
+    assert_eq!(refreshed, 1);
+
+    let projection_text: String = conn
+        .query_row(
+            "SELECT search_text FROM job_detail_projection WHERE encrypt_job_id = ?1",
+            ["projection_refresh_1"],
+            |row| row.get(0),
+        )
+        .expect("query projection text");
+    assert!(projection_text.contains("NewNeedle"));
+    assert!(!projection_text.contains("OldNeedle"));
+}
+
+#[test]
+fn job_source_payload_backfill_and_upsert_keep_raw_payload_cold() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    conn.execute(
+        r#"
+      INSERT INTO job (
+        encrypt_job_id,
+        source_platform,
+        dedup_key,
+        position_name,
+        raw_payload_json,
+        last_seen_at
+      )
+      VALUES (?1, 'v2ex', ?1, '冷表岗位', ?2, '2026-06-20T00:00:00Z')
+      "#,
+        rusqlite::params!["source_payload_legacy", r#"{"title":"ColdPayloadNeedle"}"#],
+    )
+    .expect("seed legacy raw payload");
+
+    let changed = models::backfill_job_source_payloads(&conn).expect("backfill source payload");
+    assert_eq!(changed, 1);
+    let payload = models::get_job_source_payload(&conn, "source_payload_legacy")
+        .expect("get source payload")
+        .expect("source payload exists");
+    assert!(payload.contains("ColdPayloadNeedle"));
+
+    models::upsert_job_from_normalized(
+        &conn,
+        &models::NormalizedJobInput {
+            encrypt_job_id: "source_payload_new".to_string(),
+            source_platform: "linuxdo".to_string(),
+            source_url: Some("https://linux.do/t/1".to_string()),
+            dedup_key: "linuxdo:1".to_string(),
+            position_name: Some("新冷表岗位".to_string()),
+            boss_name: None,
+            brand_name: Some("冷表公司".to_string()),
+            city_name: Some("Remote".to_string()),
+            salary_desc: None,
+            experience_name: None,
+            degree_name: None,
+            jd_text: Some("Go 平台".to_string()),
+            raw_payload: json!({"contentText":"DualWriteNeedle"}),
+        },
+    )
+    .expect("upsert normalized job");
+    let dual_written = models::get_job_source_payload(&conn, "source_payload_new")
+        .expect("get dual written payload")
+        .expect("dual written source payload exists");
+    assert!(dual_written.contains("DualWriteNeedle"));
+}
+
+#[test]
+fn job_search_projection_backfill_feeds_fts_without_raw_json() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    models::upsert_job_from_normalized(
+        &conn,
+        &models::NormalizedJobInput {
+            encrypt_job_id: "search_projection_1".to_string(),
+            source_platform: "v2ex".to_string(),
+            source_url: Some("https://v2ex.com/t/1".to_string()),
+            dedup_key: "v2ex:1".to_string(),
+            position_name: Some("Rust 搜索投影岗位".to_string()),
+            boss_name: None,
+            brand_name: Some("搜索公司".to_string()),
+            city_name: Some("Remote".to_string()),
+            salary_desc: Some("20-40K".to_string()),
+            experience_name: Some("3-5 年".to_string()),
+            degree_name: None,
+            jd_text: Some("SearchProjectionNeedle".to_string()),
+            raw_payload: json!({"contentText":"RawPayloadNeedle"}),
+        },
+    )
+    .expect("upsert normalized job");
+
+    let search_text: String = conn
+        .query_row(
+            "SELECT search_text FROM job_search_projection WHERE encrypt_job_id = ?1",
+            ["search_projection_1"],
+            |row| row.get(0),
+        )
+        .expect("query search projection");
+    assert!(search_text.contains("SearchProjectionNeedle"));
+
+    let fts_text: String = conn
+        .query_row(
+            "SELECT detail_text FROM job_fts WHERE encrypt_job_id = ?1",
+            ["search_projection_1"],
+            |row| row.get(0),
+        )
+        .expect("query fts detail text");
+    assert!(fts_text.contains("SearchProjectionNeedle"));
+    assert!(!fts_text.contains('{'));
+}
+
+#[test]
+fn job_projection_backfills_skip_unchanged_rows_and_refresh_stale_hashes() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    models::upsert_job_from_normalized(
+        &conn,
+        &models::NormalizedJobInput {
+            encrypt_job_id: "projection_stale_1".to_string(),
+            source_platform: "v2ex".to_string(),
+            source_url: Some("https://v2ex.com/t/projection-stale".to_string()),
+            dedup_key: "v2ex:projection-stale".to_string(),
+            position_name: Some("Rust 投影岗位".to_string()),
+            boss_name: None,
+            brand_name: Some("Projection Co".to_string()),
+            city_name: Some("Remote".to_string()),
+            salary_desc: Some("20-40K".to_string()),
+            experience_name: Some("3-5 年".to_string()),
+            degree_name: None,
+            jd_text: Some("InitialProjectionNeedle".to_string()),
+            raw_payload: json!({"contentText":"InitialSourceNeedle"}),
+        },
+    )
+    .expect("upsert normalized job");
+
+    models::upsert_job_filter_result(
+        &conn,
+        "projection_stale_1",
+        models::DEFAULT_FILTER_PROFILE_ID,
+        true,
+        &json!({"eligible": true, "matched_preferences": ["Rust"], "missing_preferences": []}),
+    )
+    .expect("seed filter result");
+    models::upsert_company_score(&conn, "Projection Co", 88.0, &[], &[], 0.40, 0)
+        .expect("seed company score");
+
+    assert_eq!(
+        models::backfill_job_search_projections(&conn).expect("unchanged search backfill"),
+        0
+    );
+    assert_eq!(
+        models::backfill_job_list_summary_projections(&conn).expect("unchanged summary backfill"),
+        0
+    );
+
+    conn.execute(
+        "UPDATE job SET jd_text = ?2 WHERE encrypt_job_id = ?1",
+        ["projection_stale_1", "UpdatedProjectionNeedle"],
+    )
+    .expect("stale search source");
+    assert_eq!(
+        models::backfill_job_search_projections(&conn).expect("refresh stale search projection"),
+        1
+    );
+    assert_eq!(
+        models::backfill_job_search_projections(&conn).expect("skip refreshed search projection"),
+        0
+    );
+    let search_text: String = conn
+        .query_row(
+            "SELECT search_text FROM job_search_projection WHERE encrypt_job_id = ?1",
+            ["projection_stale_1"],
+            |row| row.get(0),
+        )
+        .expect("query refreshed search projection");
+    assert!(search_text.contains("UpdatedProjectionNeedle"));
+
+    models::upsert_job_filter_result(
+        &conn,
+        "projection_stale_1",
+        models::DEFAULT_FILTER_PROFILE_ID,
+        true,
+        &json!({"eligible": true, "matched_preferences": ["Rust", "SQLite"], "missing_preferences": []}),
+    )
+    .expect("refresh summary through normal write");
+    assert_eq!(
+        models::backfill_job_list_summary_projections(&conn)
+            .expect("skip refreshed summary projection"),
+        0
+    );
+
+    conn.execute(
+        "UPDATE job_filter_result SET reason_json = ?2 WHERE encrypt_job_id = ?1",
+        [
+            "projection_stale_1",
+            r#"{"eligible":true,"matched_preferences":["Rust","SQLite","FTS"],"missing_preferences":[]}"#,
+        ],
+    )
+    .expect("stale summary source");
+    assert_eq!(
+        models::backfill_job_list_summary_projections(&conn)
+            .expect("refresh stale summary projection"),
+        1
+    );
+    assert_eq!(
+        models::backfill_job_list_summary_projections(&conn)
+            .expect("skip refreshed summary projection again"),
+        0
+    );
+    let filter_summary: String = conn
+        .query_row(
+            "SELECT filter_summary FROM job_list_summary_projection WHERE encrypt_job_id = ?1",
+            ["projection_stale_1"],
+            |row| row.get(0),
+        )
+        .expect("query refreshed summary projection");
+    assert!(filter_summary.contains("FTS"));
+
+    conn.execute(
+        "UPDATE company_score SET confidence = 0.93 WHERE company_name = ?1",
+        ["Projection Co"],
+    )
+    .expect("stale summary confidence source");
+    assert_eq!(
+        models::backfill_job_list_summary_projections(&conn)
+            .expect("refresh summary confidence projection"),
+        1
+    );
+    let score_reason_json: String = conn
+        .query_row(
+            "SELECT score_reason_json FROM job_list_summary_projection WHERE encrypt_job_id = ?1",
+            ["projection_stale_1"],
+            |row| row.get(0),
+        )
+        .expect("query refreshed score reason projection");
+    let score_reason: Value = serde_json::from_str(&score_reason_json).expect("score reason json");
+    assert_eq!(score_reason["company"]["confidence"].as_f64(), Some(0.93));
 }
 
 #[test]
@@ -1062,6 +1417,7 @@ fn job_fts_is_created_and_searchable() {
     {
       "jobInfo": {
         "positionName": "Rust 开发工程师",
+        "postDescription": "ProjectionOnlyNeedle",
         "salaryDesc": "20-40K",
         "experienceName": "3-5 年",
         "degreeName": "本科",
@@ -1093,6 +1449,27 @@ fn job_fts_is_created_and_searchable() {
         )
         .expect("fts match");
     assert_eq!(match_count, 1);
+
+    let projection_match_query = "\"ProjectionOnlyNeedle\"";
+    let projection_match_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM job_fts WHERE job_fts MATCH ?1",
+            [projection_match_query],
+            |row| row.get(0),
+        )
+        .expect("fts projection match");
+    assert_eq!(projection_match_count, 1);
+
+    let detail_text: String = conn
+        .query_row(
+            "SELECT detail_text FROM job_fts WHERE encrypt_job_id = ?1",
+            [encrypt_job_id],
+            |row| row.get(0),
+        )
+        .expect("query fts detail text");
+    assert!(!detail_text.contains("jobInfo"));
+    assert!(!detail_text.contains('{'));
+    assert!(detail_text.contains("ProjectionOnlyNeedle"));
 }
 
 #[test]
@@ -1267,6 +1644,77 @@ fn rebuild_company_scores_recomputes_local_batch_cache_from_jobs() {
     assert!(score < 80.0);
     assert!(risk_flags.iter().any(|flag| flag == "outsourcing_risk"));
     assert!(risk_flags.iter().any(|flag| flag == "onsite_risk"));
+}
+
+#[test]
+fn init_db_does_not_recompute_existing_company_score_cache() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    conn.execute(
+        r#"
+      INSERT INTO job (
+        encrypt_job_id,
+        source_platform,
+        position_name,
+        boss_name,
+        brand_name,
+        city_name,
+        salary_desc,
+        experience_name,
+        degree_name,
+        jd_text,
+        raw_payload_json,
+        last_seen_at
+      )
+      VALUES (
+        'job_company_cache_init',
+        'boss',
+        'Go 平台工程师',
+        'Boss',
+        'Cached Init Co',
+        '北京',
+        '20-40K',
+        '3-5年',
+        '本科',
+        '该岗位涉及外包交付和客户现场驻场。',
+        '{"brand":"Cached Init Co","risk":"外包驻场"}',
+        '2026-06-13T00:00:00Z'
+      )
+      "#,
+        [],
+    )
+    .expect("seed job");
+    conn.execute(
+        r#"
+      INSERT INTO company_score (
+        company_name,
+        company_score,
+        risk_flags_json,
+        evidence_json,
+        confidence,
+        source_text_len,
+        updated_at
+      )
+      VALUES ('Cached Init Co', 99, '[]', '[]', 0.1, 1, '2026-06-13T00:00:00Z')
+      "#,
+        [],
+    )
+    .expect("seed existing company score");
+    drop(conn);
+
+    let conn = init_db(&app_data_dir).expect("re-init db");
+    let (score, risk_flags_json): (f64, String) = conn
+        .query_row(
+            "SELECT company_score, risk_flags_json FROM company_score WHERE company_name = 'Cached Init Co'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("query company score");
+
+    assert_eq!(score, 99.0);
+    assert_eq!(risk_flags_json, "[]");
 }
 
 #[test]

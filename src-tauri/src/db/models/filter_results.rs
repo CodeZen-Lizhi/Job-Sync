@@ -4,7 +4,9 @@ use serde_json::{Map, Value};
 
 use crate::db::Result;
 
-use super::common::now_rfc3339;
+use super::{
+    common::now_rfc3339, job_list_summary_projection::refresh_job_list_summary_projection,
+};
 
 pub(crate) const DEFAULT_FILTER_PROFILE_ID: &str = "default";
 const DEFAULT_SOURCE_PLATFORMS: &[&str] = &["boss", "v2ex", "linuxdo"];
@@ -448,6 +450,7 @@ pub(crate) fn upsert_job_filter_result(
             updated_at
         ],
     )?;
+    refresh_job_list_summary_projection(conn, encrypt_job_id)?;
     Ok(())
 }
 

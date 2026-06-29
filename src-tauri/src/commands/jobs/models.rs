@@ -73,7 +73,9 @@ pub struct JobRow {
     pub degree_name: Option<String>,
     pub last_seen_at: Option<String>,
     pub filter_eligible: Option<bool>,
+    #[serde(skip_serializing)]
     pub filter_reason_json: Option<String>,
+    pub filter_summary: String,
     pub filter_updated_at: Option<String>,
     pub review_status: Option<String>,
     pub communication_status: Option<String>,
@@ -93,6 +95,8 @@ pub struct JobRow {
     pub preference_score: f64,
     pub company_score: f64,
     pub final_score: f64,
+    pub ai_audit_status: String,
+    pub ai_audit_summary: String,
     pub score_reason_json: String,
 }
 
@@ -118,6 +122,7 @@ pub struct JobCandidatePage {
     pub total: i64,
     pub limit: u32,
     pub offset: u32,
+    pub next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -176,6 +181,7 @@ pub(super) fn map_job_row_with_score_weights(
     score_weights: ScoreWeights,
 ) -> rusqlite::Result<JobRow> {
     let filter_reason_json: Option<String> = row.get(13)?;
+    let filter_eligible = row.get::<_, Option<i64>>(12)?.map(|value| value != 0);
     let resume_match_score = row.get::<_, Option<f64>>(27)?.map(clamp_score);
     let resume_result_json: Option<String> = row.get(28)?;
     let score_source_text: Option<String> = row.get(29)?;
@@ -183,24 +189,88 @@ pub(super) fn map_job_row_with_score_weights(
     let cached_risk_flags_json: Option<String> = row.get(31)?;
     let cached_evidence_json: Option<String> = row.get(32)?;
     let cached_company_confidence = row.get::<_, Option<f64>>(33)?.map(clamp_confidence);
-    let collection_method = if row.as_ref().column_count() > 38 {
+    let column_count = row.as_ref().column_count();
+    let collection_method = if column_count > 38 {
         row.get::<_, Option<String>>(38)?
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "manual".to_string())
     } else {
         "manual".to_string()
     };
-    let score = compute_score_projection(
-        resume_match_score,
-        resume_result_json.as_deref(),
-        filter_reason_json.as_deref(),
-        score_source_text.as_deref().unwrap_or(""),
-        cached_company_score,
-        cached_risk_flags_json.as_deref(),
-        cached_evidence_json.as_deref(),
-        cached_company_confidence,
-        score_weights,
-    );
+    let filter_reason_value = parse_filter_reason_value(filter_reason_json.as_deref());
+    let summary_projection = if column_count > 45 {
+        Some(SummaryProjection {
+            ai_audit_status: row.get::<_, Option<String>>(39)?,
+            ai_audit_summary: row.get::<_, Option<String>>(40)?,
+            filter_summary: row.get::<_, Option<String>>(41)?,
+            resume_match_score: row.get::<_, Option<f64>>(42)?.map(clamp_score),
+            preference_score: row.get::<_, Option<f64>>(43)?.map(clamp_score),
+            company_score: row.get::<_, Option<f64>>(44)?.map(clamp_score),
+            score_reason_json: row.get::<_, Option<String>>(45)?,
+        })
+    } else {
+        None
+    };
+    let fallback_score;
+    let score = if summary_projection
+        .as_ref()
+        .and_then(|summary| summary.score_reason_json.as_deref())
+        .is_some()
+    {
+        None
+    } else {
+        fallback_score = compute_score_projection_from_filter_reason(
+            resume_match_score,
+            resume_result_json.as_deref(),
+            &filter_reason_value,
+            score_source_text.as_deref().unwrap_or(""),
+            cached_company_score,
+            cached_risk_flags_json.as_deref(),
+            cached_evidence_json.as_deref(),
+            cached_company_confidence,
+            score_weights,
+        );
+        Some(&fallback_score)
+    };
+    let ai_audit = summary_projection
+        .as_ref()
+        .and_then(|summary| {
+            Some(AiAuditProjection {
+                status: summary.ai_audit_status.clone()?,
+                summary: summary.ai_audit_summary.clone()?,
+            })
+        })
+        .unwrap_or_else(|| summarize_ai_audit(&filter_reason_value, filter_eligible));
+    let filter_summary = summary_projection
+        .as_ref()
+        .and_then(|summary| summary.filter_summary.clone())
+        .unwrap_or_else(|| summarize_filter_reason(&filter_reason_value, filter_eligible));
+    let projected_resume_match_score = summary_projection
+        .as_ref()
+        .and_then(|summary| summary.resume_match_score)
+        .or(resume_match_score);
+    let preference_score = summary_projection
+        .as_ref()
+        .and_then(|summary| summary.preference_score)
+        .or_else(|| score.map(|score| score.preference_score))
+        .unwrap_or(80.0);
+    let company_score = summary_projection
+        .as_ref()
+        .and_then(|summary| summary.company_score)
+        .or_else(|| score.map(|score| score.company_score))
+        .unwrap_or(80.0);
+    let final_score = score.map(|score| score.final_score).unwrap_or_else(|| {
+        let weights = score_weights.normalized();
+        round_score(
+            weights.resume * projected_resume_match_score.unwrap_or(0.0)
+                + weights.preference * preference_score
+                + weights.company * company_score,
+        )
+    });
+    let score_reason_json = summary_projection
+        .and_then(|summary| summary.score_reason_json)
+        .or_else(|| score.map(|score| score.reason_json.clone()))
+        .unwrap_or_else(|| "{}".to_string());
 
     Ok(JobRow {
         encrypt_job_id: row.get(0)?,
@@ -216,8 +286,9 @@ pub(super) fn map_job_row_with_score_weights(
         experience_name: row.get(9)?,
         degree_name: row.get(10)?,
         last_seen_at: row.get(11)?,
-        filter_eligible: row.get::<_, Option<i64>>(12)?.map(|value| value != 0),
+        filter_eligible,
         filter_reason_json,
+        filter_summary,
         filter_updated_at: row.get(14)?,
         review_status: row.get(15)?,
         communication_status: row.get(16)?,
@@ -236,12 +307,161 @@ pub(super) fn map_job_row_with_score_weights(
         latest_company_negative_communication_status: row.get(35)?,
         latest_company_negative_communication_at: row.get(36)?,
         boss_active_status: row.get(37)?,
-        resume_match_score,
-        preference_score: score.preference_score,
-        company_score: score.company_score,
-        final_score: score.final_score,
-        score_reason_json: score.reason_json,
+        resume_match_score: projected_resume_match_score,
+        preference_score,
+        company_score,
+        final_score,
+        ai_audit_status: ai_audit.status,
+        ai_audit_summary: ai_audit.summary,
+        score_reason_json,
     })
+}
+
+struct SummaryProjection {
+    ai_audit_status: Option<String>,
+    ai_audit_summary: Option<String>,
+    filter_summary: Option<String>,
+    resume_match_score: Option<f64>,
+    preference_score: Option<f64>,
+    company_score: Option<f64>,
+    score_reason_json: Option<String>,
+}
+
+struct AiAuditProjection {
+    status: String,
+    summary: String,
+}
+
+fn summarize_ai_audit(parsed: &Value, filter_eligible: Option<bool>) -> AiAuditProjection {
+    let judgement = parsed.get("ai_judgement");
+    let raw_status = judgement
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let bucket = judgement
+        .and_then(|value| value.get("bucket"))
+        .and_then(Value::as_str)
+        .or_else(|| parsed.get("bucket").and_then(Value::as_str));
+    let status = raw_status
+        .map(ToString::to_string)
+        .or_else(|| match bucket {
+            Some("recommended") => Some("passed".to_string()),
+            Some("pending_confirmation") => Some("pending_confirmation".to_string()),
+            Some("filtered") => Some("rejected".to_string()),
+            _ => None,
+        })
+        .or_else(|| {
+            if filter_eligible == Some(false) {
+                Some("rejected".to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "not_judged".to_string());
+    let summary = judgement
+        .and_then(|value| value.get("summary"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| match status.as_str() {
+            "processing" => "AI 正在审核".to_string(),
+            "passed" => "AI 已通过筛选".to_string(),
+            "pending_confirmation" => "AI 待确认".to_string(),
+            "failed" => "AI 审核失败".to_string(),
+            "rejected" => "AI 未通过筛选".to_string(),
+            _ => "待 AI 判断".to_string(),
+        });
+    AiAuditProjection { status, summary }
+}
+
+fn summarize_filter_reason(parsed: &Value, filter_eligible: Option<bool>) -> String {
+    if parsed.is_null() {
+        return if filter_eligible == Some(true) {
+            "通过筛选规则".to_string()
+        } else {
+            "暂无筛选规则结果".to_string()
+        };
+    };
+
+    let mut parts = Vec::new();
+    let blocked_by = parsed
+        .get("blocked_by")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    item.get("reason")
+                        .and_then(Value::as_str)
+                        .or_else(|| item.get("value").and_then(Value::as_str))
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(ToString::to_string)
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !blocked_by.is_empty() {
+        let preview = blocked_by
+            .iter()
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("；");
+        let suffix = if blocked_by.len() > 2 {
+            format!(" 等{}项", blocked_by.len())
+        } else {
+            String::new()
+        };
+        parts.push(format!("硬限制：{preview}{suffix}"));
+    }
+
+    let matched = json_string_array(parsed.get("matched_preferences"));
+    if !matched.is_empty() {
+        let preview = matched
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("、");
+        let suffix = if matched.len() > 3 {
+            format!(" 等{}项", matched.len())
+        } else {
+            String::new()
+        };
+        parts.push(format!("偏好命中：{preview}{suffix}"));
+    }
+
+    let missing = json_string_array(parsed.get("missing_preferences"));
+    if !missing.is_empty() {
+        let preview = missing
+            .iter()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("、");
+        let suffix = if missing.len() > 3 {
+            format!(" 等{}项", missing.len())
+        } else {
+            String::new()
+        };
+        parts.push(format!("偏好缺失：{preview}{suffix}"));
+    }
+
+    let summary = parts.join("；");
+    if filter_eligible == Some(true) {
+        if summary.is_empty() {
+            "通过筛选规则".to_string()
+        } else {
+            format!("通过筛选规则；{summary}")
+        }
+    } else if summary.is_empty() {
+        "不满足筛选规则".to_string()
+    } else {
+        summary
+    }
 }
 
 struct ScoreProjection {
@@ -251,6 +471,7 @@ struct ScoreProjection {
     reason_json: String,
 }
 
+#[cfg(test)]
 fn compute_score_projection(
     resume_match_score: Option<f64>,
     resume_result_json: Option<&str>,
@@ -262,27 +483,66 @@ fn compute_score_projection(
     cached_company_confidence: Option<f64>,
     score_weights: ScoreWeights,
 ) -> ScoreProjection {
+    let filter_reason = parse_filter_reason_value(filter_reason_json);
+    compute_score_projection_from_filter_reason(
+        resume_match_score,
+        resume_result_json,
+        &filter_reason,
+        score_source_text,
+        cached_company_score,
+        cached_risk_flags_json,
+        cached_evidence_json,
+        cached_company_confidence,
+        score_weights,
+    )
+}
+
+fn compute_score_projection_from_filter_reason(
+    resume_match_score: Option<f64>,
+    resume_result_json: Option<&str>,
+    filter_reason: &Value,
+    score_source_text: &str,
+    cached_company_score: Option<f64>,
+    cached_risk_flags_json: Option<&str>,
+    cached_evidence_json: Option<&str>,
+    cached_company_confidence: Option<f64>,
+    score_weights: ScoreWeights,
+) -> ScoreProjection {
     let score_weights = score_weights.normalized();
     let resume_reason = parse_resume_reason(resume_result_json);
-    let (matched_preferences, missing_preferences) = parse_preference_reasons(filter_reason_json);
+    let matched_preferences = json_string_array(filter_reason.get("matched_preferences"));
+    let missing_preferences = json_string_array(filter_reason.get("missing_preferences"));
     let preference_score =
         compute_preference_score(matched_preferences.len(), missing_preferences.len());
-    let fallback_company = compute_company_score(score_source_text);
-    let fallback_company_confidence = fallback_company.confidence;
-    let company_score = cached_company_score.unwrap_or(fallback_company.company_score);
-    let risk_flags = cached_risk_flags_json
-        .and_then(parse_string_json_array)
-        .unwrap_or(fallback_company.risk_flags);
-    let evidence = cached_evidence_json
-        .and_then(parse_string_json_array)
-        .unwrap_or(fallback_company.evidence);
-    let company_confidence = if cached_company_score.is_some() {
-        cached_company_confidence.unwrap_or_else(|| {
-            estimate_cached_company_confidence(&risk_flags, fallback_company_confidence)
-        })
+    let cached_risk_flags = cached_risk_flags_json.and_then(parse_string_json_array);
+    let cached_evidence = cached_evidence_json.and_then(parse_string_json_array);
+    let needs_company_fallback =
+        cached_company_score.is_none() || cached_risk_flags.is_none() || cached_evidence.is_none();
+    let fallback_company = if needs_company_fallback {
+        Some(compute_company_score(score_source_text))
     } else {
-        fallback_company_confidence
+        None
     };
+    let company_score = cached_company_score
+        .or_else(|| fallback_company.as_ref().map(|score| score.company_score))
+        .unwrap_or(80.0);
+    let risk_flags = cached_risk_flags
+        .or_else(|| {
+            fallback_company
+                .as_ref()
+                .map(|score| score.risk_flags.clone())
+        })
+        .unwrap_or_default();
+    let evidence = cached_evidence
+        .or_else(|| {
+            fallback_company
+                .as_ref()
+                .map(|score| score.evidence.clone())
+        })
+        .unwrap_or_default();
+    let company_confidence = cached_company_confidence
+        .or_else(|| fallback_company.as_ref().map(|score| score.confidence))
+        .unwrap_or_else(|| estimate_cached_company_confidence(&risk_flags));
     let final_score = round_score(
         score_weights.resume * resume_match_score.unwrap_or(0.0)
             + score_weights.preference * preference_score
@@ -314,6 +574,12 @@ fn compute_score_projection(
         final_score,
         reason_json,
     }
+}
+
+fn parse_filter_reason_value(filter_reason_json: Option<&str>) -> Value {
+    filter_reason_json
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .unwrap_or(Value::Null)
 }
 
 fn parse_resume_reason(resume_result_json: Option<&str>) -> Value {
@@ -410,27 +676,14 @@ fn unique_string_array<const N: usize>(groups: [Vec<String>; N]) -> Vec<String> 
     out
 }
 
-fn parse_preference_reasons(filter_reason_json: Option<&str>) -> (Vec<String>, Vec<String>) {
-    let Some(raw) = filter_reason_json else {
-        return (Vec::new(), Vec::new());
-    };
-    let Ok(parsed) = serde_json::from_str::<Value>(raw) else {
-        return (Vec::new(), Vec::new());
-    };
-    (
-        json_string_array(parsed.get("matched_preferences")),
-        json_string_array(parsed.get("missing_preferences")),
-    )
-}
-
-fn estimate_cached_company_confidence(risk_flags: &[String], fallback_confidence: f64) -> f64 {
+fn estimate_cached_company_confidence(risk_flags: &[String]) -> f64 {
     if risk_flags.iter().any(|flag| flag != "low_info_risk") {
         return 0.82;
     }
     if risk_flags.iter().any(|flag| flag == "low_info_risk") {
         return 0.55;
     }
-    fallback_confidence
+    0.72
 }
 
 fn json_string_array(value: Option<&Value>) -> Vec<String> {
@@ -641,6 +894,27 @@ mod tests {
         );
         assert_eq!(reason["company"]["confidence"].as_f64(), Some(0.61));
         assert!(projection.final_score < 68.0);
+    }
+
+    #[test]
+    fn compute_score_projection_does_not_scan_source_when_company_cache_is_complete() {
+        let projection = compute_score_projection(
+            Some(70.0),
+            None,
+            None,
+            "外包 驻场 电话销售",
+            Some(80.0),
+            Some(r#"[]"#),
+            Some(r#"[]"#),
+            None,
+            ScoreWeights::default(),
+        );
+        let reason: Value = serde_json::from_str(&projection.reason_json).expect("reason json");
+
+        assert_eq!(projection.company_score, 80.0);
+        assert_eq!(reason["company"]["risk_flags"].as_array().unwrap().len(), 0);
+        assert_eq!(reason["company"]["evidence"].as_array().unwrap().len(), 0);
+        assert_eq!(reason["company"]["confidence"].as_f64(), Some(0.72));
     }
 
     #[test]

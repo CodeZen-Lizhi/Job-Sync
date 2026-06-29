@@ -1,14 +1,17 @@
 import type { JobCandidatePage } from "./jobs";
 import { invoke } from "./tauri";
 
-export interface ResumeRecord {
+export interface ResumeListItem {
   id: string;
   title: string;
-  body: string;
   created_at: string;
   updated_at: string;
   is_default: boolean;
   linked_job_count: number;
+}
+
+export interface ResumeRecord extends ResumeListItem {
+  body: string;
 }
 
 export interface ResumeJobSummary {
@@ -24,10 +27,18 @@ export interface ResumeJobSummary {
 }
 
 export interface ResumeLibraryState {
-  resumes: ResumeRecord[];
+  resumes: ResumeListItem[];
   active_resume_id: string | null;
   default_resume_id: string | null;
   selected_resume: ResumeRecord | null;
+  linked_jobs: ResumeJobSummary[];
+}
+
+export interface ResumeLibraryOverview {
+  resumes: ResumeListItem[];
+  active_resume_id: string | null;
+  default_resume_id: string | null;
+  selected_resume_id: string | null;
   linked_jobs: ResumeJobSummary[];
 }
 
@@ -39,10 +50,41 @@ export interface ResumeJobLinkStatus {
   default_resume_title: string | null;
 }
 
+export interface OptimizedResumeEvidence {
+  resume_fact: string;
+  job_requirement: string;
+  rewrite_location: string;
+}
+
+export interface OptimizedResumeSource {
+  id: string;
+  title: string;
+}
+
+export interface OptimizedResumeForJobResult {
+  title: string;
+  optimized_resume_markdown: string;
+  change_summary: string[];
+  job_keywords_used: string[];
+  evidence: OptimizedResumeEvidence[];
+  risks: string[];
+  source_resume?: OptimizedResumeSource;
+}
+
 export function getResumeLibraryState(selectedResumeId?: string | null): Promise<ResumeLibraryState> {
   return invoke<ResumeLibraryState>("get_resume_library_state", {
     selectedResumeId: selectedResumeId ?? null,
   });
+}
+
+export function getResumeLibraryOverview(selectedResumeId?: string | null): Promise<ResumeLibraryOverview> {
+  return invoke<ResumeLibraryOverview>("get_resume_library_overview", {
+    selectedResumeId: selectedResumeId ?? null,
+  });
+}
+
+export function getResumeRecord(resumeId: string): Promise<ResumeRecord | null> {
+  return invoke<ResumeRecord | null>("get_resume_record", { resumeId });
 }
 
 export function createResume(title: string, body: string): Promise<ResumeLibraryState> {

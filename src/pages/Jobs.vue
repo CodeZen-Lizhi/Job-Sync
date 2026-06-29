@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Activity, ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
+import { ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
 import JobsJobItem from "../components/jobs/JobsJobItem.vue";
@@ -28,15 +28,19 @@ const {
   selectedSourcePlatformFilters,
   selectedCollectionMethodFilters,
   jobCandidateTotalPages,
-  jobIntelligenceRangeLabel,
-  currentPageProcessedCount,
-  currentPageUnprocessedCount,
   expandedJobId,
   detailLoading,
   expandedDetail,
   greetingDrafts,
   greetingErrors,
   greetingLoading,
+  optimizedResumeGeneratingJobId,
+  optimizedResumePreview,
+  optimizedResumeTitle,
+  optimizedResumeTargetJob,
+  optimizedResumeSaving,
+  optimizedResumeMessage,
+  optimizedResumeError,
   JOB_TIME_RANGE_OPTIONS,
   PROCESSED_FILTER_OPTIONS,
   JOB_STATUS_FILTER_OPTIONS,
@@ -55,7 +59,10 @@ const {
   openJobSourceUrl,
   generateGreeting,
   copyGreeting,
-  copyApplicationPacket,
+  generateOptimizedResume,
+  copyOptimizedResumeMarkdown,
+  saveOptimizedResumeAndLink,
+  closeOptimizedResumePreview,
   updateReviewStatus,
   restoreReviewCandidate,
   updateCommunicationStatus,
@@ -219,8 +226,10 @@ async function focusJobFromRoute(jobId: string): Promise<void> {
 
 watch(
   () => [route.path, route.query.jobId],
-  ([path, jobId]) => {
+  async ([path, jobId]) => {
     if (path !== "/jobs") return;
+    await nextTick();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     if (typeof jobId === "string" && jobId.trim()) {
       void focusJobFromRoute(jobId.trim());
       return;
@@ -256,50 +265,6 @@ watch(
 
     <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。查询命令不可用。</div>
     <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
-    <section class="ui-panel overflow-hidden">
-      <div class="ui-section-header">
-        <div>
-          <div class="ui-section-kicker">Result Buckets</div>
-          <h2 class="ui-section-title mt-1">采后结果分区</h2>
-          <p class="ui-section-copy">分区只代表当前判断，不删岗位记录。</p>
-        </div>
-        <div class="ui-segmented">
-          <button
-            v-for="bucket in bucketOptions"
-            :key="bucket.value"
-            type="button"
-            class="ui-segmented-button"
-            :class="activeJobLibraryBucket === bucket.value ? 'ui-segmented-button-active' : ''"
-            :title="bucket.description"
-            @click="applyBucket(bucket.value)"
-          >
-            {{ bucket.label }}
-          </button>
-        </div>
-      </div>
-      <div class="grid gap-3 p-4 md:grid-cols-[1.4fr_1fr]">
-        <div class="ui-card-soft p-4">
-          <div class="flex items-start gap-3">
-            <div class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-blue-700 ring-1 ring-border/90" aria-hidden="true">
-              <Activity class="h-4 w-4" />
-            </div>
-            <div>
-              <div class="text-sm font-semibold text-content-primary">{{ activeBucket.label }}</div>
-              <p class="mt-1 text-xs leading-5 text-content-muted">{{ activeBucket.description }}</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <span class="ui-badge">{{ jobIntelligenceRangeLabel }}</span>
-                <span class="ui-badge">{{ displayedJobsTotal }} 个岗位</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="ui-card-soft p-4">
-          <div class="text-xs font-medium text-content-muted">当前页</div>
-          <div class="mt-3 text-3xl font-semibold leading-none text-content-primary">{{ currentPageUnprocessedCount }}</div>
-          <div class="mt-2 text-[11px] text-content-muted">未处理 {{ currentPageUnprocessedCount }}，已处理 {{ currentPageProcessedCount }}</div>
-        </div>
-      </div>
-    </section>
 
     <section class="ui-panel overflow-hidden">
       <div class="ui-section-header">
@@ -454,6 +419,7 @@ watch(
           :greeting-draft="greetingDrafts.get(job.encrypt_job_id) ?? ''"
           :greeting-error="greetingErrors.get(job.encrypt_job_id) ?? undefined"
           :greeting-loading="greetingLoading === job.encrypt_job_id"
+          :optimized-resume-generating="optimizedResumeGeneratingJobId === job.encrypt_job_id"
           :resume-status="resumeStatusByJobId.get(job.encrypt_job_id)"
           @toggle-detail="(jobId) => toggleDetail(jobId)"
           @copy-link="(job) => copy(jobSourceUrl(job))"
@@ -465,7 +431,7 @@ watch(
           @update-company-review="(job, status) => updateCompanyReviewStatus(job, status)"
           @generate-greeting="(job) => generateGreeting(job)"
           @copy-greeting="(job) => copyGreeting(job)"
-          @copy-application-packet="(job) => copyApplicationPacket(job)"
+          @generate-optimized-resume="(job) => generateOptimizedResume(job)"
           @open-resume="(job) => openResumeLibrary(job.encrypt_job_id)"
         />
       </div>
@@ -496,5 +462,96 @@ watch(
         已过滤岗位仍保留在职位库里，可通过当前规则调整后重算。
       </div>
     </section>
+
+    <div v-if="optimizedResumePreview" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6">
+      <section class="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-white shadow-xl">
+        <header class="flex flex-wrap items-start justify-between gap-3 border-b border-border/90 px-4 py-3">
+          <div class="min-w-0">
+            <div class="ui-section-kicker">Optimized Resume</div>
+            <h2 class="mt-1 text-base font-semibold text-content-primary">岗位版简历预览</h2>
+            <p class="mt-1 text-xs text-content-muted">
+              {{ optimizedResumeTargetJob?.position_name ?? optimizedResumeTargetJob?.encrypt_job_id }} / {{ optimizedResumeTargetJob?.brand_name ?? "未知公司" }}
+            </p>
+          </div>
+          <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="optimizedResumeSaving" @click="closeOptimizedResumePreview">
+            关闭
+          </button>
+        </header>
+
+        <div class="min-h-0 flex-1 overflow-y-auto p-4">
+          <div class="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.75fr)]">
+            <div class="space-y-3">
+              <label class="block space-y-1 text-xs text-content-muted">
+                <span>新简历标题</span>
+                <input v-model="optimizedResumeTitle" class="ui-input w-full" />
+              </label>
+              <div class="rounded-lg border border-border/90 bg-surface-secondary/40">
+                <div class="border-b border-border/90 px-3 py-2 text-xs font-semibold text-content-muted">Markdown 预览</div>
+                <pre class="max-h-[52vh] overflow-auto whitespace-pre-wrap break-words p-3 font-sans text-sm leading-6 text-content-secondary">{{ optimizedResumePreview.optimized_resume_markdown }}</pre>
+              </div>
+            </div>
+
+            <aside class="space-y-3">
+              <section class="rounded-lg border border-border/90 bg-white p-3">
+                <h3 class="text-xs font-semibold text-content-primary">来源简历</h3>
+                <p class="mt-2 text-xs text-content-secondary">
+                  {{ optimizedResumePreview.source_resume?.title ?? "已按岗位关联/默认简历解析" }}
+                </p>
+              </section>
+
+              <section class="rounded-lg border border-border/90 bg-white p-3">
+                <h3 class="text-xs font-semibold text-content-primary">调整摘要</h3>
+                <ul class="mt-2 space-y-1 text-xs leading-5 text-content-secondary">
+                  <li v-for="item in optimizedResumePreview.change_summary" :key="item">- {{ item }}</li>
+                </ul>
+              </section>
+
+              <section class="rounded-lg border border-border/90 bg-white p-3">
+                <h3 class="text-xs font-semibold text-content-primary">岗位关键词</h3>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  <span v-for="keyword in optimizedResumePreview.job_keywords_used" :key="keyword" class="ui-badge">{{ keyword }}</span>
+                  <span v-if="optimizedResumePreview.job_keywords_used.length === 0" class="text-xs text-content-muted">暂无可安全写入的关键词。</span>
+                </div>
+              </section>
+
+              <section class="rounded-lg border border-border/90 bg-white p-3">
+                <h3 class="text-xs font-semibold text-content-primary">证据映射</h3>
+                <div class="mt-2 space-y-2 text-xs leading-5 text-content-secondary">
+                  <div v-for="item in optimizedResumePreview.evidence" :key="`${item.resume_fact}-${item.rewrite_location}`" class="rounded-md bg-surface-secondary/50 p-2">
+                    <div>简历事实：{{ item.resume_fact }}</div>
+                    <div>岗位要求：{{ item.job_requirement }}</div>
+                    <div>写入位置：{{ item.rewrite_location }}</div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-lg border border-border/90 bg-white p-3">
+                <h3 class="text-xs font-semibold text-content-primary">风险</h3>
+                <ul v-if="optimizedResumePreview.risks.length > 0" class="mt-2 space-y-1 text-xs leading-5 text-content-secondary">
+                  <li v-for="risk in optimizedResumePreview.risks" :key="risk">- {{ risk }}</li>
+                </ul>
+                <p v-else class="mt-2 text-xs text-content-muted">未识别到需要额外提示的缺口。</p>
+              </section>
+            </aside>
+          </div>
+        </div>
+
+        <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-border/90 px-4 py-3">
+          <div class="min-w-0 text-xs">
+            <span v-if="optimizedResumeMessage" class="text-emerald-700">{{ optimizedResumeMessage }}</span>
+            <span v-else-if="optimizedResumeError" class="text-red-700">{{ optimizedResumeError }}</span>
+            <span v-else class="text-content-muted">保存会创建一份新简历，并关联当前岗位。</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="optimizedResumeSaving" @click="copyOptimizedResumeMarkdown">
+              复制 Markdown
+            </button>
+            <button class="ui-btn-primary px-3 py-1.5 text-xs" :disabled="optimizedResumeSaving" @click="saveOptimizedResumeAndLink">
+              {{ optimizedResumeSaving ? "保存中…" : "保存并关联岗位" }}
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
   </section>
 </template>
