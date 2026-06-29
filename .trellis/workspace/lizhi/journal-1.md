@@ -612,3 +612,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: 采集 cron 定时与 0.1.1 打包
+
+**Date**: 2026-06-29
+**Task**: 采集 cron 定时与 0.1.1 打包
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+实现 cron 风格采集定时配置，升级版本到 0.1.1，并完成可用 app 与 dmg 打包交付。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8c05120` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
