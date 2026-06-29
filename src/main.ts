@@ -1,4 +1,5 @@
 import "./styles/tailwind.css";
+import "@vue-js-cron/light/dist/light.css";
 
 import { createApp } from "vue";
 

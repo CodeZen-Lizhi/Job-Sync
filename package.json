@@ -1,7 +1,7 @@
 {
   "name": "job-sync",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "type": "module",
   "workspaces": [
     "packages/*"
@@ -38,6 +38,9 @@
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-opener": "^2",
+    "@vue-js-cron/light": "^5.1.1",
+    "croner": "^10.0.1",
+    "cronstrue": "^3.23.0",
     "lucide-vue-next": "^0.576.0",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"

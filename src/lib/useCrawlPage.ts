@@ -1,4 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { Cron } from "croner";
+import cronstrue from "cronstrue";
+import "cronstrue/locales/zh_CN.js";
 
 import {
   asBossOptions,
@@ -45,6 +48,12 @@ type AppSettings = {
 type CollectionConfigPayload = {
   version?: number;
   selectedCollectionSources?: string[];
+  crawlScheduleEnabled?: boolean;
+  crawlScheduleExpression?: string;
+  crawlScheduleTime?: string;
+  crawlScheduleLastRunAt?: string | null;
+  crawlScheduleLastStatus?: CrawlScheduleRunStatus | null;
+  crawlScheduleLastMessage?: string | null;
   v2exFeedUrl?: string;
   v2exKeywordsText?: string;
   v2exFeedSortBy?: string;
@@ -79,14 +88,25 @@ type CollectionConfigPayload = {
 
 type V2exFeedSortBy = "published_desc" | "updated_desc";
 type LinuxDoSortBy = "latest" | "created";
+type CrawlScheduleRunStatus = "success" | "failed" | "skipped";
+
+const DEFAULT_CRAWL_SCHEDULE_EXPRESSION = "0 9 * * *";
+const DEFAULT_CRAWL_SCHEDULE_PERIOD = "day";
+const CRAWL_SCHEDULE_UPCOMING_RUN_COUNT = 3;
 
 let crawlPageState: CrawlPageState | null = null;
 
-export function useCrawlPage(): CrawlPageState {
+type CrawlPageInitializeMode = "full" | "schedule";
+
+export function useCrawlPage(options: { initialize?: CrawlPageInitializeMode } = {}): CrawlPageState {
   const state = crawlPageState ?? createCrawlPageState();
   crawlPageState = state;
 
   onMounted(() => {
+    if (options.initialize === "schedule") {
+      void state.initializeSchedule();
+      return;
+    }
     void state.initialize();
   });
 
@@ -100,6 +120,7 @@ export function useCrawlPage(): CrawlPageState {
 function createCrawlPageState() {
   const tauri = isTauri();
   const initialized = ref(false);
+  const scheduleInitialized = ref(false);
   const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
   const bossCollectionEnabled = ref(false);
   const collectionSourcesLoaded = ref(false);
@@ -148,9 +169,19 @@ function createCrawlPageState() {
   const filterRecomputeMessage = ref<string | null>(null);
   const collectionConfigSaving = ref(false);
   const collectionConfigMessage = ref<string | null>(null);
+  const crawlScheduleEnabled = ref(false);
+  const crawlScheduleExpression = ref(DEFAULT_CRAWL_SCHEDULE_EXPRESSION);
+  const crawlScheduleEditorPeriod = ref(DEFAULT_CRAWL_SCHEDULE_PERIOD);
+  const crawlScheduleLastRunAt = ref<string | null>(null);
+  const crawlScheduleLastStatus = ref<CrawlScheduleRunStatus | null>(null);
+  const crawlScheduleLastMessage = ref<string | null>(null);
+  const crawlScheduleNextRunAt = ref<string | null>(null);
+  const crawlScheduleUpcomingRuns = ref<string[]>([]);
+  const crawlScheduleValidationError = ref<string | null>(null);
   const bossSettingsOpen = ref(false);
   const filterProfileOpen = ref(false);
   let bossMetaSyncTimeout: number | null = null;
+  let crawlScheduleTimer: number | null = null;
   const filterProfileState = useFilterProfile();
 
   const bossMetaSyncedAt = computed(() => (runtime.bossMeta as any)?.synced_at as string | undefined);
@@ -193,6 +224,34 @@ function createCrawlPageState() {
       });
   });
   const latestCollectionRun = computed(() => collectionRuns.value[0] ?? null);
+  const crawlScheduleNextRunLabel = computed(() => formatScheduleDateTime(crawlScheduleNextRunAt.value));
+  const crawlScheduleUpcomingRunLabels = computed(() =>
+    crawlScheduleUpcomingRuns.value.map((value) => formatScheduleDateTime(value)).filter((value) => value !== "未安排"),
+  );
+  const crawlScheduleDescription = computed(() => {
+    if (crawlScheduleValidationError.value) return "表达式无效，无法生成说明。";
+    try {
+      return cronstrue.toString(crawlScheduleExpression.value, {
+        locale: "zh_CN",
+        use24HourTimeFormat: true,
+      });
+    } catch {
+      return "暂无法解析当前 cron 表达式。";
+    }
+  });
+  const crawlScheduleLastRunLabel = computed(() => formatScheduleDateTime(crawlScheduleLastRunAt.value));
+  const crawlScheduleLastStatusLabel = computed(() => {
+    if (crawlScheduleLastStatus.value === "success") return "成功";
+    if (crawlScheduleLastStatus.value === "failed") return "失败";
+    if (crawlScheduleLastStatus.value === "skipped") return "已跳过";
+    return "暂无记录";
+  });
+  const crawlScheduleStatusTone = computed(() => {
+    if (crawlScheduleLastStatus.value === "success") return "success";
+    if (crawlScheduleLastStatus.value === "failed") return "danger";
+    if (crawlScheduleLastStatus.value === "skipped") return "warning";
+    return "muted";
+  });
   const bossKeywords = computed(() => parseList(bossKeywordsText.value));
   const filters = computed(() => ({
     city: selectedCities.value.length > 0 ? selectedCities.value : selectedCity.value ? [selectedCity.value] : parseList(cityText.value),
@@ -366,6 +425,77 @@ function createCrawlPageState() {
     return value === "created" ? "created" : "latest";
   }
 
+  function sanitizeDailyTime(value: unknown): string {
+    if (typeof value !== "string") return "09:00";
+    const match = value.trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+    return match ? `${match[1]}:${match[2]}` : "09:00";
+  }
+
+  function dailyTimeToCronExpression(value: string): string {
+    const [hourText, minuteText] = sanitizeDailyTime(value).split(":");
+    return `${Number(minuteText)} ${Number(hourText)} * * *`;
+  }
+
+  function sanitizeCronExpression(value: unknown): string {
+    const text = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+    if (!text) return DEFAULT_CRAWL_SCHEDULE_EXPRESSION;
+    try {
+      const cron = new Cron(text, { paused: true, mode: "5-part" });
+      const next = cron.nextRun();
+      if (!next) throw new Error("missing next run");
+      return text;
+    } catch {
+      return DEFAULT_CRAWL_SCHEDULE_EXPRESSION;
+    }
+  }
+
+  function resolveScheduleExpression(config: CollectionConfigPayload): string {
+    if (typeof config.crawlScheduleExpression === "string" && config.crawlScheduleExpression.trim()) {
+      return sanitizeCronExpression(config.crawlScheduleExpression);
+    }
+    if (typeof config.crawlScheduleTime === "string" && config.crawlScheduleTime.trim()) {
+      return dailyTimeToCronExpression(config.crawlScheduleTime);
+    }
+    return DEFAULT_CRAWL_SCHEDULE_EXPRESSION;
+  }
+
+  function getScheduleCron(expression: string): Cron {
+    return new Cron(expression, { paused: true, mode: "5-part" });
+  }
+
+  function validateScheduleExpression(value: string): string | null {
+    try {
+      const cron = getScheduleCron(value);
+      const next = cron.nextRun();
+      if (!next) return "当前 cron 表达式没有可触发的下一次时间。";
+      return null;
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : "cron 表达式无效";
+    }
+  }
+
+  function inferScheduleEditorPeriod(expression: string): string {
+    const parts = expression.trim().split(/\s+/);
+    const [minute = "*", hour = "*", day = "*", month = "*", weekday = "*"] = parts;
+    if (minute.includes("/") && hour === "*" && day === "*" && month === "*" && weekday === "*") return "minute";
+    if (hour.includes("/") && day === "*" && month === "*" && weekday === "*") return "hour";
+    if (day === "*" && month === "*" && weekday === "*") return "day";
+    if (weekday !== "*" && month === "*") return "week";
+    if (day !== "*" && month === "*") return "month";
+    return DEFAULT_CRAWL_SCHEDULE_PERIOD;
+  }
+
+  function sanitizeScheduleRunStatus(value: unknown): CrawlScheduleRunStatus | null {
+    return value === "success" || value === "failed" || value === "skipped" ? value : null;
+  }
+
+  function formatScheduleDateTime(value: string | null): string {
+    if (!value) return "未安排";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "未安排";
+    return date.toLocaleString();
+  }
+
   function sanitizeStringList(value: unknown): string[] {
     if (!Array.isArray(value)) return [];
     return Array.from(new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)));
@@ -375,6 +505,11 @@ function createCrawlPageState() {
     return {
       version: 1,
       selectedCollectionSources: selectedCollectionSources.value,
+      crawlScheduleEnabled: crawlScheduleEnabled.value,
+      crawlScheduleExpression: sanitizeCronExpression(crawlScheduleExpression.value),
+      crawlScheduleLastRunAt: crawlScheduleLastRunAt.value,
+      crawlScheduleLastStatus: crawlScheduleLastStatus.value,
+      crawlScheduleLastMessage: crawlScheduleLastMessage.value,
       v2exFeedUrl: v2exFeedUrl.value,
       v2exKeywordsText: v2exKeywordsText.value,
       v2exFeedSortBy: v2exFeedSortBy.value,
@@ -417,6 +552,13 @@ function createCrawlPageState() {
       );
       selectedCollectionSources.value = selected.length > 0 ? Array.from(new Set(selected)) : selectedCollectionSources.value;
     }
+    crawlScheduleEnabled.value = config.crawlScheduleEnabled === true;
+    crawlScheduleExpression.value = resolveScheduleExpression(config);
+    crawlScheduleEditorPeriod.value = inferScheduleEditorPeriod(crawlScheduleExpression.value);
+    crawlScheduleValidationError.value = validateScheduleExpression(crawlScheduleExpression.value);
+    crawlScheduleLastRunAt.value = textValue(config.crawlScheduleLastRunAt) || null;
+    crawlScheduleLastStatus.value = sanitizeScheduleRunStatus(config.crawlScheduleLastStatus);
+    crawlScheduleLastMessage.value = textValue(config.crawlScheduleLastMessage) || null;
     v2exFeedUrl.value = textValue(config.v2exFeedUrl);
     v2exKeywordsText.value = textValue(config.v2exKeywordsText);
     v2exFeedSortBy.value = sanitizeV2exFeedSortBy(config.v2exFeedSortBy);
@@ -562,6 +704,7 @@ function createCrawlPageState() {
     try {
       const settings = await invoke<AppSettings>("get_settings");
       applyCollectionConfigPayload(settings.collection_config);
+      rescheduleCrawlTimer();
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
     }
@@ -574,6 +717,7 @@ function createCrawlPageState() {
     error.value = null;
     try {
       await persistCollectionConfig();
+      rescheduleCrawlTimer();
       collectionConfigMessage.value = "已保存采集配置";
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -587,6 +731,84 @@ function createCrawlPageState() {
     await invoke<AppSettings>("save_collection_config", {
       collectionConfig: buildCollectionConfigPayload(),
     });
+  }
+
+  function clearCrawlScheduleTimer(): void {
+    if (crawlScheduleTimer === null) return;
+    window.clearTimeout(crawlScheduleTimer);
+    crawlScheduleTimer = null;
+  }
+
+  function rescheduleCrawlTimer(): void {
+    clearCrawlScheduleTimer();
+    crawlScheduleValidationError.value = validateScheduleExpression(crawlScheduleExpression.value);
+    if (!tauri || !crawlScheduleEnabled.value) {
+      crawlScheduleNextRunAt.value = null;
+      crawlScheduleUpcomingRuns.value = [];
+      return;
+    }
+    if (crawlScheduleValidationError.value) {
+      crawlScheduleNextRunAt.value = null;
+      crawlScheduleUpcomingRuns.value = [];
+      return;
+    }
+    const cron = getScheduleCron(crawlScheduleExpression.value);
+    const next = cron.nextRun();
+    const upcoming = cron.nextRuns(CRAWL_SCHEDULE_UPCOMING_RUN_COUNT);
+    if (!next) {
+      crawlScheduleNextRunAt.value = null;
+      crawlScheduleUpcomingRuns.value = [];
+      crawlScheduleValidationError.value = "当前 cron 表达式没有可触发的下一次时间。";
+      return;
+    }
+    crawlScheduleNextRunAt.value = next.toISOString();
+    crawlScheduleUpcomingRuns.value = upcoming.map((date) => date.toISOString());
+    const delay = Math.max(0, next.getTime() - Date.now());
+    crawlScheduleTimer = window.setTimeout(() => {
+      crawlScheduleTimer = null;
+      void runScheduledCrawl();
+    }, delay);
+  }
+
+  async function recordCrawlScheduleRun(status: CrawlScheduleRunStatus, message: string): Promise<void> {
+    crawlScheduleLastRunAt.value = new Date().toISOString();
+    crawlScheduleLastStatus.value = status;
+    crawlScheduleLastMessage.value = message;
+    try {
+      await persistCollectionConfig();
+    } catch (cause) {
+      appendRuntimeLog("warn", `定时采集状态保存失败：${cause instanceof Error ? cause.message : String(cause)}`);
+    }
+  }
+
+  async function runScheduledCrawl(): Promise<void> {
+    if (!crawlScheduleEnabled.value) {
+      rescheduleCrawlTimer();
+      return;
+    }
+    if (sidecarRunning.value || actionBusy.value) {
+      const message = "采集任务正在运行，本次定时采集已跳过。";
+      appendRuntimeLog("warn", message);
+      await recordCrawlScheduleRun("skipped", message);
+      rescheduleCrawlTimer();
+      return;
+    }
+    appendRuntimeLog("info", `定时采集触发：${crawlScheduleExpression.value}`);
+    try {
+      const completed = await start();
+      if (completed) {
+        await recordCrawlScheduleRun("success", "定时采集已完成。");
+      } else if (error.value) {
+        await recordCrawlScheduleRun("failed", error.value);
+      } else {
+        await recordCrawlScheduleRun("skipped", "定时采集未完成：没有可执行平台或任务被跳过。");
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      await recordCrawlScheduleRun("failed", message);
+    } finally {
+      rescheduleCrawlTimer();
+    }
   }
 
   async function saveActiveFilterProfile(): Promise<void> {
@@ -620,9 +842,9 @@ function createCrawlPageState() {
     }
   }
 
-  async function start(): Promise<void> {
+  async function start(): Promise<boolean> {
     error.value = null;
-    if (!tauri) return;
+    if (!tauri) return false;
     actionBusy.value = true;
     stopRequested.value = false;
     try {
@@ -633,7 +855,7 @@ function createCrawlPageState() {
       );
       if (selectedSources.length === 0) {
         appendRuntimeLog("warn", "没有可执行的自动采集平台，任务已结束。");
-        return;
+        return false;
       }
       await filterProfileState.saveDefaultFilterProfile();
       let completedSources = 0;
@@ -681,12 +903,14 @@ function createCrawlPageState() {
       } else if (skippedSources > 0) {
         appendRuntimeLog("info", `自动采集已结束：完成 ${completedSources} 个平台，跳过 ${skippedSources} 个平台。`);
       }
+      return completedSources > 0;
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
       if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_AUTO) {
         runtime.sidecarTask.running = false;
         runtime.sidecarTask.type = undefined;
       }
+      return false;
     } finally {
       actionBusy.value = false;
     }
@@ -710,13 +934,17 @@ function createCrawlPageState() {
   async function initialize(): Promise<void> {
     if (initialized.value) return;
     initialized.value = true;
-    void (async () => {
-      await loadCollectionConfig();
-      await loadCollectionSources();
-    })();
+    void initializeSchedule();
+    void loadCollectionSources();
     void loadCollectionSummary();
     void loadBossMeta();
     void loadDefaultFilterProfile();
+  }
+
+  async function initializeSchedule(): Promise<void> {
+    if (scheduleInitialized.value) return;
+    scheduleInitialized.value = true;
+    await loadCollectionConfig();
   }
 
   async function loadCollectionSummary(): Promise<void> {
@@ -742,6 +970,14 @@ function createCrawlPageState() {
       if (!bossMetaSyncing.value) return;
       bossMetaSyncing.value = false;
       clearBossMetaSyncTimeout();
+    },
+  );
+
+  watch(
+    () => [crawlScheduleEnabled.value, crawlScheduleExpression.value] as const,
+    () => {
+      crawlScheduleEditorPeriod.value = inferScheduleEditorPeriod(crawlScheduleExpression.value);
+      rescheduleCrawlTimer();
     },
   );
 
@@ -803,6 +1039,21 @@ function createCrawlPageState() {
     filterRecomputeMessage,
     collectionConfigSaving,
     collectionConfigMessage,
+    crawlScheduleEnabled,
+    crawlScheduleExpression,
+    crawlScheduleEditorPeriod,
+    crawlScheduleLastRunAt,
+    crawlScheduleLastStatus,
+    crawlScheduleLastMessage,
+    crawlScheduleNextRunAt,
+    crawlScheduleUpcomingRuns,
+    crawlScheduleUpcomingRunLabels,
+    crawlScheduleDescription,
+    crawlScheduleValidationError,
+    crawlScheduleNextRunLabel,
+    crawlScheduleLastRunLabel,
+    crawlScheduleLastStatusLabel,
+    crawlScheduleStatusTone,
     bossSettingsOpen,
     filterProfileOpen,
     bossMetaSyncedAt,
@@ -827,7 +1078,9 @@ function createCrawlPageState() {
     saveCollectionConfig,
     loadCollectionSummary,
     initialize,
+    initializeSchedule,
     clearBossMetaSyncTimeout,
+    clearCrawlScheduleTimer,
     start,
     stop,
   };

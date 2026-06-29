@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CronLight } from "@vue-js-cron/light";
+
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
 import { BOSS_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
@@ -51,6 +53,17 @@ const {
   filterRecomputeMessage,
   collectionConfigSaving,
   collectionConfigMessage,
+  crawlScheduleEnabled,
+  crawlScheduleExpression,
+  crawlScheduleEditorPeriod,
+  crawlScheduleDescription,
+  crawlScheduleValidationError,
+  crawlScheduleNextRunLabel,
+  crawlScheduleUpcomingRunLabels,
+  crawlScheduleLastRunLabel,
+  crawlScheduleLastStatusLabel,
+  crawlScheduleLastMessage,
+  crawlScheduleStatusTone,
   bossSettingsOpen,
   filterProfileOpen,
   aiPreferredText,
@@ -161,6 +174,114 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             </div>
           </fieldset>
 
+        </div>
+      </section>
+
+      <section class="ui-panel overflow-hidden">
+        <div class="ui-section-header">
+          <div>
+            <h2 class="ui-section-title">定时采集</h2>
+          </div>
+          <span
+            class="ui-badge"
+            :class="crawlScheduleEnabled ? 'bg-emerald-400/10 text-emerald-700 ring-emerald-400/20' : ''"
+          >
+            {{ crawlScheduleEnabled ? "已开启" : "未开启" }}
+          </span>
+        </div>
+
+        <div class="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
+          <div class="space-y-3">
+            <label class="flex min-h-11 items-center gap-3 rounded-lg border border-border/90 bg-white px-3 py-2">
+              <input v-model="crawlScheduleEnabled" type="checkbox" class="h-4 w-4 accent-slate-900" />
+              <span class="text-sm font-medium text-content-primary">启用 cron 定时采集</span>
+            </label>
+
+            <div class="rounded-lg border border-border/90 bg-white p-3">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <div class="text-xs font-medium text-content-muted">Cron 表达式</div>
+                <span class="text-[11px] text-content-muted">仅支持 5 段式</span>
+              </div>
+              <CronLight
+                v-model="crawlScheduleExpression"
+                v-model:period="crawlScheduleEditorPeriod"
+                class="ui-cron-light"
+                locale="en"
+                theme="legacy"
+                :disabled="!crawlScheduleEnabled"
+              />
+              <div class="mt-3 rounded-md border border-border/80 bg-slate-50 px-3 py-2 font-mono text-xs text-content-primary">
+                {{ crawlScheduleExpression }}
+              </div>
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="rounded-lg border border-border/90 bg-white px-3 py-3">
+                <div class="text-xs font-medium text-content-muted">调度说明</div>
+                <div class="mt-2 text-sm leading-6 text-content-secondary">
+                  {{ crawlScheduleDescription }}
+                </div>
+              </div>
+
+              <div
+                class="rounded-lg border px-3 py-3"
+                :class="crawlScheduleValidationError ? 'border-red-200 bg-red-50' : 'border-border/90 bg-white'"
+              >
+                <div class="text-xs font-medium text-content-muted">表达式校验</div>
+                <div
+                  class="mt-2 text-sm leading-6"
+                  :class="crawlScheduleValidationError ? 'text-red-700' : 'text-emerald-700'"
+                >
+                  {{ crawlScheduleValidationError ?? "当前表达式有效，可用于定时采集。" }}
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-lg border border-border/90 bg-white px-3 py-3">
+              <div class="text-xs font-medium text-content-muted">未来 3 次触发</div>
+              <div v-if="crawlScheduleUpcomingRunLabels.length > 0" class="mt-2 space-y-2 text-sm text-content-secondary">
+                <div
+                  v-for="(label, index) in crawlScheduleUpcomingRunLabels"
+                  :key="`${label}-${index}`"
+                  class="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
+                >
+                  <span class="text-content-muted">#{{ index + 1 }}</span>
+                  <span class="font-medium text-content-primary">{{ label }}</span>
+                </div>
+              </div>
+              <div v-else class="mt-2 text-sm text-content-muted">
+                {{ crawlScheduleValidationError ? "请先修正 cron 表达式。" : "未安排" }}
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-border/90 bg-white px-3 py-3 text-xs leading-5">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-content-muted">下次触发</span>
+              <span class="font-medium text-content-primary">{{ crawlScheduleNextRunLabel }}</span>
+            </div>
+            <div class="mt-2 flex items-center justify-between gap-2">
+              <span class="text-content-muted">上次结果</span>
+              <span
+                class="font-medium"
+                :class="{
+                  'text-emerald-700': crawlScheduleStatusTone === 'success',
+                  'text-red-700': crawlScheduleStatusTone === 'danger',
+                  'text-amber-700': crawlScheduleStatusTone === 'warning',
+                  'text-content-muted': crawlScheduleStatusTone === 'muted',
+                }"
+              >
+                {{ crawlScheduleLastStatusLabel }}
+              </span>
+            </div>
+            <div class="mt-2 flex items-center justify-between gap-2">
+              <span class="text-content-muted">执行时间</span>
+              <span class="font-medium text-content-secondary">{{ crawlScheduleLastRunLabel }}</span>
+            </div>
+            <div v-if="crawlScheduleLastMessage" class="mt-2 border-t border-border/80 pt-2 text-content-secondary">
+              {{ crawlScheduleLastMessage }}
+            </div>
+          </div>
         </div>
       </section>
 

@@ -24,11 +24,11 @@ describe("review workflow contract", () => {
     const jobsTypes = readProjectFile("src/lib/jobs.ts");
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsQueries = readProjectFile("src-tauri/src/commands/jobs/queries.rs");
+    const jobsModels = readProjectFile("src-tauri/src/commands/jobs/models.rs");
     const jobsCommand = readProjectFile("src-tauri/src/commands/jobs.rs");
     const tauriLib = readProjectFile("src-tauri/src/lib.rs");
 
     assert.match(jobsPage, /职位库工作台/);
-    assert.match(jobsPage, /采后结果分区/);
     assert.match(jobsPage, /视图筛选/);
     assert.match(jobsPage, /\{\{ activeBucket\.label \}\}/);
     assert.match(jobsPage, /自动采集先保留岗位事实/);
@@ -65,6 +65,9 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /bucket: jobCandidateBucket\.value/);
     assert.match(jobsPage, /jobCandidateBucket\.value = bucket === "confirm" \? "pending_confirmation" : bucket/);
     assert.match(jobsLogic, /function loadJobCandidates/);
+    const jobsMountedSource = jobsLogic.match(/onMounted\(\(\) => \{[\s\S]*?\n  \}\);/)?.[0] ?? "";
+    assert.doesNotMatch(jobsMountedSource, /loadJobCandidates/);
+    assert.match(jobsPage, /route\.path, route\.query\.jobId/);
     assert.match(jobsLogic, /function isProcessedJob/);
     assert.match(jobsLogic, /processed: jobCandidateProcessedFilter/);
     assert.match(jobsLogic, /statusFilters: selectedJobStatusFilters/);
@@ -80,7 +83,7 @@ describe("review workflow contract", () => {
     assert.match(jobsCommand, /pub fn list_job_candidates/);
     assert.match(tauriLib, /commands::jobs::list_job_candidates/);
     assert.match(jobsQueries, /list_job_candidates_on_conn/);
-    assert.match(jobsQueries, /JOB_PROCESSED_SQL/);
+    assert.match(jobsQueries, /fn job_processed_sql/);
     assert.match(jobsQueries, /JOB_COLLECTION_METHOD_SQL/);
     assert.match(jobsQueries, /processed: Option<String>/);
     assert.match(jobsQueries, /status_filters: Option<Vec<String>>/);
@@ -93,10 +96,23 @@ describe("review workflow contract", () => {
     assert.match(jobsQueries, /list_job_candidates_filters_status_source_and_collection_method/);
     assert.match(jobsTypes, /export interface JobCandidatePage/);
     assert.match(jobsTypes, /collection_method: CollectionMethod/);
+    assert.match(jobsTypes, /ai_audit_status: string/);
+    assert.match(jobsTypes, /ai_audit_summary: string/);
+    assert.match(jobsTypes, /filter_summary: string/);
     assert.match(jobsTypes, /export type CollectionMethod = "manual" \| "automatic"/);
     assert.match(jobsTypes, /COLLECTION_METHOD_LABELS/);
+    assert.match(jobsModels, /#\[serde\(skip_serializing\)\]\s+pub filter_reason_json/);
+    assert.match(jobsModels, /fn summarize_ai_audit/);
+    assert.match(jobsModels, /fn summarize_filter_reason/);
+    assert.match(jobsModels, /ai_audit_status: ai_audit\.status/);
+    assert.match(jobsModels, /ai_audit_summary: ai_audit\.summary/);
+    assert.match(jobsModels, /filter_summary/);
 
     assert.match(jobItem, /AI 结果：\{\{ aiAuditStatusLabel\(aiAuditStatus\) \}\}/);
+    assert.match(jobItem, /props\.job\.ai_audit_status/);
+    assert.match(jobItem, /props\.job\.ai_audit_summary/);
+    assert.doesNotMatch(jobItem, /formatFilterReasonSummary/);
+    assert.doesNotMatch(jobItem, /parseFilterReasonJson/);
     assert.match(jobItem, /平台：\{\{ sourcePlatformLabel\(job\.source_platform\) \}\}/);
     assert.match(jobItem, /岗位状态：\{\{ reviewStatusLabel\(job\.review_status\) \}\}/);
     assert.match(jobItem, /原因：\{\{ aiAuditReasonText \}\}/);
@@ -169,7 +185,10 @@ describe("review workflow contract", () => {
     assert.match(aiCommand, /generate_ai_company_scores/);
     assert.match(postCollectionJudge, /recompute_default_filter_profile_for_job_on_conn/);
     assert.match(postCollectionJudge, /recompute_default_filter_profile_on_conn/);
-    assert.match(postCollectionJudge, /AiPostCollectionJudgePayload/);
+    assert.match(postCollectionJudge, /AiPostCollectionJudgeBatchPayload/);
+    assert.match(postCollectionJudge, /CommandIn::AiPostCollectionJudgeBatch/);
+    assert.match(postCollectionJudge, /default_post_collection_judge_concurrency/);
+    assert.doesNotMatch(postCollectionJudge, /CommandIn::AiPostCollectionJudge\(payload\)/);
     assert.match(greeting, /let job_context = load_job_ai_context/);
     assert.match(greeting, /score_reason\["resume"\]\["matched_stack"\]\[0\]/);
     assert.match(greeting, /review_context: job_context\.review_context/);
@@ -177,16 +196,185 @@ describe("review workflow contract", () => {
     assert.match(workerSingle, /filterReason: payload\.filter_reason/);
     assert.match(workerSingle, /sourceContext: payload\.source_context/);
     assert.match(workerGreeting, /reviewContext: payload\.review_context/);
+    assert.match(workerProtocol, /AiPostCollectionJudgeBatchPayloadSchema/);
+    assert.match(workerProtocol, /AI_POST_COLLECTION_JUDGE_BATCH/);
     assert.match(workerPrompt, /筛选\/排序\/来源上下文 JSON/);
     assert.match(workerPrompt, /岗位摘要中的 filter_reason、score_reason、source_context、review_context/);
     assert.match(workerPrompt, /不能替代简历原文中的候选人事实/);
-    assert.match(workerPrompt, /来源与审核上下文 JSON/);
+    assert.match(workerPrompt, /来源与审核摘要 JSON/);
+    assert.match(workerPrompt, /不得写进 message、candidateEvidence 或 jobEvidence/);
     assert.match(workerPrompt, /优先使用匹配报告或评分理由中的 resume\.matched_stack/);
     assert.match(workerPrompt, /candidateEvidence 必须来自简历原文、当前情况说明、匹配报告或评分理由/);
     assert.match(workerAiContract, /matched_resume_evidence: \["候选人建设过 Kubernetes 多集群发布平台"/);
     assert.match(workerAiContract, /builds group prompts with per-job filter, score, source and review context/);
     assert.match(workerAiContract, /greeted_unread/);
     assert.match(workerAiContract, /allowed_source_platforms/);
+  });
+
+  it("keeps job-specific optimized resume generation preview-only and wired through the resume library", () => {
+    const rustProtocol = readProjectFile("src-tauri/src/ipc/protocol.rs");
+    const aiCommand = readProjectFile("src-tauri/src/commands/ai.rs");
+    const optimizedResumeCommand = readProjectFile("src-tauri/src/commands/ai/optimized_resume.rs");
+    const resumeLibrary = readProjectFile("src-tauri/src/resume_library.rs");
+    const tauriLib = readProjectFile("src-tauri/src/lib.rs");
+    const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
+    const workerAiMode = readProjectFile("packages/boss-crawler-worker/src/modes/ai.ts");
+    const workerMain = readProjectFile("packages/boss-crawler-worker/src/main.ts");
+    const workerPrompt = readProjectFile("packages/boss-crawler-worker/src/ai/prompt.ts");
+    const workerSchema = readProjectFile("packages/boss-crawler-worker/src/modes/ai/schemas.ts");
+    const workerResumeOptimize = readProjectFile("packages/boss-crawler-worker/src/modes/ai/resumeOptimize.ts");
+    const workerAiContract = readProjectFile("packages/boss-crawler-worker/test/ai-contract.test.ts");
+    const jobsPage = readProjectFile("src/pages/Jobs.vue");
+    const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
+    const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const frontendResumeLibrary = readProjectFile("src/lib/resumeLibrary.ts");
+    const optimizedResumeProductionCode = optimizedResumeCommand.split("#[cfg(test)]")[0];
+
+    assert.match(workerProtocol, /AiOptimizeResumeForJobPayloadSchema/);
+    assert.match(workerProtocol, /AI_OPTIMIZE_RESUME_FOR_JOB/);
+    assert.match(workerAiMode, /runAiOptimizeResumeForJobMode/);
+    assert.match(workerMain, /case "AI_OPTIMIZE_RESUME_FOR_JOB"/);
+    assert.match(workerPrompt, /buildResumeOptimizePrompts/);
+    assert.match(workerPrompt, /不能编造事实/);
+    assert.match(workerPrompt, /不得新增候选人没有提供的公司、项目、指标、技术栈、证书、学历、职责或成果/);
+    assert.match(workerPrompt, /optimized_resume_markdown/);
+    assert.match(workerSchema, /AiOptimizeResumeForJobResultSchema/);
+    assert.match(workerSchema, /optimized_resume_markdown/);
+    assert.match(workerSchema, /evidence/);
+    assert.match(workerSchema, /risks/);
+    assert.match(workerResumeOptimize, /AiOptimizeResumeForJobResultSchema\.safeParse/);
+    assert.match(workerResumeOptimize, /AI_RESULT/);
+    assert.match(workerAiContract, /builds job-specific resume prompts/);
+    assert.match(workerAiContract, /rejects incomplete Markdown/);
+
+    assert.match(rustProtocol, /AiOptimizeResumeForJobPayload/);
+    assert.match(rustProtocol, /AiOptimizeResumeForJob\(AiOptimizeResumeForJobPayload\)/);
+    assert.match(aiCommand, /pub async fn generate_optimized_resume_for_job/);
+    assert.match(optimizedResumeCommand, /resolve_source_resume/);
+    assert.match(optimizedResumeCommand, /resolve_resume_text_by_id/);
+    assert.match(optimizedResumeCommand, /resolve_resume_text_for_job/);
+    assert.match(optimizedResumeCommand, /CommandIn::AiOptimizeResumeForJob/);
+    assert.match(optimizedResumeCommand, /source_resume/);
+    assert.match(optimizedResumeCommand, /请先在简历库为该岗位关联简历，或设置一份默认简历/);
+    assert.doesNotMatch(optimizedResumeProductionCode, /create_resume|link_resume_to_jobs|update_resume/);
+    assert.match(resumeLibrary, /pub struct ResolvedResume/);
+    assert.match(resumeLibrary, /pub fn resolve_resume_text_by_id/);
+    assert.match(tauriLib, /commands::ai::generate_optimized_resume_for_job/);
+
+    assert.match(frontendResumeLibrary, /export interface OptimizedResumeForJobResult/);
+    assert.match(jobItem, /生成岗位版简历/);
+    assert.match(jobItem, /generate-optimized-resume/);
+    assert.match(jobsPage, /岗位版简历预览/);
+    assert.match(jobsPage, /保存并关联岗位/);
+    assert.match(jobsPage, /复制 Markdown/);
+    assert.match(jobsLogic, /invoke<OptimizedResumeForJobResult>\("generate_optimized_resume_for_job"/);
+    assert.match(jobsLogic, /createResume\(title, preview\.optimized_resume_markdown\)/);
+    assert.match(jobsLogic, /linkResumeToJobs\(createdResumeId, \[job\.encrypt_job_id\]\)/);
+    assert.match(jobsLogic, /loadResumeStatusesForJobs\(jobCandidates\.value\)/);
+    assert.doesNotMatch(jobsLogic, /updateResume\(/);
+    assert.doesNotMatch(jobsPage, /resume-workspace/);
+    assert.doesNotMatch(jobItem, /自动投递|自动发送/);
+  });
+
+  it("keeps resume library navigation and job resume-status loading free of duplicate work", () => {
+    const appShell = readProjectFile("src/App.vue");
+    const resumeLibraryRust = readProjectFile("src-tauri/src/resume_library.rs");
+    const resumeLibraryTypes = readProjectFile("src/lib/resumeLibrary.ts");
+    const resumeLibraryPageLogic = readProjectFile("src/lib/useResumeLibraryPage.ts");
+    const resumeLibraryPage = readProjectFile("src/pages/ResumeLibrary.vue");
+    const resumeLibraryCommand = readProjectFile("src-tauri/src/commands/resume_library.rs");
+    const tauriLib = readProjectFile("src-tauri/src/lib.rs");
+    const resumeListItemSource =
+      resumeLibraryRust.match(/pub struct ResumeListItem[\s\S]*?\n}\n/)?.[0] ?? "";
+    const resumeOverviewSource =
+      resumeLibraryRust.match(/pub struct ResumeLibraryOverview[\s\S]*?\n}\n/)?.[0] ?? "";
+    const frontendResumeListItemSource =
+      resumeLibraryTypes.match(/export interface ResumeListItem[\s\S]*?\n}\n/)?.[0] ?? "";
+    const frontendResumeOverviewSource =
+      resumeLibraryTypes.match(/export interface ResumeLibraryOverview[\s\S]*?\n}\n/)?.[0] ?? "";
+    const getStatusesSource =
+      resumeLibraryRust.match(/pub fn get_statuses_for_jobs[\s\S]*?\n}\n\npub fn resolve_resume_text_for_job/)?.[0] ?? "";
+    const selectResumeSource =
+      resumeLibraryPageLogic.match(/async function selectResume[\s\S]*?\n  }\n/)?.[0] ?? "";
+
+    assert.doesNotMatch(appShell, /<KeepAlive>/);
+    assert.match(resumeLibraryRust, /pub struct ResumeListItem/);
+    assert.doesNotMatch(resumeListItemSource, /body:/);
+    assert.match(resumeLibraryRust, /pub struct ResumeLibraryOverview/);
+    assert.doesNotMatch(resumeOverviewSource, /ResumeRecord|body:/);
+    assert.match(resumeLibraryRust, /pub selected_resume: Option<ResumeRecord>/);
+    assert.match(resumeLibraryRust, /pub fn get_overview/);
+    assert.match(resumeLibraryRust, /pub fn get_record/);
+    assert.match(resumeLibraryRust, /fn overview_omits_resume_body_and_record_loads_it_on_demand/);
+    assert.match(resumeLibraryCommand, /pub fn get_resume_library_overview/);
+    assert.match(resumeLibraryCommand, /pub fn get_resume_record/);
+    assert.match(tauriLib, /commands::resume_library::get_resume_library_overview/);
+    assert.match(tauriLib, /commands::resume_library::get_resume_record/);
+    assert.match(resumeLibraryTypes, /export interface ResumeRecord extends ResumeListItem/);
+    assert.doesNotMatch(frontendResumeListItemSource, /body:/);
+    assert.match(resumeLibraryTypes, /export interface ResumeLibraryOverview/);
+    assert.doesNotMatch(frontendResumeOverviewSource, /body:/);
+    assert.match(resumeLibraryTypes, /"get_resume_library_overview"/);
+    assert.match(resumeLibraryTypes, /"get_resume_record"/);
+
+    assert.match(resumeLibraryRust, /fn status_for_job_from_index/);
+    assert.match(getStatusesSource, /let index = read_index\(app_data_dir\)\?/);
+    assert.match(getStatusesSource, /status_for_job_from_index\(&index, job_id\)/);
+    assert.doesNotMatch(getStatusesSource, /get_status_for_job\(app_data_dir, job_id\)/);
+
+    assert.match(resumeLibraryPageLogic, /watch\(\s*\(\) => route\.query\.resumeId/);
+    assert.match(selectResumeSource, /router\.replace\(\{ path: "\/resume-library"/);
+    assert.doesNotMatch(selectResumeSource, /load\(resumeId\)/);
+    assert.match(resumeLibraryPageLogic, /getResumeLibraryOverview/);
+    assert.match(resumeLibraryPageLogic, /getResumeRecord/);
+    assert.match(resumeLibraryPageLogic, /async function ensureSelectedResumeLoaded/);
+    assert.match(resumeLibraryPageLogic, /detailRequestId/);
+
+    assert.match(resumeLibraryPage, /const renderPreview = ref\(false\)/);
+    assert.match(resumeLibraryPage, /await ensureSelectedResumeLoaded\(\)/);
+    assert.match(resumeLibraryPage, /window\.requestAnimationFrame\(\(\) => \{/);
+    assert.match(resumeLibraryPage, /v-if="renderPreview"[\s\S]{0,120}v-html="renderedResumeHtml"/);
+  });
+
+  it("keeps navigation hot-path reads out of database migration work", () => {
+    const dbModule = readProjectFile("src-tauri/src/db/mod.rs");
+    const jobsShared = readProjectFile("src-tauri/src/commands/jobs/shared.rs");
+    const filterProfileCommands = readProjectFile("src-tauri/src/commands/filter_profile.rs");
+    const resumeLibraryRust = readProjectFile("src-tauri/src/resume_library.rs");
+    const dbTests = readProjectFile("src-tauri/src/db/tests.rs");
+    const getDefaultFilterSource =
+      filterProfileCommands.match(/pub fn get_default_filter_profile[\s\S]*?\n}\n\n#\[tauri::command\]/)?.[0] ?? "";
+    const listProfilesSource =
+      filterProfileCommands.match(/pub fn list_filter_profiles[\s\S]*?\n}\n\n#\[tauri::command\]/)?.[0] ?? "";
+
+    assert.match(dbModule, /pub fn init_db[\s\S]*?migrate::migrate\(&conn\)\?/);
+    assert.match(dbModule, /pub fn connect_db[\s\S]*?open_db\(app_data_dir\)/);
+    assert.match(jobsShared, /db::connect_db\(app_data_dir\)/);
+    assert.doesNotMatch(jobsShared, /db::init_db\(app_data_dir\)/);
+    assert.match(getDefaultFilterSource, /db::connect_db\(&app_data_dir\)/);
+    assert.match(listProfilesSource, /db::connect_db\(&app_data_dir\)/);
+    assert.match(resumeLibraryRust, /fn job_summaries_for_ids[\s\S]*?db::connect_db\(app_data_dir\)/);
+    assert.doesNotMatch(resumeLibraryRust, /fn job_summaries_for_ids[\s\S]*?db::init_db\(app_data_dir\)/);
+    assert.match(dbTests, /connect_db_opens_runtime_connection_without_running_migrations/);
+  });
+
+  it("keeps job library rows free of raw filter evidence on the frontend hot path", () => {
+    const jobsTypes = readProjectFile("src/lib/jobs.ts");
+    const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
+    const jobsModels = readProjectFile("src-tauri/src/commands/jobs/models.rs");
+    const qualityGuide = readProjectFile(".trellis/spec/boss-crawler-worker/frontend/quality-guidelines.md");
+
+    assert.match(jobsTypes, /filter_reason_json\?: string \| null/);
+    assert.match(jobsTypes, /filter_summary: string/);
+    assert.match(jobsModels, /#\[serde\(skip_serializing\)\]\s+pub filter_reason_json/);
+    assert.match(jobsModels, /pub filter_summary: String/);
+    assert.match(jobsModels, /let filter_summary = summarize_filter_reason/);
+    assert.match(jobsLogic, /job\.filter_summary\?\.trim\(\)/);
+    assert.doesNotMatch(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
+    assert.doesNotMatch(jobItem, /parseFilterReasonJson/);
+    assert.doesNotMatch(jobItem, /filter_reason_json/);
+    assert.match(qualityGuide, /Do not make every row component parse large JSON/);
   });
 
   it("keeps local Company Score batch rebuild wired without adding a separate jobs-page panel", () => {
@@ -213,6 +401,44 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /invoke<CompanyScoreRebuildResult>\("rebuild_company_scores"\)/);
     assert.match(jobsLogic, /companyScoreRebuildMessage/);
     assert.match(jobsLogic, /refreshAfterJobStateChange\(false\)/);
+  });
+
+  it("keeps database indexes for jobs and resume library performance hot paths", () => {
+    const schema = readProjectFile("src-tauri/src/db/schema.sql");
+    const migrate = readProjectFile("src-tauri/src/db/migrate.rs");
+    const dbTests = readProjectFile("src-tauri/src/db/tests.rs");
+
+    for (const indexName of [
+      "idx_job_last_seen_id",
+      "idx_job_source_link_keyword_job",
+      "idx_ai_report_latest_resume",
+      "idx_job_detail_projection_hash",
+    ]) {
+      assert.match(schema, new RegExp(indexName));
+      assert.match(migrate, new RegExp(indexName));
+      assert.match(dbTests, new RegExp(indexName));
+    }
+
+    const jobsQueries = readProjectFile("src-tauri/src/commands/jobs/queries.rs");
+    const jobsModels = readProjectFile("src-tauri/src/db/models/jobs.rs");
+    const jobProjection = readProjectFile("src-tauri/src/db/models/job_projection.rs");
+
+    assert.match(schema, /CREATE TABLE IF NOT EXISTS job_detail_projection/);
+    assert.match(jobProjection, /pub\(crate\) fn build_job_detail_projection/);
+    assert.match(jobProjection, /pub\(crate\) fn backfill_job_detail_projections/);
+    assert.match(jobsModels, /upsert_job_detail_projection\(conn, encrypt_job_id, zp_data_json\)/);
+    assert.match(migrate, /backfill_job_detail_projections\(conn\)\?/);
+    assert.match(migrate, /job_detail_projection p/);
+    assert.doesNotMatch(migrate, /SELECT zp_data_json FROM job_detail_raw d WHERE d\.encrypt_job_id = NEW\.encrypt_job_id/);
+    assert.match(migrate, /fn ensure_performance_indexes/);
+    assert.match(dbTests, /init_db_creates_library_performance_indexes/);
+    assert.match(dbTests, /job_detail_projection_backfill_is_idempotent_and_refreshes_changed_raw_detail/);
+    assert.match(jobsQueries, /fn build_job_candidate_from_sql/);
+    assert.match(jobsQueries, /LEFT JOIN job_detail_projection dp ON dp\.encrypt_job_id = j\.encrypt_job_id/);
+    assert.match(jobsQueries, /OR dp\.search_text LIKE \?/);
+    assert.match(jobsQueries, /SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = \?1/);
+    assert.match(jobsQueries, /list_job_candidates_skips_detail_join_until_detail_search_is_needed/);
+    assert.match(jobsQueries, /detail search should not touch raw detail JSON/);
   });
 
   it("keeps AI Company Score batch generation wired to worker and cache", () => {
@@ -272,7 +498,8 @@ describe("review workflow contract", () => {
     assert.match(jobsTypes, /review_status: asString\(parsed\.dimensions\.review_status\)/);
     assert.match(jobItem, /AI 结果：\{\{ aiAuditStatusLabel\(aiAuditStatus\) \}\}/);
     assert.match(jobItem, /原因：\{\{ aiAuditReasonText \}\}/);
-    assert.match(jobItem, /aiAuditBucket/);
+    assert.match(jobItem, /props\.job\.ai_audit_status/);
+    assert.match(jobItem, /props\.job\.ai_audit_summary/);
     assert.match(jobItem, /aiAuditReasonText/);
     assert.match(jobItem, /aiPostCollectionJudgementText/);
     assert.doesNotMatch(jobItem, /filterDimensions\.(salary_desc|experience_name|review_status)/);
@@ -378,6 +605,39 @@ describe("review workflow contract", () => {
     assert.match(runtime, /已入库：\$\{evt\.payload\.position_name \?\? evt\.payload\.encrypt_job_id\}/);
     assert.match(crawlPanel, /运行日志/);
     assert.match(crawlPanel, /v-for="\(line, index\) in logs"/);
+  });
+
+  it("keeps scheduled crawl config app-open only and wired to the existing crawl flow", () => {
+    const appShell = readProjectFile("src/App.vue");
+    const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
+    const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+
+    assert.match(appShell, /useCrawlPage\(\{ initialize: "schedule" \}\)/);
+    assert.match(crawlConfig, /定时采集/);
+    assert.match(crawlConfig, /crawlScheduleEnabled/);
+    assert.match(crawlConfig, /crawlScheduleExpression/);
+    assert.match(crawlConfig, /CronLight/);
+    assert.match(crawlConfig, /未来 3 次触发/);
+    assert.match(crawlConfig, /crawlScheduleNextRunLabel/);
+    assert.match(crawlConfig, /crawlScheduleLastStatusLabel/);
+    assert.match(crawlConfig, /crawlScheduleLastMessage/);
+
+    assert.match(crawlLogic, /crawlScheduleEnabled\?: boolean/);
+    assert.match(crawlLogic, /crawlScheduleExpression\?: string/);
+    assert.match(crawlLogic, /crawlScheduleTime\?: string/);
+    assert.match(crawlLogic, /DEFAULT_CRAWL_SCHEDULE_EXPRESSION/);
+    assert.match(crawlLogic, /dailyTimeToCronExpression/);
+    assert.match(crawlLogic, /resolveScheduleExpression/);
+    assert.match(crawlLogic, /new Cron\(/);
+    assert.match(crawlLogic, /mode: "5-part"/);
+    assert.match(crawlLogic, /cronstrue/);
+    assert.match(crawlLogic, /initializeSchedule/);
+    assert.match(crawlLogic, /rescheduleCrawlTimer/);
+    assert.match(crawlLogic, /runScheduledCrawl/);
+    assert.match(crawlLogic, /await start\(\)/);
+    assert.match(crawlLogic, /采集任务正在运行，本次定时采集已跳过/);
+    assert.match(crawlLogic, /collectionConfig: buildCollectionConfigPayload\(\)/);
+    assert.doesNotMatch(crawlLogic, /system scheduler|后台常驻/);
   });
 
   it("keeps company scale, financing stage and industry wired as filter-profile dimensions", () => {
@@ -976,7 +1236,7 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /\{ value: "has_notes", label: "有备注" \}/);
     assert.match(jobsLogic, /\{ value: "company_not_fit", label: "公司不合适" \}/);
     assert.match(jobsLogic, /\{ value: "blacklisted", label: "黑名单" \}/);
-    assert.match(jobsQueries, /JOB_PROCESSED_SQL/);
+    assert.match(jobsQueries, /fn job_processed_sql/);
     assert.match(jobsQueries, /jb\.id IS NOT NULL/);
     assert.match(jobsQueries, /cb\.id IS NOT NULL/);
     assert.match(jobsQueries, /kb\.kind = 'keyword'/);
@@ -1083,42 +1343,17 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(jobsLogic, /sendGreeting|send_message|sendMessage|autoSend/i);
   });
 
-  it("copies a local application packet for manually confirmed jobs without applying", () => {
+  it("removes local application-packet copy controls while keeping manual review flow", () => {
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
     const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
-    const jobGroup = readProjectFile("src/components/jobs/JobsGroupCard.vue");
-    const copyApplicationPacketSource =
-      jobsLogic.match(/async function copyApplicationPacket[\s\S]*?\n  async function copyDailyIntelligence/)?.[0] ?? "";
 
-    assert.match(jobsLogic, /function buildApplicationPacket/);
     assert.match(jobsLogic, /function buildApplicationChecklist/);
     assert.match(jobsLogic, /function buildApplicationReadinessGaps/);
     assert.match(jobsLogic, /function formatApplicationReadinessPreflight/);
     assert.match(jobsLogic, /function buildGreetingEvidenceTrace/);
-    assert.match(jobsLogic, /技术交集：\$\{greeting\.overlapKeywords\.join\("、"\)\}/);
-    assert.match(jobsLogic, /岗位依据：\$\{greeting\.jobEvidence\.join\("；"\)\}/);
-    assert.match(jobsLogic, /候选人依据：\$\{greeting\.candidateEvidence\.join\("；"\)\}/);
-    assert.match(jobsLogic, /编辑提示：\$\{greeting\.editNotes\.join\("；"\)\}/);
     assert.match(jobsLogic, /function formatApplicationFilterTrace/);
-    assert.match(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
-    assert.match(jobsLogic, /通过筛选规则/);
-    assert.match(jobsLogic, /【JobPilot 投递材料包】/);
-    assert.match(jobsLogic, /待 AI 生成或手动粘贴/);
-    assert.match(jobsLogic, /投递准备清单：\\n/);
-    assert.match(jobsLogic, /投递准备预检：\\n/);
-    assert.match(jobsLogic, /仍有 \$\{gaps\.length\} 项待补齐/);
-    assert.match(jobsLogic, /打招呼草稿：尚未生成或粘贴可编辑草稿/);
-    assert.match(jobsLogic, /尚未生成或粘贴，请先点击“定制打招呼”或手动填写。/);
-    assert.match(jobsLogic, /人工确认：/);
-    assert.match(jobsLogic, /采后规则：\$\{formatApplicationFilterTrace\(job\)\}/);
-    assert.match(jobsLogic, /筛选依据：\$\{formatApplicationFilterTrace\(job\)\}/);
-    assert.match(jobsLogic, /简历匹配报告：/);
     assert.match(jobsLogic, /function buildResumeMatchEvidenceTrace/);
-    assert.match(jobsLogic, /formatResumeMatchEvidence\(parseScoreReasonJson\(scoreReasonJson\)\)/);
-    assert.match(jobsLogic, /Resume Match 证据：\\n\$\{buildResumeMatchEvidenceTrace\(job\.score_reason_json\)\}/);
-    assert.match(jobsLogic, /打招呼草稿/);
-    assert.match(jobsLogic, /打招呼证据：\\n\$\{buildGreetingEvidenceTrace\(greeting\)\}/);
     assert.match(jobsLogic, /function buildReadyToApplyConfirmationMessage/);
     assert.match(jobsLogic, /buildApplicationChecklist\(job, greetingDraft\)/);
     assert.match(jobsLogic, /formatApplicationReadinessPreflight\(job, greetingDraft\)/);
@@ -1136,22 +1371,18 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /去重 \$\{dedupKey\}/);
     assert.match(jobsLogic, /采集 \$\{formatDate\(job\.last_seen_at\)\}/);
     assert.match(jobsLogic, /不会自动发送或投递/);
-    assert.match(jobsLogic, /async function copyApplicationPacket/);
-    assert.match(jobsLogic, /job\.review_status !== "ready_to_apply" && job\.review_status !== "applied"/);
-    assert.match(jobsLogic, /请先人工确认岗位并标记为准备投递，再复制投递材料包。/);
+    assert.doesNotMatch(jobsLogic, /function buildApplicationPacket/);
+    assert.doesNotMatch(jobsLogic, /async function copyApplicationPacket/);
+    assert.doesNotMatch(jobsLogic, /投递材料包|复制投递材料包|【JobPilot 投递材料包】/);
     assert.match(jobsLogic, /async function openJobSourceUrl\(job: JobRow\)/);
     assert.match(jobsLogic, /await openUrl\(url\)/);
     assert.match(jobsLogic, /window\.open\(url, "_blank", "noopener,noreferrer"\)/);
     assert.match(jobsLogic, /打开来源链接失败/);
-    assert.match(jobsLogic, /buildApplicationPacket\(job, greetingDrafts\.get\(job\.encrypt_job_id\), greetingCache\.get\(job\.encrypt_job_id\)\)/);
-    assert.match(jobsLogic, /buildApplicationPacket\([\s\S]{0,240}sourcePlatformModeTrace\(\)[\s\S]{0,80}\]\.join\("\\n"\)/);
-    assert.match(jobsLogic, /buildApplicationChecklist/);
-    assert.match(jobsLogic, /buildApplicationReadinessGaps/);
-    assert.match(jobsLogic, /buildApplicationPacket/);
     assert.match(jobItem, /AI 结果：\{\{ aiAuditStatusLabel\(aiAuditStatus\) \}\}/);
     assert.match(jobItem, /岗位详情/);
     assert.match(jobItem, /复制/);
     assert.match(jobItem, /复制打招呼/);
+    assert.doesNotMatch(jobItem, /复制材料包|copy-application-packet/);
     assert.match(jobsLogic, /updateReviewStatus/);
     assert.match(jobsLogic, /applyReviewStatus/);
     assert.match(jobItem, /@click="\$emit\('open-source-url', job\)"/);
@@ -1166,13 +1397,9 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /确认已在外部平台手动完成/);
     assert.match(jobsLogic, /该操作只记录本地已投递状态，不会自动投递。/);
     assert.match(jobsLogic, /确认已手动投递/);
-    assert.match(jobItem, /复制/);
-    assert.match(jobGroup, /copy-link/);
-    assert.match(jobGroup, /open-source-url/);
     assert.match(jobsPage, /@open-source-url="\(job\) => openJobSourceUrl\(job\)"/);
     assert.match(jobsPage, /copy-link/);
-    assert.match(copyApplicationPacketSource, /async function copyApplicationPacket/);
-    assert.doesNotMatch(copyApplicationPacketSource, /set_job_review_state[\s\S]*applied/);
+    assert.doesNotMatch(jobsPage, /@copy-application-packet/);
   });
 
   it("uses multi-select status filters instead of separate favorite, application and follow-up queues", () => {
@@ -1203,7 +1430,6 @@ describe("review workflow contract", () => {
     assert.match(jobsPage, /selectedCollectionMethodFilters\.includes\(option\.value\)/);
     assert.match(jobsLogic, /async function updateReviewStatus/);
     assert.match(jobsLogic, /async function updateCommunicationStatus/);
-    assert.match(jobsLogic, /async function copyApplicationPacket/);
     assert.match(jobsQueries, /"favorited" \| "ready_to_apply" \| "applied" \| "ignored"/);
     assert.match(jobsQueries, /"greeted_unread" \| "read_no_reply" \| "replied" \| "rejected" \| "manual_not_fit"/);
     assert.match(jobsQueries, /"has_notes"/);
@@ -1220,10 +1446,6 @@ describe("review workflow contract", () => {
     const jobsPageLogic = readProjectFile("src/lib/useJobsPage.ts");
     const jobsPageView = readProjectFile("src/pages/Jobs.vue");
 
-    assert.match(jobsPageView, /采后结果分区/);
-    assert.match(jobsPageView, /jobIntelligenceRangeLabel/);
-    assert.match(jobsPageView, /currentPageUnprocessedCount/);
-    assert.match(jobsPageView, /currentPageProcessedCount/);
     assert.match(jobsPageView, /JOB_TIME_RANGE_OPTIONS/);
     assert.match(jobsPageView, /jobCandidateTimeRange === 'custom'/);
     assert.match(jobsPageView, /jobCandidateCustomStartDate/);

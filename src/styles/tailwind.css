@@ -201,6 +201,25 @@
     @apply min-w-0 whitespace-pre-wrap break-words text-[12px] leading-5 text-slate-700 [overflow-wrap:anywhere];
   }
 
+  .ui-cron-light {
+    @apply block min-w-0;
+  }
+
+  .ui-cron-light.cron-light {
+    @apply flex flex-wrap items-center gap-2 text-sm text-content-primary;
+  }
+
+  .ui-cron-light .cl-prefix,
+  .ui-cron-light .cl-suffix {
+    @apply text-xs text-content-muted;
+  }
+
+  .ui-cron-light button,
+  .ui-cron-light input,
+  .ui-cron-light [role="button"] {
+    font: inherit;
+  }
+
   .resume-review-header {
     @apply flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between;
   }
