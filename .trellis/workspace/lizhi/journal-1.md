@@ -678,3 +678,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: 岗位库与简历库性能验收
+
+**Date**: 2026-06-30
+**Task**: 岗位库与简历库性能验收
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成岗位库与简历库性能验收：真实 DB 临时副本、5k/10k 模拟压测均达标，记录报告和可复用 benchmark 脚本。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3d90aba` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
