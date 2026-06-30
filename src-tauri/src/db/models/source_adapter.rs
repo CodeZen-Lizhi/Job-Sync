@@ -35,12 +35,7 @@ const BOSS_SOURCE_ADAPTER_SPEC: JobSourceAdapterSpec =
 const JOB_SOURCE_ADAPTER_SPECS: [JobSourceAdapterSpec; 6] = [
     BOSS_SOURCE_ADAPTER_SPEC,
     JobSourceAdapterSpec::new("liepin", "猎聘", SOURCE_ADAPTER_KIND_MANUAL_IMPORT, true),
-    JobSourceAdapterSpec::new(
-        "zhilian",
-        "智联招聘",
-        SOURCE_ADAPTER_KIND_ZHILIAN,
-        true,
-    ),
+    JobSourceAdapterSpec::new("zhilian", "智联招聘", SOURCE_ADAPTER_KIND_ZHILIAN, true),
     JobSourceAdapterSpec::new("maimai", "脉脉", SOURCE_ADAPTER_KIND_MANUAL_IMPORT, true),
     JobSourceAdapterSpec::new("v2ex", "V2EX", SOURCE_ADAPTER_KIND_FEED, true),
     JobSourceAdapterSpec::new("linuxdo", "LinuxDo", SOURCE_ADAPTER_KIND_FEED, true),

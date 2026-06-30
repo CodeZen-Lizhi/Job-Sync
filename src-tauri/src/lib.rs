@@ -29,6 +29,12 @@ pub fn run() {
                 if let Err(err) = window.center() {
                     eprintln!("failed to center window: {err}");
                 }
+                if let Err(err) = window.show() {
+                    eprintln!("failed to show main window: {err}");
+                }
+                if let Err(err) = window.set_focus() {
+                    eprintln!("failed to focus main window: {err}");
+                }
             }
             Ok(())
         })

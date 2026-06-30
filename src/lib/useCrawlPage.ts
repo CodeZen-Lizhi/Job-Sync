@@ -96,10 +96,17 @@ type CollectionConfigPayload = {
 type V2exFeedSortBy = "published_desc" | "updated_desc";
 type LinuxDoSortBy = "latest" | "created";
 type CrawlScheduleRunStatus = "success" | "failed" | "skipped";
+type CollectionSourceRegistryEntry = { platform: string; display_name?: string; adapter_kind: string; enabled: boolean };
 
 const DEFAULT_CRAWL_SCHEDULE_EXPRESSION = "0 9 * * *";
 const DEFAULT_CRAWL_SCHEDULE_PERIOD = "day";
 const CRAWL_SCHEDULE_UPCOMING_RUN_COUNT = 3;
+const PREVIEW_COLLECTION_SOURCES: CollectionSourceRegistryEntry[] = [
+  { platform: BOSS_SOURCE_PLATFORM, adapter_kind: "boss", enabled: true },
+  { platform: V2EX_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
+  { platform: LINUXDO_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
+  { platform: ZHILIAN_SOURCE_PLATFORM, adapter_kind: "zhilian", enabled: true },
+];
 
 let crawlPageState: CrawlPageState | null = null;
 
@@ -131,7 +138,7 @@ function createCrawlPageState() {
   const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
   const bossCollectionEnabled = ref(false);
   const collectionSourcesLoaded = ref(false);
-  const collectionSourceRegistry = ref<Array<{ platform: string; display_name?: string; adapter_kind: string; enabled: boolean }>>([]);
+  const collectionSourceRegistry = ref<CollectionSourceRegistryEntry[]>([]);
   const collectionRuns = ref<CollectionRun[]>([]);
   const collectionFailures = ref<CollectionFailure[]>([]);
   const collectionSummaryLoading = ref(false);
@@ -217,12 +224,9 @@ function createCrawlPageState() {
   const collectableSourceOptions = computed(() => {
     const sources = collectionSourceRegistry.value.length > 0
       ? collectionSourceRegistry.value
-      : [
-          { platform: BOSS_SOURCE_PLATFORM, adapter_kind: "boss", enabled: bossCollectionEnabled.value },
-          { platform: V2EX_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
-          { platform: LINUXDO_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
-          { platform: ZHILIAN_SOURCE_PLATFORM, adapter_kind: "zhilian", enabled: true },
-        ];
+      : PREVIEW_COLLECTION_SOURCES.map((source) => (
+          source.platform === BOSS_SOURCE_PLATFORM ? { ...source, enabled: bossCollectionEnabled.value } : source
+        ));
     return sources
       .filter((source) => {
         if (!source.enabled) return false;
@@ -731,7 +735,13 @@ function createCrawlPageState() {
   }
 
   async function loadCollectionSources(): Promise<void> {
-    if (!tauri) return;
+    if (!tauri) {
+      bossCollectionEnabled.value = true;
+      collectionSourceRegistry.value = PREVIEW_COLLECTION_SOURCES;
+      collectionSourcesLoaded.value = true;
+      openSelectedSourceSettings();
+      return;
+    }
     try {
       const sources = await invoke<Array<{ platform: string; adapter_kind: string; enabled: boolean }>>("list_job_sources");
       collectionSourceRegistry.value = sources;
@@ -991,13 +1001,22 @@ function createCrawlPageState() {
   }
 
   async function initialize(): Promise<void> {
-    if (initialized.value) return;
+    if (initialized.value) {
+      void refreshCollectionSourceState();
+      return;
+    }
     initialized.value = true;
     void initializeSchedule();
-    void loadCollectionSources();
-    void loadCollectionSummary();
+    void refreshCollectionSourceState();
     void loadBossMeta();
     void loadDefaultFilterProfile();
+  }
+
+  async function refreshCollectionSourceState(): Promise<void> {
+    await Promise.all([
+      loadCollectionSources(),
+      loadCollectionSummary(),
+    ]);
   }
 
   async function initializeSchedule(): Promise<void> {

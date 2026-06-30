@@ -108,6 +108,7 @@ const sourceUpdatingPlatform = ref<string | null>(null);
 const loginStatusByPlatform = ref<Record<string, boolean | null>>({
   boss: null,
   linuxdo: null,
+  zhilian: null,
 });
 const loginLoadingPlatform = ref<string | null>(null);
 const loginRefreshingPlatform = ref<string | null>(null);
@@ -261,7 +262,7 @@ function platformCapabilityHint(source: JobSourceEntry): string {
     return "LinuxDo 受 Cloudflare 保护；请点“打开”在应用内浏览器里完成登录，采集会复用同一 profile。";
   }
   if (source.platform === "zhilian") {
-    return "智联公开路径可能触发登录或安全验证；请点“打开”完成一次验证，采集会复用同一 profile。";
+    return "智联公开路径可能触发安全验证；请点“打开”完成一次验证，后续采集后台复用同一 profile。采集时若未就绪会提示重连，不会停下来等人工验证。";
   }
   if (source.adapter_kind === "feed") {
     return "启用后可在采集配置中作为公开 Feed 自动采集来源；无需平台登录。";

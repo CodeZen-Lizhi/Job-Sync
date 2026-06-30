@@ -517,7 +517,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
         >
           <span class="space-y-1">
             <span class="block text-sm font-semibold text-content-primary">智联招聘</span>
-            <span class="block text-xs text-content-muted">公开采集 / 可见验证</span>
+            <span class="block text-xs text-content-muted">连接一次 / 后台复用 profile</span>
           </span>
           <span class="text-xs text-content-muted">{{ zhilianSettingsOpen ? "收起" : "展开" }}</span>
         </button>
@@ -526,12 +526,12 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">关键词</div>
             <textarea v-model="zhilianKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go 远程&#10;SRE&#10;Kubernetes" />
-            <div class="text-[11px] leading-5 text-content-muted">一行一个关键词；采集会先尝试公开路径，遇到验证时复用智联浏览器资料。</div>
+            <div class="text-[11px] leading-5 text-content-muted">一行一个关键词；采集会后台复用设置页连接过的智联 profile 读取搜索页。</div>
           </label>
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">城市 / 地区</div>
             <input v-model="zhilianCityText" class="ui-input w-full" placeholder="可留空；如 530 或 北京" />
-            <div class="text-[11px] leading-5 text-content-muted">当前按智联公开接口/页面可识别字段传入。</div>
+            <div class="text-[11px] leading-5 text-content-muted">智联城市编码可直接填写，例如北京 530；留空则使用平台默认范围。</div>
           </label>
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">页数上限</div>

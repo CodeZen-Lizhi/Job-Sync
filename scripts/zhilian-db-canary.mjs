@@ -6,27 +6,26 @@ import { spawn } from "node:child_process";
 
 const appIdentifier = "com.administrator.jobpilot";
 const defaultSinceMinutes = 180;
-const okBuckets = new Set(["recommended", "pending_confirmation", "filtered"]);
 const fatalEventTypes = ["ERROR", "WORKER_EXIT", "CRAWL_AUTO_START"];
 
 function usage() {
   return [
     "Usage:",
-    "  npm run boss:db-canary -- --keyword \"Go 远程\" --city 101020100",
-    "  npm run boss:db-canary -- --run-id run_123 --since-minutes 0",
+    "  npm run zhilian:db-canary -- --keyword Java --city 530",
+    "  npm run zhilian:db-canary -- --run-id run_123 --since-minutes 0",
     "",
     "Options:",
     "  --db-path <path>          SQLite app.db path. Default: macOS JobPilot app data app.db",
     "  --data-dir <path>         App data directory containing app.db",
-    "  --run-id <id>             Check one collection_run id instead of latest Boss run",
+    "  --run-id <id>             Check one collection_run id instead of latest Zhilian run",
     "  --keyword <text>          Require the run/source link keyword to match",
     "  --city <code>             Require filters_json city to match",
     "  --since-minutes <n>       Only consider recent runs. Default: 180; 0 disables",
     "  --require-insert          Require inserted > 0 instead of inserted+updated+duplicate > 0",
     "",
     "Success criteria:",
-    "  latest Boss run is finished without errors, has real DB activity, and has",
-    "  matching job, job_source_link, job_detail_raw, and job_filter_result rows.",
+    "  latest Zhilian run is finished without errors, has real DB activity, and has",
+    "  matching job, job_source_link, and job_detail_raw rows with list-level evidence.",
   ].join("\n");
 }
 
@@ -47,7 +46,7 @@ function parseArgs(argv) {
     runId: "",
     keyword: "",
     city: "",
-    sinceMinutes: Number.parseInt(process.env.JOB_SYNC_BOSS_DB_CANARY_SINCE_MINUTES || String(defaultSinceMinutes), 10),
+    sinceMinutes: Number.parseInt(process.env.JOB_SYNC_ZHILIAN_DB_CANARY_SINCE_MINUTES || String(defaultSinceMinutes), 10),
     requireInsert: false,
   };
 
@@ -57,9 +56,7 @@ function parseArgs(argv) {
       const inline = arg.match(new RegExp(`^${name}=(.*)$`));
       if (inline) return inline[1];
       const next = argv[index + 1];
-      if (!next || next.startsWith("--")) {
-        throw new Error(`${name} requires a value`);
-      }
+      if (!next || next.startsWith("--")) throw new Error(`${name} requires a value`);
       index += 1;
       return next;
     };
@@ -188,7 +185,7 @@ async function findRun(options) {
   const where = options.runId
     ? `id = ${sqlString(options.runId)}`
     : [
-        "source_platform = 'boss'",
+        "source_platform = 'zhilian'",
         recentPredicate(options),
         keywordPredicate(options.keyword),
         filtersCityPredicate(options.city),
@@ -229,7 +226,7 @@ async function findFatalFailures(options, runId) {
 }
 
 async function findEvidenceRows(options, run) {
-  const rows = await runSql(
+  return await runSql(
     options.dbPath,
     `
       SELECT
@@ -240,6 +237,9 @@ async function findEvidenceRows(options, run) {
         j.position_name,
         j.brand_name,
         j.city_name,
+        j.salary_desc,
+        j.experience_name,
+        j.degree_name,
         j.raw_payload_json,
         CASE WHEN json_valid(j.raw_payload_json) THEN 1 ELSE 0 END AS raw_payload_json_valid,
         s.keyword,
@@ -247,28 +247,27 @@ async function findEvidenceRows(options, run) {
         s.captured_at,
         CASE WHEN s.filters_json IS NOT NULL AND json_valid(s.filters_json) THEN 1 ELSE 0 END AS filters_json_valid,
         CASE WHEN d.zp_data_json IS NOT NULL AND json_valid(d.zp_data_json) THEN 1 ELSE 0 END AS detail_json_valid,
-        CASE WHEN d.zp_data_json IS NOT NULL AND json_valid(d.zp_data_json) THEN json_extract(d.zp_data_json, '$.detailStatus') END AS detail_status,
+        CASE WHEN d.zp_data_json IS NOT NULL AND json_valid(d.zp_data_json)
+          THEN COALESCE(
+            json_extract(d.zp_data_json, '$.detailStatus'),
+            json_extract(d.zp_data_json, '$.rawPayload.detail_status'),
+            json_extract(d.zp_data_json, '$.rawPayload.detailStatus')
+          )
+        END AS detail_status,
         CASE WHEN d.zp_data_json IS NOT NULL AND json_valid(d.zp_data_json) THEN json_extract(d.zp_data_json, '$.jobInfo.postDescription') END AS post_description,
-        d.fetched_at AS detail_fetched_at,
-        CASE WHEN f.reason_json IS NOT NULL AND json_valid(f.reason_json) THEN 1 ELSE 0 END AS reason_json_valid,
-        CASE WHEN f.reason_json IS NOT NULL AND json_valid(f.reason_json) THEN json_extract(f.reason_json, '$.bucket') END AS bucket,
-        f.updated_at AS filter_updated_at,
-        CASE WHEN f.updated_at IS NOT NULL AND f.updated_at >= s.captured_at THEN 1 ELSE 0 END AS filter_updated_after_link,
-        f.eligible
+        d.fetched_at AS detail_fetched_at
       FROM job_source_link s
       INNER JOIN job j ON j.encrypt_job_id = s.encrypt_job_id
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
-      LEFT JOIN job_filter_result f ON f.encrypt_job_id = j.encrypt_job_id
-      WHERE j.source_platform = 'boss'
+      WHERE j.source_platform = 'zhilian'
         AND s.captured_at >= ${sqlString(run.started_at)}
         AND (${run.finished_at ? `s.captured_at <= ${sqlString(run.finished_at)}` : "1 = 1"})
-        AND ${options.keyword ? `s.keyword = ${sqlString(options.keyword)}` : "1 = 1"}
+        AND (${options.keyword ? `s.keyword = ${sqlString(options.keyword)}` : "1 = 1"})
         AND ${filtersCityPredicate(options.city, "s.filters_json")}
       ORDER BY s.captured_at DESC
       LIMIT 20;
     `,
   );
-  return rows;
 }
 
 function parseJsonObject(text) {
@@ -288,22 +287,37 @@ function filtersMatchCity(filtersJson, city) {
   return values.includes(city);
 }
 
+function isZhilianJobDetailUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "www.zhaopin.com" || url.hostname.endsWith(".zhaopin.com")) &&
+      url.pathname.startsWith("/jobdetail/")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function summarizeEvidenceRow(row) {
   return {
     encrypt_job_id: row.encrypt_job_id,
+    source_platform: row.source_platform,
     source_url: row.source_url,
     dedup_key: row.dedup_key,
     position_name: row.position_name,
+    brand_name: row.brand_name,
+    city_name: row.city_name,
+    salary_desc: row.salary_desc,
+    experience_name: row.experience_name,
+    degree_name: row.degree_name,
     raw_payload_json_valid: row.raw_payload_json_valid,
     filters_json_valid: row.filters_json_valid,
     detail_json_valid: row.detail_json_valid,
     detail_status: row.detail_status,
     detail_fetched_at: row.detail_fetched_at,
     has_post_description: Boolean(String(row.post_description || "").trim()),
-    reason_json_valid: row.reason_json_valid,
-    bucket: row.bucket,
-    filter_updated_at: row.filter_updated_at,
-    filter_updated_after_link: row.filter_updated_after_link,
   };
 }
 
@@ -313,7 +327,7 @@ function validateRun(run, options) {
   const captured = Number(run.captured ?? 0);
   const failed = Number(run.failed ?? 0);
 
-  if (run.source_platform !== "boss") issues.push(`run ${run.id} is not a Boss run`);
+  if (run.source_platform !== "zhilian") issues.push(`run ${run.id} is not a Zhilian run`);
   if (run.status !== "finished") issues.push(`run ${run.id} status is ${run.status}, expected finished`);
   if (!run.finished_at) issues.push(`run ${run.id} has no finished_at`);
   if (run.error_message) issues.push(`run ${run.id} has error_message: ${run.error_message}`);
@@ -336,39 +350,37 @@ function validateRun(run, options) {
 function validateEvidence(rows, options) {
   const issues = [];
   if (rows.length === 0) {
-    issues.push("no Boss job evidence rows found in the selected run time window");
+    issues.push("no Zhilian job evidence rows found in the selected run time window");
     return { issues, usable: null };
   }
 
   const usable = rows.find((row) => {
     return (
-      row.encrypt_job_id &&
-      row.source_url &&
-      row.dedup_key &&
-      row.position_name &&
+      String(row.encrypt_job_id || "").startsWith("zhilian:") &&
+      String(row.source_platform || "") === "zhilian" &&
+      isZhilianJobDetailUrl(row.source_url) &&
+      String(row.dedup_key || "").trim() &&
+      String(row.position_name || "").trim() &&
+      String(row.brand_name || "").trim() &&
+      String(row.city_name || "").trim() &&
+      String(row.salary_desc || "").trim() &&
       Number(row.raw_payload_json_valid) === 1 &&
       Number(row.filters_json_valid) === 1 &&
       Number(row.detail_json_valid) === 1 &&
-      String(row.detail_status || "") === "list_only" &&
+      ["missing", "blocked", "detail"].includes(String(row.detail_status || "")) &&
       String(row.post_description || "").trim() &&
-      Number(row.reason_json_valid) === 1 &&
-      okBuckets.has(String(row.bucket || "")) &&
-      Number(row.filter_updated_after_link) === 1 &&
       (!options.city || filtersMatchCity(row.filters_json, options.city))
     );
   });
 
   if (!usable) {
     const sample = rows[0] ?? {};
-    issues.push(`no complete Boss DB evidence row found; sample=${JSON.stringify(summarizeEvidenceRow(sample))}`);
+    issues.push(`no complete Zhilian DB evidence row found; sample=${JSON.stringify(summarizeEvidenceRow(sample))}`);
     return { issues, usable: null };
   }
 
   if (options.keyword && usable.keyword !== options.keyword) {
     issues.push(`evidence keyword=${usable.keyword}, expected ${options.keyword}`);
-  }
-  if (!String(usable.source_url).startsWith("https://www.zhipin.com/job_detail/")) {
-    issues.push(`source_url is not a Boss detail URL: ${usable.source_url}`);
   }
   return { issues, usable: issues.length === 0 ? usable : null };
 }
@@ -383,14 +395,14 @@ async function main() {
   try {
     await fs.access(options.dbPath);
   } catch {
-    throw new Error(`app.db not found: ${options.dbPath}. Pass --db-path or --data-dir after running the Tauri Boss collection.`);
+    throw new Error(`app.db not found: ${options.dbPath}. Pass --db-path or --data-dir after running the Tauri Zhilian collection.`);
   }
 
   const run = await findRun(options);
   if (!run) {
     const windowText = options.runId
       ? `run_id=${options.runId}`
-      : `latest Boss run within ${options.sinceMinutes === 0 ? "any" : `${options.sinceMinutes} minute`} window`;
+      : `latest Zhilian run within ${options.sinceMinutes === 0 ? "any" : `${options.sinceMinutes} minute`} window`;
     throw new Error(`No ${windowText} matched db=${options.dbPath}`);
   }
 
@@ -417,7 +429,7 @@ async function main() {
   };
 
   if (issues.length > 0) {
-    console.error("[FAIL] Boss DB canary failed");
+    console.error("[FAIL] Zhilian DB canary failed");
     console.error(JSON.stringify(summary, null, 2));
     for (const issue of issues) {
       console.error(`- ${issue}`);
@@ -427,16 +439,17 @@ async function main() {
   }
 
   const first = evidenceValidation.usable ?? evidenceRows[0];
-  console.log("[OK] Boss DB canary passed");
+  console.log("[OK] Zhilian DB canary passed");
   console.log(JSON.stringify({
     ...summary,
     sampleJob: {
       encryptJobId: first.encrypt_job_id,
       positionName: first.position_name,
       brandName: first.brand_name,
+      cityName: first.city_name,
+      salaryDesc: first.salary_desc,
       keyword: first.keyword,
-      bucket: first.bucket,
-      detailStatus: first.detail_status || "detail_payload",
+      detailStatus: first.detail_status,
     },
   }, null, 2));
 }

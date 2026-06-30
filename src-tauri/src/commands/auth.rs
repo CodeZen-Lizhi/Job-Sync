@@ -18,7 +18,16 @@ fn has_linuxdo_session(app_data_dir: &std::path::Path) -> bool {
 }
 
 fn has_zhilian_session(app_data_dir: &std::path::Path) -> bool {
-    storage::zhilian_cookies_path(app_data_dir).is_file()
+    if !storage::zhilian_browser_profile_path(app_data_dir).is_dir() {
+        return false;
+    }
+    let Ok(Some(cookies)) = storage::read_json(&storage::zhilian_cookies_path(app_data_dir)) else {
+        return false;
+    };
+    cookies
+        .as_array()
+        .map(|items| !items.is_empty())
+        .unwrap_or(false)
         && storage::zhilian_local_storage_path(app_data_dir).is_file()
 }
 
@@ -113,6 +122,32 @@ mod tests {
         )
         .expect("rewrite cookies");
         assert!(has_boss_session(app_data_dir));
+    }
+
+    #[test]
+    fn zhilian_login_status_requires_profile_and_non_empty_cookies() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+
+        storage::write_json(&storage::zhilian_cookies_path(app_data_dir), &json!([]))
+            .expect("write empty cookies");
+        storage::write_json(
+            &storage::zhilian_local_storage_path(app_data_dir),
+            &json!({}),
+        )
+        .expect("write local storage");
+        assert!(!has_zhilian_session(app_data_dir));
+
+        std::fs::create_dir_all(storage::zhilian_browser_profile_path(app_data_dir))
+            .expect("create profile");
+        assert!(!has_zhilian_session(app_data_dir));
+
+        storage::write_json(
+            &storage::zhilian_cookies_path(app_data_dir),
+            &json!([{ "name": "ZP_TOKEN", "value": "token" }]),
+        )
+        .expect("write cookies");
+        assert!(has_zhilian_session(app_data_dir));
     }
 
     #[test]

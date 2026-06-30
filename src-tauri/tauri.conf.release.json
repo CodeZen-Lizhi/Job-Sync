@@ -29,7 +29,8 @@
     "resources": ["bin/"],
     "macOS": {
       "signingIdentity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "infoPlist": "Info.plist"
     },
     "icon": [
       "icons/32x32.png",

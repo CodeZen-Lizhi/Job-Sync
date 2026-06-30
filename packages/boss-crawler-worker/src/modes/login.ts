@@ -260,7 +260,7 @@ async function runZhilianLoginMode(
   payload: LoginStartPayload,
   ctx: ModeContext,
 ): Promise<void> {
-  const loginUrl = "https://www.zhaopin.com/";
+  const loginUrl = "https://www.zhaopin.com/sou/jl530/kwJava/p1?kt=3";
   if (!payload.user_data_dir) {
     throw new Error("智联登录需要可复用的浏览器资料目录。");
   }
@@ -280,23 +280,28 @@ async function runZhilianLoginMode(
       type: "LOGIN_STATUS",
       payload: {
         status: "captcha",
-        message: "已打开智联招聘窗口。请完成登录或安全验证；完成后保持窗口打开，应用会保存浏览器资料用于后续采集。",
+        message: "已打开智联招聘搜索页。请完成登录或安全验证，直到页面能看到岗位列表；完成后保持窗口打开，应用会保存浏览器资料用于后续采集。",
       },
     });
     await delay(8000, ctx.signal).catch(() => undefined);
     const cookies = await page.cookies().catch(() => []);
     const local_storage = await readLocalStorage(page).catch(() => ({}));
-    ctx.emit({
-      type: "COOKIE_COLLECTED",
-      payload: { source_platform: "zhilian", cookies, local_storage },
-    });
+    const pageText = await page.evaluate(() => `${document.title}\n${document.body?.innerText ?? ""}`.slice(0, 5000)).catch(() => "");
+    const ready = /jobdetail\/|立即沟通|立即投递|Java|招聘信息/u.test(pageText)
+      && !/Security Verification|Tencent Cloud EdgeOne|verify you are human|正在验证/u.test(pageText);
+    if (ready) {
+      ctx.emit({
+        type: "COOKIE_COLLECTED",
+        payload: { source_platform: "zhilian", cookies, local_storage },
+      });
+    }
     ctx.emit({
       type: "LOGIN_STATUS",
       payload: {
-        status: cookies.length > 0 ? "valid" : "invalid",
-        message: cookies.length > 0
-          ? "已保存智联浏览器资料；若采集仍遇到验证，请在打开的窗口内完成后重试。"
-          : "暂未检测到智联 Cookie；如果页面仍在验证，请完成后重试。",
+        status: ready ? "valid" : "captcha",
+        message: ready
+          ? "已保存智联浏览器资料，搜索页可读取岗位列表。后续采集会复用这个 profile。"
+          : "智联搜索页仍未就绪。请在打开的窗口内完成验证，直到能看到岗位列表后再刷新状态或重新打开。",
       },
     });
   } finally {

@@ -51,8 +51,9 @@ export type ZhilianJobEntry = {
 
 const DEFAULT_MAX_PAGES = 3;
 const API_REQUEST_TIMEOUT_MS = 45_000;
-const DEFAULT_CHALLENGE_WAIT_MS = 180_000;
 const zhilianProxyAgent = new ProxyAgent();
+const ZHILIAN_RECONNECT_MESSAGE = "智联登录/验证状态不可用，请到设置页点击“打开”重新连接智联后再采集。";
+const ZHILIAN_CARD_NOISE_RE = /下载智联APP|和我聊聊吧|收藏|分享|立即沟通|立即投递|职位类别|清空筛选|上一页|下一页|登录|注册/u;
 
 function decodeEntities(text: string): string {
   return text
@@ -125,7 +126,12 @@ export function isZhilianSecurityVerificationText(text: string): boolean {
 
 function looksLikeLoginText(text: string): boolean {
   const lower = text.toLowerCase();
-  return lower.includes("passport.zhaopin.com") || lower.includes("登录") && lower.includes("智联");
+  const hasSearchEvidence = /职位类别|公司行业|薪资要求|学历要求|工作经验/u.test(text);
+  const hasJobEvidence = /jobdetail\/|立即沟通|立即投递|招聘信息/u.test(text);
+  if (hasSearchEvidence) return false;
+  if (hasJobEvidence) return false;
+  if (lower.includes("passport.zhaopin.com")) return true;
+  return /验证码登录\/注册|获取验证码|国家网络身份认证登录/u.test(text);
 }
 
 export function extractZhilianJobId(input: string): string | undefined {
@@ -241,6 +247,105 @@ export function parseZhilianJobLinks(html: string, baseUrl = "https://www.zhaopi
   return out;
 }
 
+function pickLine(lines: readonly string[], predicate: (line: string) => boolean): string | undefined {
+  return lines.find((line) => predicate(line));
+}
+
+function zhilianCardLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim())
+    .filter((line) => line && !ZHILIAN_CARD_NOISE_RE.test(line));
+}
+
+function parseZhilianCardText(text: string, title?: string): Partial<ZhilianJobEntry> {
+  const lines = text
+    ? zhilianCardLines(text).filter((line) => line !== title)
+    : [];
+  const salary = pickLine(lines, (line) => (
+    /(\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*[万千kK]|元|薪|面议)/u.test(line)
+  ));
+  const city = pickLine(lines, (line) => (
+    /^(北京|上海|广州|深圳|杭州|成都|武汉|南京|苏州|天津|重庆|西安|长沙|郑州|青岛|厦门|合肥|福州|济南|长春|沈阳|大连|全国|远程)(?:[·\s].*)?$/u.test(line)
+  ));
+  const experience = pickLine(lines, (line) => /^(经验不限|在校|应届|1年以下|\d+-\d+年|\d+年以上|\d+年经验)$/u.test(line));
+  const degree = pickLine(lines, (line) => /^(学历不限|中专|高中|大专|本科|硕士|博士)$/u.test(line));
+  const companyIndex = lines.findIndex((line, index) => {
+    if (index <= 0) return false;
+    if (line === salary || line === city || line === experience || line === degree) return false;
+    if (/立即沟通|立即投递|回复|招聘|职位类别|清空筛选|上一页|下一页/u.test(line)) return false;
+    const next = lines.slice(index + 1, index + 5).join("\n");
+    return /(民营|国企|外企|合资|上市公司|事业单位|人以上|人$|软件\/IT服务|互联网|人工智能|通信|金融|制造)/u.test(next);
+  });
+  const company = companyIndex >= 0 ? lines[companyIndex] : undefined;
+  const welfare = lines.filter((line) => {
+    if ([salary, city, experience, degree, company].includes(line)) return false;
+    if (/回复|人事|经理|HR|招聘|民营|国企|外企|合资|上市公司|事业单位|人以上|人$|软件\/IT服务|互联网|人工智能|通信|金融|制造/u.test(line)) return false;
+    return /^[A-Za-z0-9+#.\-/\u4e00-\u9fa5（）()、]{1,24}$/u.test(line);
+  }).slice(0, 10);
+  return { company, city, salary, experience, degree, welfare: welfare.length > 0 ? welfare : undefined };
+}
+
+function extractZhilianPcCardHtml(html: string, matchStart: number, matchEnd: number): string {
+  const before = html.slice(0, matchStart);
+  const containerRe = /<(section|article|li|div)\b[^>]*class=["'][^"']*(?:job|position|card|item)[^"']*["'][^>]*>/gi;
+  let candidate: RegExpExecArray | null;
+  let containerStart = -1;
+  let tagName = "";
+  while ((candidate = containerRe.exec(before))) {
+    containerStart = candidate.index;
+    tagName = candidate[1] ?? "";
+  }
+  if (containerStart >= 0 && tagName) {
+    containerRe.lastIndex = matchEnd;
+    const nextContainer = containerRe.exec(html);
+    if (nextContainer) {
+      const cardHtml = html.slice(containerStart, nextContainer.index);
+      const jobLinkCount = (cardHtml.match(/jobdetail\//gi) ?? []).length;
+      if (jobLinkCount === 1 && htmlToText(cardHtml).length < 1600) return cardHtml;
+    }
+    const tailHtml = html.slice(containerStart, Math.min(html.length, matchEnd + 1600));
+    const tailJobLinkCount = (tailHtml.match(/jobdetail\//gi) ?? []).length;
+    if (tailJobLinkCount === 1 && htmlToText(tailHtml).length < 1600) return tailHtml;
+    const closeRe = new RegExp(`</${tagName}>`, "i");
+    const close = closeRe.exec(html.slice(matchEnd));
+    if (close) {
+      const cardHtml = html.slice(containerStart, matchEnd + close.index + close[0].length);
+      const jobLinkCount = (cardHtml.match(/jobdetail\//gi) ?? []).length;
+      if (jobLinkCount === 1 && htmlToText(cardHtml).length < 1600) return cardHtml;
+    }
+  }
+  return html.slice(Math.max(0, matchStart - 800), Math.min(html.length, matchEnd + 900));
+}
+
+export function parseZhilianPcSearchHtml(html: string, baseUrl = "https://www.zhaopin.com"): ZhilianJobEntry[] {
+  const out: ZhilianJobEntry[] = [];
+  const seen = new Set<string>();
+  const linkRe = /<a\b[^>]*href=["']([^"']*jobdetail\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(html))) {
+    const href = normalizeZhilianUrl(decodeEntities(match[1] ?? ""), baseUrl).split("#")[0] ?? "";
+    const jobId = extractZhilianJobId(href);
+    const title = htmlToText(match[2] ?? "");
+    if (!jobId || !title || seen.has(jobId)) continue;
+    seen.add(jobId);
+    const context = extractZhilianPcCardHtml(html, match.index, linkRe.lastIndex);
+    const contextText = htmlToText(context);
+    const cleanedDescription = [title, ...zhilianCardLines(contextText).filter((line) => line !== title)].join("\n");
+    const parsedText = parseZhilianCardText(contextText, title);
+    out.push({
+      jobId,
+      title,
+      url: href || canonicalDetailUrl(jobId),
+      ...parsedText,
+      description: cleanedDescription.slice(0, 1200),
+      detailStatus: "missing",
+      raw: { source: "pc_search_html", context_text: cleanedDescription.slice(0, 2000) },
+    });
+  }
+  return out;
+}
+
 export function parseZhilianDetailPage(html: string, fallback: ZhilianJobEntry): ZhilianJobEntry {
   if (isZhilianSecurityVerificationText(html) || looksLikeLoginText(html)) {
     return { ...fallback, detailStatus: "blocked", detailError: "登录或安全验证拦截" };
@@ -307,6 +412,17 @@ function mobileSearchUrl(keyword: string, pageIndex: number, city: string): stri
   url.searchParams.set("keyword", keyword);
   url.searchParams.set("page", String(pageIndex));
   if (city) url.searchParams.set("city", city);
+  return url.toString();
+}
+
+function pcSearchUrl(keyword: string, pageIndex: number, city: string): string {
+  const normalizedKeyword = keyword.trim();
+  const normalizedCity = city.trim();
+  const url = new URL("https://www.zhaopin.com/sou/");
+  if (normalizedCity) url.searchParams.set("jl", normalizedCity);
+  if (normalizedKeyword) url.searchParams.set("kw", normalizedKeyword);
+  url.searchParams.set("p", String(pageIndex));
+  url.searchParams.set("kt", "3");
   return url.toString();
 }
 
@@ -405,36 +521,38 @@ async function fetchFromBrowserPage(page: Page, url: string): Promise<PageFetchR
   }, url);
 }
 
-async function pageLooksLikeBlocked(page: Page): Promise<boolean> {
+async function zhilianPageSnapshot(page: Page): Promise<{ url: string; title: string; text: string; securityBlocked: boolean; loginBlocked: boolean }> {
   try {
+    const url = page.url();
     const title = await page.title();
-    const text = await page.evaluate(() => document.documentElement.innerText.slice(0, 4000));
-    const html = await page.evaluate(() => document.documentElement.innerHTML.slice(0, 8000));
-    return isZhilianSecurityVerificationText(`${title}\n${text}\n${html}`) || looksLikeLoginText(`${title}\n${text}\n${html}`);
+    const text = await page.evaluate(() => document.documentElement.innerText.slice(0, 1200)).catch(() => "");
+    const html = await page.evaluate(() => document.documentElement.innerHTML.slice(0, 3000)).catch(() => "");
+    return {
+      url,
+      title,
+      text,
+      securityBlocked: isZhilianSecurityVerificationText(`${title}\n${text}\n${html}`),
+      loginBlocked: looksLikeLoginText(`${title}\n${text}\n${html}`),
+    };
   } catch {
-    return false;
+    return { url: "", title: "", text: "", securityBlocked: false, loginBlocked: false };
   }
 }
 
-async function waitForBrowserReady(page: Page, ctx: ModeContext): Promise<void> {
-  const started = Date.now();
-  let logged = false;
-  while (!ctx.signal.aborted) {
-    if (!await pageLooksLikeBlocked(page)) return;
-    if (!logged) {
-      logged = true;
-      ctx.emit({
-        type: "LOGIN_STATUS",
-        payload: {
-          status: "captcha",
-          message: "智联招聘需要登录或安全验证。请在打开的浏览器窗口完成验证，完成后会继续采集。",
-        },
-      });
-    }
-    if (Date.now() - started > DEFAULT_CHALLENGE_WAIT_MS) {
-      throw new Error("智联浏览器验证超时：请确认浏览器窗口内已完成登录或安全验证。");
-    }
-    await delayWithJitter(2000, ctx.signal, 1000);
+async function waitForZhilianSearchSettled(page: Page, signal: AbortSignal): Promise<void> {
+  for (let attempt = 0; attempt < 8 && !signal.aborted; attempt += 1) {
+    const settled = await page.evaluate(() => {
+      const text = document.documentElement.innerText;
+      const html = document.documentElement.innerHTML;
+      return {
+        hasJobLinks: document.querySelectorAll('a[href*="jobdetail/"]').length > 0,
+        securityBlocked: /Security Verification|Tencent Cloud EdgeOne|eo-bot-captcha-token|TEOCaptchaWidget/i.test(`${text}\n${html}`),
+        hasSearchFilters: /职位类别|公司行业|薪资要求|学历要求|工作经验/.test(text),
+      };
+    }).catch(() => ({ hasJobLinks: false, securityBlocked: false, hasSearchFilters: false }));
+    if (settled.hasJobLinks || settled.securityBlocked) return;
+    if (settled.hasSearchFilters && attempt >= 2) return;
+    await delayWithJitter(1000, signal, 250).catch(() => undefined);
   }
 }
 
@@ -458,21 +576,32 @@ async function openZhilianBrowserClient(
   city: string,
 ): Promise<{ browser: Awaited<ReturnType<typeof launchBrowser>>["browser"]; page: Page }> {
   if (!payload.user_data_dir) {
-    throw new Error("智联公开采集路径被安全验证拦截，且没有可复用的智联浏览器资料目录。");
+    throw new Error(`${ZHILIAN_RECONNECT_MESSAGE}（缺少 zhilian-browser-profile）`);
   }
   ctx.emit({
     type: "LOG",
-    payload: { level: "warn", message: "智联公开请求被拦截或返回空结果，改用本机智联浏览器资料在页面上下文请求。" },
+    payload: { level: "info", message: "智联公开请求不可用，改用已保存的智联浏览器资料后台读取 PC 搜索页。" },
   });
   const { browser, page } = await launchBrowser({
-    headless: false,
+    headless: true,
     user_data_dir: payload.user_data_dir,
-    stealth: false,
+    stealth: true,
     preserve_on_disconnect: true,
   });
   await blockNavigation(page, { allow_domain_suffixes: ["zhaopin.com", "zhaopin.cn"] });
-  await page.goto(mobileSearchUrl(keyword, 1, city), { waitUntil: "domcontentloaded" }).catch(() => undefined);
-  await waitForBrowserReady(page, ctx);
+  await page.goto(pcSearchUrl(keyword, 1, city), { waitUntil: "domcontentloaded" }).catch(() => undefined);
+  await waitForZhilianSearchSettled(page, ctx.signal);
+  const snapshot = await zhilianPageSnapshot(page);
+  if (snapshot.securityBlocked || snapshot.loginBlocked) {
+    ctx.emit({
+      type: "LOG",
+      payload: {
+        level: "warn",
+        message: `智联 profile 健康检查失败：${snapshot.title || "无标题"} ${snapshot.url || ""} ${snapshot.text.slice(0, 80)}`,
+      },
+    });
+    throw new Error(ZHILIAN_RECONNECT_MESSAGE);
+  }
   await emitZhilianBrowserSession(page, ctx);
   return { browser, page };
 }
@@ -511,11 +640,118 @@ async function fetchSearchEntriesDirect(
 
 async function fetchSearchEntriesFromBrowser(
   page: Page,
+  signal: AbortSignal,
   keyword: string,
   pageIndex: number,
   pageSize: number,
   city: string,
 ): Promise<{ entries: ZhilianJobEntry[]; blocked: boolean; status: number }> {
+  await page.goto(pcSearchUrl(keyword, pageIndex, city), { waitUntil: "domcontentloaded", timeout: 45_000 }).catch(() => undefined);
+  for (let attempt = 0; attempt < 8 && !signal.aborted; attempt += 1) {
+    if (await page.evaluate(() => document.querySelectorAll('a[href*="jobdetail/"]').length > 0).catch(() => false)) break;
+    if (await page.evaluate(() => /Security Verification|Tencent Cloud EdgeOne|eo-bot-captcha-token|TEOCaptchaWidget/i.test(document.documentElement.innerText + document.documentElement.innerHTML)).catch(() => false)) {
+      return { entries: [], blocked: true, status: 403 };
+    }
+    await delayWithJitter(1000, signal, 250).catch(() => undefined);
+  }
+  const pageResult = await page.evaluate(() => {
+    const entries: Array<{
+      jobId: string;
+      title: string;
+      url: string;
+      text: string;
+      company?: string;
+      city?: string;
+      salary?: string;
+      experience?: string;
+      degree?: string;
+      welfare?: string[];
+    }> = [];
+    const seen = new Set<string>();
+    const noiseRe = /下载智联APP|和我聊聊吧|收藏|分享|立即沟通|立即投递|职位类别|清空筛选|上一页|下一页|登录|注册/;
+    const textOf = (element: Element | null | undefined) => {
+      const raw = element instanceof HTMLElement ? element.innerText : element?.textContent ?? "";
+      return raw.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim();
+    };
+    const lineList = (text: string) => text.split(/\r?\n/).map((line) => line.replace(/[ \t]+/g, " ").trim()).filter((line) => line && !noiseRe.test(line));
+    const pickLine = (lines: string[], predicate: (line: string) => boolean) => lines.find(predicate);
+    for (const anchor of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="jobdetail/"]'))) {
+      const href = anchor.href;
+      const match = href.match(/jobdetail\/([^/?#]+?)(?:\.htm|\.html)?(?:[?#]|$)/i);
+      const jobId = match?.[1] ? decodeURIComponent(match[1]).trim() : "";
+      const title = textOf(anchor);
+      if (!jobId || !title || seen.has(jobId)) continue;
+      seen.add(jobId);
+      let container: Element | null = anchor;
+      for (let depth = 0; depth < 6 && container?.parentElement; depth += 1) {
+        const parent: Element = container.parentElement;
+        const parentText = textOf(parent);
+        const nestedJobLinks = parent.querySelectorAll('a[href*="jobdetail/"]').length;
+        if (nestedJobLinks > 1 || parentText.length > 1400) {
+          break;
+        }
+        if (
+          parentText.includes(title)
+          && /立即沟通|立即投递|经验不限|\d+-\d+年|本科|大专|硕士|博士|元|万|薪/.test(parentText)
+        ) {
+          container = parent;
+          continue;
+        }
+        if (parentText.length <= 260) container = parent;
+      }
+      const text = textOf(container);
+      const lines = lineList(text).filter((line) => line !== title);
+      const salary = pickLine(lines, (line) => /(\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?\s*[万千kK]|元|薪|面议)/.test(line));
+      const city = pickLine(lines, (line) => /^(北京|上海|广州|深圳|杭州|成都|武汉|南京|苏州|天津|重庆|西安|长沙|郑州|青岛|厦门|合肥|福州|济南|长春|沈阳|大连|全国|远程)(?:[·\s].*)?$/.test(line));
+      const experience = pickLine(lines, (line) => /^(经验不限|在校|应届|1年以下|\d+-\d+年|\d+年以上|\d+年经验)$/.test(line));
+      const degree = pickLine(lines, (line) => /^(学历不限|中专|高中|大专|本科|硕士|博士)$/.test(line));
+      const company = lines.find((line, index) => index > 0
+        && line !== title
+        && line !== salary
+        && line !== city
+        && line !== experience
+        && line !== degree
+        && !/回复|招聘|上一页|下一页/.test(line)
+        && /(公司|有限|科技|集团|银行|软件|信息|网络|智能|股份|中心|研究院|京北方|软通|外企德科)/.test(line));
+      const welfare = lines.filter((line) => {
+        if ([title, salary, city, experience, degree, company].includes(line)) return false;
+        if (/回复|人事|经理|HR|招聘|民营|国企|外企|合资|上市公司|事业单位|人以上|人$|软件\/IT服务|互联网|人工智能|通信|金融|制造/.test(line)) return false;
+        return /^[A-Za-z0-9+#.\-/\u4e00-\u9fa5（）()、]{1,24}$/.test(line);
+      }).slice(0, 12);
+      entries.push({ jobId, title, url: href, text, company, city, salary, experience, degree, welfare });
+    }
+    return {
+      title: document.title,
+      text: document.body?.innerText?.slice(0, 3000) ?? "",
+      entries,
+      url: location.href,
+    };
+  });
+  const combinedPageText = `${pageResult.title}\n${pageResult.text}`;
+  if (isZhilianSecurityVerificationText(combinedPageText) || looksLikeLoginText(combinedPageText) && pageResult.entries.length === 0) {
+    return { entries: [], blocked: true, status: 403 };
+  }
+  if (pageResult.entries.length > 0) {
+    return {
+      entries: pageResult.entries.map((entry) => ({
+        jobId: entry.jobId,
+        title: entry.title,
+        url: normalizeZhilianUrl(entry.url),
+        company: entry.company,
+        city: entry.city,
+        salary: entry.salary,
+        experience: entry.experience,
+        degree: entry.degree,
+        welfare: entry.welfare,
+        description: entry.text,
+        detailStatus: "missing",
+        raw: { source: "pc_search_dom", page_url: pageResult.url, card_text: entry.text },
+      })),
+      blocked: false,
+      status: 200,
+    };
+  }
+
   const apiResult = await fetchFromBrowserPage(page, searchApiUrl(keyword, pageIndex, pageSize, city));
   if (apiResult.json) {
     const entries = parseZhilianSearchApi(apiResult.json);
@@ -622,6 +858,10 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
     ctx.emit({ type: "LOG", payload: { level: "warn", message: "智联未提供搜索关键词，跳过采集。" } });
     return;
   }
+  if (!payload.user_data_dir) {
+    ctx.emit({ type: "ERROR", payload: { message: `${ZHILIAN_RECONNECT_MESSAGE}（缺少 zhilian-browser-profile）` } });
+    return;
+  }
 
   let browserClient: { browser: Awaited<ReturnType<typeof launchBrowser>>["browser"]; page: Page } | null = null;
   let useBrowser = false;
@@ -645,7 +885,7 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
         ctx.emit({ type: "PROGRESS", payload: { keyword, current_page: pageIndex } });
         let result: { entries: ZhilianJobEntry[]; blocked: boolean; status: number };
         if (useBrowser) {
-          result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword)).page, keyword, pageIndex, pageSize, city);
+          result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword)).page, ctx.signal, keyword, pageIndex, pageSize, city);
         } else {
           result = await fetchSearchEntriesDirect(keyword, pageIndex, pageSize, city, ctx.signal, {
             cookieHeader,
@@ -662,16 +902,16 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
           if (result.blocked) {
             ctx.emit({
               type: "LOG",
-              payload: { level: "warn", message: `智联公开请求被登录/安全验证拦截（HTTP ${result.status || 0}），尝试可见浏览器资料。` },
+              payload: { level: "warn", message: `智联公开请求被登录/安全验证拦截（HTTP ${result.status || 0}），改用已连接的智联 profile 后台采集。` },
             });
           }
-          result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword)).page, keyword, pageIndex, pageSize, city);
+          result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword)).page, ctx.signal, keyword, pageIndex, pageSize, city);
         }
         if (result.blocked) {
-          if (collected.length === 0) throw new Error("智联招聘需要登录或安全验证，未抓到可入库岗位。");
+          if (collected.length === 0) throw new Error(ZHILIAN_RECONNECT_MESSAGE);
           ctx.emit({
             type: "LOG",
-            payload: { level: "warn", message: `智联第 ${pageIndex} 页被登录/安全验证拦截，停止后续分页。` },
+            payload: { level: "warn", message: `智联第 ${pageIndex} 页被登录/安全验证拦截，停止后续分页；请到设置页重新连接智联。` },
           });
           break;
         }
@@ -695,7 +935,7 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
 
     const entries = dedupeEntries(collected);
     if (entries.length === 0) {
-      ctx.emit({ type: "ERROR", payload: { message: "智联本轮没有解析到任何岗位；可能需要登录/安全验证，或当前关键词没有公开结果。" } });
+      ctx.emit({ type: "ERROR", payload: { message: `智联本轮没有解析到任何岗位；如果设置页未连接智联，请先连接。若已连接，可能是关键词无结果或 ${ZHILIAN_RECONNECT_MESSAGE}` } });
       return;
     }
 

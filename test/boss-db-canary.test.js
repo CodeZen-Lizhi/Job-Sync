@@ -18,8 +18,9 @@ function sqlString(value) {
 function createFixtureDb({
   detailStatus = "list_only",
   filterUpdatedAt = "2026-06-23T00:03:00Z",
+  directoryPrefix = "boss-db-canary-test-",
 } = {}) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "boss-db-canary-test-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), directoryPrefix));
   const dbPath = path.join(tmpDir, "app.db");
   const detailJson = JSON.stringify({
     detailStatus,
@@ -149,6 +150,12 @@ test("Boss DB canary accepts fresh list-only sidecar evidence", { skip: !sqliteA
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\[OK\] Boss DB canary passed/);
   assert.match(result.stdout, /"detailStatus": "list_only"/);
+});
+
+test("Boss DB canary reads app DB paths containing spaces", { skip: !sqliteAvailable && "sqlite3 is not available" }, () => {
+  const result = runCanary(createFixtureDb({ directoryPrefix: "boss db canary test-" }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /\[OK\] Boss DB canary passed/);
 });
 
 test("Boss DB canary rejects non-list-only detail payloads by default", { skip: !sqliteAvailable && "sqlite3 is not available" }, () => {

@@ -52,7 +52,7 @@ const {
       </div>
 
       <div v-if="selectedCollectionSources.length === 0" class="ui-status-warning p-3 text-xs">
-        当前没有可执行的自动采集来源。请到设置页启用 Boss 或 V2EX，并在采集配置里选择本次采集来源。
+        当前没有可执行的自动采集来源。请到设置页启用 Boss、智联、V2EX 或 LinuxDo，并在采集配置里选择本次采集来源。
       </div>
 
       <CrawlActionBar

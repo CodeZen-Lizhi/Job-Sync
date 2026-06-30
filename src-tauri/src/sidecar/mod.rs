@@ -20,7 +20,7 @@ use crate::{
     db,
     db::models,
     ipc,
-    ipc::protocol::{CommandIn, EventOut, JobListCapturedPayload},
+    ipc::protocol::{CommandIn, EventOut, JobListCapturedPayload, JobNormalizedCapturedPayload},
     settings, storage,
 };
 
@@ -327,6 +327,94 @@ fn persist_job_list_capture(
     should_stop_worker
 }
 
+fn persist_normalized_capture(
+    conn: &rusqlite::Connection,
+    active_run: Option<&ActiveCollectionRun>,
+    active_collection_run: &Arc<Mutex<Option<ActiveCollectionRun>>>,
+    payload: &JobNormalizedCapturedPayload,
+) -> std::result::Result<bool, String> {
+    if should_skip_new_insert_for_limit(conn, active_collection_run, &payload.encrypt_job_id) {
+        return Ok(false);
+    }
+    if let Some(active_run) = active_run {
+        let _ = models::increment_collection_counter(
+            conn,
+            &active_run.id,
+            models::CollectionCounter::Captured,
+            1,
+        );
+    }
+    let filters_json = payload
+        .filters
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok());
+    let input = models::NormalizedJobInput {
+        encrypt_job_id: payload.encrypt_job_id.clone(),
+        source_platform: payload.source_platform.clone(),
+        source_url: payload.source_url.clone(),
+        dedup_key: payload.dedup_key.clone(),
+        position_name: payload.position_name.clone(),
+        boss_name: payload.boss_name.clone(),
+        brand_name: payload.brand_name.clone(),
+        city_name: payload.city_name.clone(),
+        salary_desc: payload.salary_desc.clone(),
+        experience_name: payload.experience_name.clone(),
+        degree_name: payload.degree_name.clone(),
+        jd_text: payload.jd_text.clone(),
+        raw_payload: payload.raw_payload.clone(),
+    };
+    let mut should_stop_worker = false;
+    match models::upsert_job_from_normalized_with_outcome(conn, &input) {
+        Ok(outcome) => {
+            if let Some(active_run) = active_run {
+                let _ = models::increment_collection_counter(
+                    conn,
+                    &active_run.id,
+                    outcome.counter(),
+                    1,
+                );
+                if matches!(outcome.counter(), models::CollectionCounter::Inserted) {
+                    should_stop_worker = note_inserted_and_should_stop(active_collection_run);
+                }
+            }
+        }
+        Err(err) => {
+            let message = format!("db upsert normalized job failed: {err}");
+            record_collection_failure(
+                conn,
+                active_run,
+                "JOB_NORMALIZED_CAPTURED",
+                payload.keyword.as_deref(),
+                Some(&payload.encrypt_job_id),
+                &message,
+                Some(&payload.raw_payload),
+            );
+            return Err(message);
+        }
+    }
+    if let Err(err) = filter_profile::recompute_default_filter_profile_for_job_on_conn(
+        conn,
+        &payload.encrypt_job_id,
+    ) {
+        record_collection_failure(
+            conn,
+            active_run,
+            "JOB_NORMALIZED_CAPTURED",
+            payload.keyword.as_deref(),
+            Some(&payload.encrypt_job_id),
+            &format!("filter recompute failed: {err}"),
+            Some(&payload.raw_payload),
+        );
+    }
+    let _ = models::insert_job_source_link(
+        conn,
+        &payload.encrypt_job_id,
+        payload.keyword.as_deref(),
+        filters_json.as_deref(),
+    );
+    Ok(should_stop_worker)
+}
+
 fn persist_collection_finished(conn: &rusqlite::Connection, active_run: &ActiveCollectionRun) {
     if let Ok(counts) = filter_profile::count_filter_buckets_on_conn(conn) {
         let _ = models::refresh_collection_run_bucket_counts(conn, &active_run.id, counts);
@@ -337,7 +425,9 @@ fn persist_collection_finished(conn: &rusqlite::Connection, active_run: &ActiveC
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::protocol::{CrawlAutoStartPayload, SearchTaskPayload, SessionStatePayload};
     use serde_json::json;
+    use std::io::BufWriter;
 
     #[test]
     fn extract_job_id_from_list_item_reads_nested_boss_ids() {
@@ -578,6 +668,378 @@ mod tests {
             )
             .expect("count terminal failures");
         assert_eq!(terminal_failure_count, 0);
+    }
+
+    #[test]
+    fn persist_normalized_capture_writes_zhilian_job_and_run_counters() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+        let run_id = models::new_collection_run_id();
+        models::create_collection_run(
+            &conn,
+            &models::NewCollectionRun {
+                id: &run_id,
+                source_platform: "zhilian",
+                keywords: &["Java".to_string()],
+                filters: &json!({ "city": "530" }),
+                limits: &json!({ "maxJobs": 20 }),
+            },
+        )
+        .expect("create run");
+        let active_collection_run = Arc::new(Mutex::new(Some(ActiveCollectionRun {
+            id: run_id.clone(),
+            source_platform: "zhilian".to_string(),
+            max_jobs: Some(20),
+            inserted_count: 0,
+            stop_sent: false,
+        })));
+        let active_run = active_collection_run
+            .lock()
+            .expect("active run lock")
+            .clone();
+        let payload = crate::ipc::protocol::JobNormalizedCapturedPayload {
+            encrypt_job_id: "zhilian:CCL1405333700J40877845205".to_string(),
+            source_platform: "zhilian".to_string(),
+            source_url: Some(
+                "https://www.zhaopin.com/jobdetail/CCL1405333700J40877845205.htm".to_string(),
+            ),
+            dedup_key: "CCL1405333700J40877845205".to_string(),
+            position_name: Some("java 开发工程师".to_string()),
+            boss_name: None,
+            brand_name: Some("北京捷科智诚科技有限公司上海分公司".to_string()),
+            city_name: Some("北京·顺义·双丰".to_string()),
+            salary_desc: Some("1.3-1.7万".to_string()),
+            experience_name: Some("3-5年".to_string()),
+            degree_name: Some("本科".to_string()),
+            jd_text: Some(
+                "列表页证据：java 开发工程师 / 北京捷科智诚科技有限公司上海分公司 / 北京·顺义·双丰 / 1.3-1.7万。详情暂未抓取，需打开原岗位确认。"
+                    .to_string(),
+            ),
+            raw_payload: json!({
+                "source_platform": "zhilian",
+                "detail_status": "missing",
+                "tags": ["Java", "本科"]
+            }),
+            keyword: Some("Java".to_string()),
+            filters: Some(json!({ "city": "530" })),
+        };
+        let should_stop_worker = persist_normalized_capture(
+            &conn,
+            active_run.as_ref(),
+            &active_collection_run,
+            &payload,
+        )
+        .expect("persist normalized capture");
+        assert!(!should_stop_worker);
+        let active_run = active_collection_run
+            .lock()
+            .expect("active run lock")
+            .clone()
+            .expect("active run");
+        persist_collection_finished(&conn, &active_run);
+
+        let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+        assert_eq!(runs[0].source_platform, "zhilian");
+        assert_eq!(runs[0].status, "finished");
+        assert_eq!(runs[0].captured, 1);
+        assert_eq!(runs[0].inserted, 1);
+        assert_eq!(runs[0].failed, 0);
+
+        let row: (
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
+                r#"
+                SELECT source_platform, source_url, dedup_key, position_name,
+                       brand_name, city_name, salary_desc, experience_name, degree_name
+                FROM job
+                WHERE encrypt_job_id = ?1
+                "#,
+                ["zhilian:CCL1405333700J40877845205"],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                    ))
+                },
+            )
+            .expect("query zhilian job");
+        assert_eq!(row.0, "zhilian");
+        assert_eq!(
+            row.1.as_deref(),
+            Some("https://www.zhaopin.com/jobdetail/CCL1405333700J40877845205.htm")
+        );
+        assert_eq!(row.2.as_deref(), Some("CCL1405333700J40877845205"));
+        assert_eq!(row.3.as_deref(), Some("java 开发工程师"));
+        assert_eq!(row.4.as_deref(), Some("北京捷科智诚科技有限公司上海分公司"));
+        assert_eq!(row.5.as_deref(), Some("北京·顺义·双丰"));
+        assert_eq!(row.6.as_deref(), Some("1.3-1.7万"));
+        assert_eq!(row.7.as_deref(), Some("3-5年"));
+        assert_eq!(row.8.as_deref(), Some("本科"));
+
+        let link: (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT keyword, filters_json FROM job_source_link WHERE encrypt_job_id = ?1",
+                ["zhilian:CCL1405333700J40877845205"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("query source link");
+        assert_eq!(link.0.as_deref(), Some("Java"));
+        let link_filters: serde_json::Value =
+            serde_json::from_str(link.1.as_deref().unwrap_or("{}")).expect("parse filters");
+        assert_eq!(
+            link_filters.get("city").and_then(Value::as_str),
+            Some("530")
+        );
+
+        let detail_json: String = conn
+            .query_row(
+                "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+                ["zhilian:CCL1405333700J40877845205"],
+                |row| row.get(0),
+            )
+            .expect("query detail raw");
+        let detail: Value = serde_json::from_str(&detail_json).expect("parse detail");
+        assert_eq!(
+            detail.get("detailStatus").and_then(Value::as_str),
+            Some("missing")
+        );
+        assert_eq!(
+            detail.get("sourcePlatform").and_then(Value::as_str),
+            Some("zhilian")
+        );
+        assert!(detail
+            .get("jobInfo")
+            .and_then(|job_info| job_info.get("postDescription"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .contains("详情暂未抓取"));
+
+        let terminal_failure_count: i64 = conn
+            .query_row(
+                r#"
+                SELECT COUNT(*)
+                FROM collection_failure
+                WHERE run_id = ?1
+                  AND event_type IN ('ERROR', 'WORKER_EXIT', 'CRAWL_AUTO_START')
+                "#,
+                [&run_id],
+                |row| row.get(0),
+            )
+            .expect("count terminal failures");
+        assert_eq!(terminal_failure_count, 0);
+    }
+
+    #[test]
+    #[ignore = "real Zhilian sidecar canary; requires network and a ready JOB_SYNC_ZHILIAN_CANARY_PROFILE_DIR"]
+    fn real_zhilian_worker_events_persist_through_sidecar_path() {
+        let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("project root")
+            .to_path_buf();
+        let resolve_project_path = |value: String| {
+            let path = std::path::PathBuf::from(value);
+            if path.is_absolute() {
+                path
+            } else {
+                project_root.join(path)
+            }
+        };
+        let profile_dir = std::env::var("JOB_SYNC_ZHILIAN_CANARY_PROFILE_DIR")
+            .unwrap_or_else(|_| "data/zhilian-browser-profile".to_string());
+        let profile_dir = resolve_project_path(profile_dir);
+        let worker_entry = std::env::var("JOB_SYNC_ZHILIAN_CANARY_WORKER_ENTRY")
+            .unwrap_or_else(|_| "packages/boss-crawler-worker/dist/main.js".to_string());
+        let worker_entry = resolve_project_path(worker_entry);
+        let worker_dir = worker_entry
+            .parent()
+            .and_then(|dist| dist.parent())
+            .expect("worker dist parent")
+            .to_path_buf();
+        assert!(
+            profile_dir.is_dir(),
+            "Zhilian profile dir not found: {}",
+            profile_dir.display()
+        );
+        assert!(
+            worker_entry.is_file(),
+            "worker entry not found: {}; run npm -w @job-sync/boss-crawler-worker run build",
+            worker_entry.display()
+        );
+
+        let canary_data_dir = std::env::var("JOB_SYNC_ZHILIAN_CANARY_DATA_DIR")
+            .ok()
+            .map(resolve_project_path);
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = canary_data_dir.unwrap_or_else(|| tmp.path().join("app-data"));
+        let conn = db::init_db(&app_data_dir).expect("init db");
+        let run_id = models::new_collection_run_id();
+        models::create_collection_run(
+            &conn,
+            &models::NewCollectionRun {
+                id: &run_id,
+                source_platform: "zhilian",
+                keywords: &["Java".to_string()],
+                filters: &json!({ "city": "530" }),
+                limits: &json!({ "maxPages": 1, "maxJobs": 3, "delayMs": 0 }),
+            },
+        )
+        .expect("create run");
+        let active_collection_run = Arc::new(Mutex::new(Some(ActiveCollectionRun {
+            id: run_id.clone(),
+            source_platform: "zhilian".to_string(),
+            max_jobs: Some(3),
+            inserted_count: 0,
+            stop_sent: false,
+        })));
+        let active_run = active_collection_run
+            .lock()
+            .expect("active run lock")
+            .clone()
+            .expect("active run");
+
+        let command = CommandIn::CrawlAutoStart(CrawlAutoStartPayload {
+            session: SessionStatePayload {
+                cookies: json!([]),
+                local_storage: json!({}),
+            },
+            task: SearchTaskPayload {
+                keywords: vec!["Java".to_string()],
+                source_platform: Some("zhilian".to_string()),
+                filters: json!({ "city": "530" }),
+                limits: json!({ "maxPages": 1, "maxJobs": 3, "pageSize": 3, "delayMs": 0 }),
+                mode: Some("auto".to_string()),
+            },
+            run_id: Some(run_id.clone()),
+            user_data_dir: Some(profile_dir.to_string_lossy().to_string()),
+        });
+
+        let mut child = std::process::Command::new("node")
+            .arg(worker_entry)
+            .current_dir(worker_dir)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("spawn worker");
+        let stdin = child.stdin.take().expect("worker stdin");
+        let mut writer = BufWriter::new(stdin);
+        let line = serde_json::to_string(&command).expect("serialize command");
+        writeln!(writer, "{line}").expect("write worker command");
+        writer.flush().expect("flush worker command");
+
+        let stdout = child.stdout.take().expect("worker stdout");
+        let reader = BufReader::new(stdout);
+        let started = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(120);
+        let mut normalized_count = 0;
+        let mut finished = false;
+        for line in reader.lines() {
+            assert!(started.elapsed() < timeout, "real Zhilian canary timed out");
+            let line = line.expect("worker stdout line");
+            if line.trim().is_empty() {
+                continue;
+            }
+            let event: EventOut = serde_json::from_str(&line)
+                .unwrap_or_else(|err| panic!("bad worker json {err}: {line}"));
+            match event {
+                EventOut::JobNormalizedCaptured(payload) => {
+                    persist_normalized_capture(
+                        &conn,
+                        Some(&active_run),
+                        &active_collection_run,
+                        &payload,
+                    )
+                    .expect("persist normalized capture");
+                    normalized_count += 1;
+                    if normalized_count >= 3 {
+                        break;
+                    }
+                }
+                EventOut::Error(payload) => panic!("worker error: {}", payload.message),
+                EventOut::Finished => {
+                    finished = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        drop(writer);
+        let _ = child.kill();
+        let _ = child.wait();
+        persist_collection_finished(&conn, &active_run);
+
+        assert!(normalized_count > 0, "no Zhilian normalized jobs captured");
+        let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+        assert_eq!(runs[0].id, run_id);
+        assert_eq!(runs[0].status, "finished");
+        assert!(runs[0].captured >= normalized_count);
+        assert!(runs[0].inserted + runs[0].updated + runs[0].duplicate > 0);
+
+        let sample: (
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
+                r#"
+                SELECT j.encrypt_job_id, j.source_platform, j.position_name,
+                       j.brand_name, json_extract(d.zp_data_json, '$.detailStatus')
+                FROM job j
+                JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+                JOIN job_source_link s ON s.encrypt_job_id = j.encrypt_job_id
+                WHERE j.source_platform = 'zhilian'
+                ORDER BY s.captured_at DESC
+                LIMIT 1
+                "#,
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("query persisted Zhilian sample");
+        assert!(sample.0.starts_with("zhilian:"));
+        assert_eq!(sample.1, "zhilian");
+        assert!(sample.2.unwrap_or_default().trim().len() > 0);
+        assert!(sample.3.unwrap_or_default().trim().len() > 0);
+        assert!(matches!(
+            sample.4.as_deref(),
+            Some("missing" | "blocked" | "detail")
+        ));
+        assert!(
+            finished || normalized_count >= 3,
+            "worker did not finish before sample cap"
+        );
+        eprintln!(
+            "real Zhilian sidecar canary db={} run_id={} jobs={normalized_count} sample={}",
+            app_data_dir.join("app.db").display(),
+            run_id,
+            sample.0
+        );
     }
 
     #[test]
@@ -933,101 +1395,27 @@ impl SidecarManager {
                             }
                         }
                         EventOut::JobNormalizedCaptured(payload) => {
-                            if should_skip_new_insert_for_limit(
+                            match persist_normalized_capture(
                                 conn,
+                                active_run.as_ref(),
                                 &active_collection_run,
-                                &payload.encrypt_job_id,
+                                payload,
                             ) {
-                                continue;
-                            }
-                            if let Some(active_run) = active_run.as_ref() {
-                                let _ = models::increment_collection_counter(
-                                    conn,
-                                    &active_run.id,
-                                    models::CollectionCounter::Captured,
-                                    1,
-                                );
-                            }
-                            let filters_json = payload
-                                .filters
-                                .as_ref()
-                                .and_then(|v| serde_json::to_string(v).ok());
-                            let input = models::NormalizedJobInput {
-                                encrypt_job_id: payload.encrypt_job_id.clone(),
-                                source_platform: payload.source_platform.clone(),
-                                source_url: payload.source_url.clone(),
-                                dedup_key: payload.dedup_key.clone(),
-                                position_name: payload.position_name.clone(),
-                                boss_name: payload.boss_name.clone(),
-                                brand_name: payload.brand_name.clone(),
-                                city_name: payload.city_name.clone(),
-                                salary_desc: payload.salary_desc.clone(),
-                                experience_name: payload.experience_name.clone(),
-                                degree_name: payload.degree_name.clone(),
-                                jd_text: payload.jd_text.clone(),
-                                raw_payload: payload.raw_payload.clone(),
-                            };
-                            match models::upsert_job_from_normalized_with_outcome(conn, &input) {
-                                Ok(outcome) => {
-                                    if let Some(active_run) = active_run.as_ref() {
-                                        let _ = models::increment_collection_counter(
-                                            conn,
-                                            &active_run.id,
-                                            outcome.counter(),
-                                            1,
-                                        );
-                                        if matches!(
-                                            outcome.counter(),
-                                            models::CollectionCounter::Inserted
-                                        ) {
-                                            request_stop_when_ready(&active_collection_run, &inner);
-                                        }
-                                    }
+                                Ok(true) => {
+                                    let _ = send_worker_command(&inner, &CommandIn::Stop);
                                 }
+                                Ok(false) => {}
                                 Err(err) => {
-                                    record_collection_failure(
-                                        conn,
-                                        active_run.as_ref(),
-                                        "JOB_NORMALIZED_CAPTURED",
-                                        payload.keyword.as_deref(),
-                                        Some(&payload.encrypt_job_id),
-                                        &format!("db upsert normalized job failed: {err}"),
-                                        Some(&payload.raw_payload),
-                                    );
                                     let _ = ipc::emit_event_all(
                                         &app_handle,
                                         &EventOut::Error(crate::ipc::protocol::ErrorPayload {
-                                            message: format!(
-                                                "db upsert normalized job failed: {err}"
-                                            ),
+                                            message: err,
                                             stack: None,
                                         }),
                                     );
                                     continue;
                                 }
                             }
-                            if let Err(err) =
-                                filter_profile::recompute_default_filter_profile_for_job_on_conn(
-                                    conn,
-                                    &payload.encrypt_job_id,
-                                )
-                            {
-                                record_collection_failure(
-                                    conn,
-                                    active_run.as_ref(),
-                                    "JOB_NORMALIZED_CAPTURED",
-                                    payload.keyword.as_deref(),
-                                    Some(&payload.encrypt_job_id),
-                                    &format!("filter recompute failed: {err}"),
-                                    Some(&payload.raw_payload),
-                                );
-                            }
-                            let _ = models::insert_job_source_link(
-                                conn,
-                                &payload.encrypt_job_id,
-                                payload.keyword.as_deref(),
-                                filters_json.as_deref(),
-                            );
                         }
                         EventOut::JobListCaptured(payload) => {
                             if persist_job_list_capture(

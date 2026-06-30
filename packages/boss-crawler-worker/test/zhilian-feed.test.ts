@@ -7,7 +7,9 @@ import {
   isZhilianSecurityVerificationText,
   parseZhilianDetailPage,
   parseZhilianJobLinks,
+  parseZhilianPcSearchHtml,
   parseZhilianSearchApi,
+  runZhilianMode,
 } from "../src/zhilian/feed.js";
 
 test("extractZhilianJobId reads common detail URL and API ids", () => {
@@ -64,6 +66,77 @@ test("parseZhilianJobLinks extracts stable jobs from html links", () => {
   assert.equal(entries[0]?.title, "SRE 工程师");
 });
 
+test("parseZhilianPcSearchHtml extracts list-level job evidence from PC search page", () => {
+  const html = `
+    <section class="job-card">
+      <a class="job-title" href="https://www.zhaopin.com/jobdetail/CCL1405333700J40877845205.htm?refcode=4019">java 开发工程师</a>
+      <button>下载智联APP和我聊聊吧</button>
+      <button>收藏</button>
+      <div>1.3-1.7万</div>
+      <div>JavaScript</div>
+      <div>Spring</div>
+      <div>MySQL</div>
+      <div>北京·顺义·双丰</div>
+      <div>3-5年</div>
+      <div>本科</div>
+      <div>北京捷科智诚科技有限公司上海分公司</div>
+      <div>民营</div>
+      <div>1000-9999人</div>
+      <div>软件/IT服务</div>
+      <button>立即沟通</button>
+    </section>
+  `;
+  const entries = parseZhilianPcSearchHtml(html);
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]?.jobId, "CCL1405333700J40877845205");
+  assert.equal(entries[0]?.title, "java 开发工程师");
+  assert.equal(entries[0]?.salary, "1.3-1.7万");
+  assert.equal(entries[0]?.city, "北京·顺义·双丰");
+  assert.equal(entries[0]?.experience, "3-5年");
+  assert.equal(entries[0]?.degree, "本科");
+  assert.equal(entries[0]?.company, "北京捷科智诚科技有限公司上海分公司");
+  assert.match(entries[0]?.description ?? "", /Spring/);
+  assert.doesNotMatch(entries[0]?.description ?? "", /下载智联APP|收藏/);
+});
+
+test("parseZhilianPcSearchHtml keeps adjacent PC cards isolated", () => {
+  const html = `
+    <div class="job-card">
+      <a class="job-title" href="https://www.zhaopin.com/jobdetail/CCL111J001.htm">Java 后端开发</a>
+      <div>1.5-2.2万</div>
+      <div>北京·朝阳</div>
+      <div>3-5年</div>
+      <div>本科</div>
+      <div>第一科技有限公司</div>
+      <div>民营</div>
+      <div>100-299人</div>
+      <div>软件/IT服务</div>
+    </div>
+    <div class="job-card">
+      <a class="job-title" href="https://www.zhaopin.com/jobdetail/CCL222J002.htm">Python 数据工程师</a>
+      <div>8千-1.2万</div>
+      <div>上海·浦东</div>
+      <div>1-3年</div>
+      <div>大专</div>
+      <div>第二智能有限公司</div>
+      <div>上市公司</div>
+      <div>1000-9999人</div>
+      <div>人工智能</div>
+    </div>
+  `;
+  const entries = parseZhilianPcSearchHtml(html);
+
+  assert.equal(entries.length, 2);
+  assert.equal(entries[0]?.title, "Java 后端开发");
+  assert.equal(entries[0]?.company, "第一科技有限公司");
+  assert.equal(entries[0]?.city, "北京·朝阳");
+  assert.doesNotMatch(entries[0]?.description ?? "", /Python 数据工程师|第二智能有限公司/);
+  assert.equal(entries[1]?.title, "Python 数据工程师");
+  assert.equal(entries[1]?.company, "第二智能有限公司");
+  assert.equal(entries[1]?.city, "上海·浦东");
+});
+
 test("parseZhilianDetailPage extracts description and detects blocked pages", () => {
   const entry = {
     jobId: "CCL123J001",
@@ -108,4 +181,29 @@ test("buildZhilianNormalizedPayload produces unified job payload", () => {
 test("isZhilianSecurityVerificationText detects EdgeOne verification pages", () => {
   assert.equal(isZhilianSecurityVerificationText("Security Verification Protected by Tencent Cloud EdgeOne"), true);
   assert.equal(isZhilianSecurityVerificationText("普通岗位页面"), false);
+});
+
+test("runZhilianMode fails clearly when browser profile is missing", async () => {
+  const events: Array<{ type: string; payload?: any }> = [];
+  await runZhilianMode(
+    {
+      session: { cookies: [], local_storage: {} },
+      task: {
+        keywords: ["Java"],
+        source_platform: "zhilian",
+        filters: { city: "530" },
+        limits: { maxPages: 1 },
+        mode: "auto",
+      },
+    },
+    {
+      signal: new AbortController().signal,
+      emit: (event) => events.push(event),
+    },
+  );
+
+  const error = events.find((event) => event.type === "ERROR");
+  assert.ok(error);
+  assert.match(error?.payload?.message ?? "", /重新连接智联/);
+  assert.equal(events.some((event) => event.type === "JOB_NORMALIZED_CAPTURED"), false);
 });

@@ -2931,6 +2931,103 @@ mod tests {
     }
 
     #[test]
+    fn list_job_candidates_filters_zhilian_and_keeps_missing_detail_fallback() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path().join("app-data");
+        let conn = db::init_db(&app_data_dir).expect("init db");
+
+        let zhilian_job_id = "zhilian:CC330611210J40893493203";
+        let jd_text = "JAVA开发平台负责人 (MJ026057)\n北京五八信息技术有限公司\n北京·朝阳\n2.5-5万·15薪\n详情暂未抓取，需打开原岗位确认。";
+        models::upsert_job_from_normalized(
+            &conn,
+            &models::NormalizedJobInput {
+                encrypt_job_id: zhilian_job_id.to_string(),
+                source_platform: "zhilian".to_string(),
+                source_url: Some(
+                    "https://www.zhaopin.com/jobdetail/CC330611210J40893493203.htm".to_string(),
+                ),
+                dedup_key: "CC330611210J40893493203".to_string(),
+                position_name: Some("JAVA开发平台负责人 (MJ026057)".to_string()),
+                boss_name: None,
+                brand_name: Some("北京五八信息技术有限公司".to_string()),
+                city_name: Some("北京·朝阳".to_string()),
+                salary_desc: Some("2.5-5万·15薪".to_string()),
+                experience_name: Some("5-10年".to_string()),
+                degree_name: Some("本科".to_string()),
+                jd_text: Some(jd_text.to_string()),
+                raw_payload: json!({
+                  "jobId": "CC330611210J40893493203",
+                  "title": "JAVA开发平台负责人 (MJ026057)",
+                  "company": "北京五八信息技术有限公司",
+                  "city": "北京·朝阳",
+                  "salary": "2.5-5万·15薪",
+                  "detail_status": "missing",
+                  "raw": { "source": "pc_search_dom" }
+                }),
+            },
+        )
+        .expect("upsert zhilian normalized job");
+        models::insert_job_source_link(
+            &conn,
+            zhilian_job_id,
+            Some("Java"),
+            Some(r#"{"city":"530","keywords":["Java"]}"#),
+        )
+        .expect("seed zhilian automatic source link");
+        seed_eligible_candidate(&conn, zhilian_job_id);
+        seed_resume_score(&conn, zhilian_job_id, 82.0);
+
+        let page = list_job_candidates_on_conn(
+            &conn,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(vec!["zhilian".to_string()]),
+            Some(vec!["automatic".to_string()]),
+            Some(20),
+            Some(0),
+            None,
+        )
+        .expect("list zhilian candidates");
+
+        assert_eq!(page.total, 1);
+        let job = &page.jobs[0];
+        assert_eq!(job.encrypt_job_id, zhilian_job_id);
+        assert_eq!(job.source_platform, "zhilian");
+        assert_eq!(
+            job.source_url.as_deref(),
+            Some("https://www.zhaopin.com/jobdetail/CC330611210J40893493203.htm")
+        );
+        assert_eq!(job.collection_method, "automatic");
+        assert_eq!(job.brand_name.as_deref(), Some("北京五八信息技术有限公司"));
+        assert_eq!(job.city_name.as_deref(), Some("北京·朝阳"));
+
+        let detail_json: String = conn
+            .query_row(
+                "SELECT zp_data_json FROM job_detail_raw WHERE encrypt_job_id = ?1",
+                [zhilian_job_id],
+                |row| row.get(0),
+            )
+            .expect("query zhilian job detail fallback");
+        let detail: Value = serde_json::from_str(&detail_json).expect("parse zhilian detail");
+        assert_eq!(
+            detail.get("detailStatus").and_then(Value::as_str),
+            Some("missing")
+        );
+        assert_eq!(
+            detail
+                .get("jobInfo")
+                .and_then(|job_info| job_info.get("postDescription"))
+                .and_then(Value::as_str),
+            Some(jd_text)
+        );
+    }
+
+    #[test]
     fn list_job_candidates_filters_by_canonical_bucket() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let app_data_dir = tmp.path().join("app-data");

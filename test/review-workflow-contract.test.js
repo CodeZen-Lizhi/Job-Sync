@@ -1041,7 +1041,8 @@ describe("review workflow contract", () => {
     assert.match(sidecar, /ActiveCollectionRun::insert_limit_reached/);
     assert.match(sidecar, /limit_reached && !local_job_exists\(conn, encrypt_job_id\)/);
     assert.match(sidecar, /EventOut::JobDetailCaptured\(payload\) => \{[\s\S]{0,180}should_skip_new_insert_for_limit/);
-    assert.match(sidecar, /EventOut::JobNormalizedCaptured\(payload\) => \{[\s\S]{0,180}should_skip_new_insert_for_limit/);
+    assert.match(sidecar, /fn persist_normalized_capture\([\s\S]*should_skip_new_insert_for_limit\([\s\S]*&payload\.encrypt_job_id/);
+    assert.match(sidecar, /EventOut::JobNormalizedCaptured\(payload\) => \{[\s\S]{0,260}persist_normalized_capture\(/);
     assert.match(sidecar, /fn persist_job_list_capture\([\s\S]*for item in jobs \{[\s\S]*should_skip_new_insert_for_limit[\s\S]*break;/);
     assert.match(sidecar, /EventOut::JobListCaptured\(payload\) => \{[\s\S]{0,240}persist_job_list_capture\(/);
     assert.match(sidecar, /EventOut::JobFiltered\(payload\) => \{[\s\S]*should_skip_new_insert_for_limit/);
@@ -1153,6 +1154,27 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(canaryScript, /apply_job|send_greeting|sendGreeting|autoSend|open_chat|submit.*resume/i);
   });
 
+  it("keeps a low-volume Zhilian canary smoke command for real worker verification", () => {
+    const packageJson = readProjectFile("package.json");
+    const canaryScript = readProjectFile("scripts/zhilian-canary.mjs");
+    const canaryTest = readProjectFile("test/zhilian-canary.test.js");
+    const scriptsReadme = readProjectFile("scripts/README.md");
+
+    assert.match(packageJson, /"zhilian:canary": "node scripts\/zhilian-canary\.mjs"/);
+    assert.match(packageJson, /"test:zhilian-canary": "node --test test\/zhilian-canary\.test\.js"/);
+    assert.match(scriptsReadme, /zhilian-canary\.mjs/);
+    assert.match(canaryScript, /"\.jobpilot", "zhilian-canary", "zhilian-browser-profile"/);
+    assert.match(canaryScript, /source_platform: "zhilian"/);
+    assert.match(canaryScript, /JOB_NORMALIZED_CAPTURED/);
+    assert.match(canaryScript, /summary\.normalizedJobs <= 0/);
+    assert.match(canaryScript, /first captured job is missing a zhilian:<id> encrypt_job_id/);
+    assert.match(canaryScript, /This direct worker smoke verifies capture events only; app-side insertion is handled by Tauri sidecar/);
+    assert.match(canaryTest, /Zhilian canary passes collect mode when normalized jobs are captured/);
+    assert.match(canaryTest, /Zhilian canary rejects login mode when the profile is still under verification/);
+    assert.match(canaryTest, /Zhilian canary rejects non-Zhilian normalized ids/);
+    assert.doesNotMatch(canaryScript, /apply_job|send_greeting|sendGreeting|autoSend|open_chat|submit.*resume/i);
+  });
+
   it("keeps a read-only Boss App DB canary that verifies sidecar persistence, not worker finish alone", () => {
     const packageJson = readProjectFile("package.json");
     const dbCanaryScript = readProjectFile("scripts/boss-db-canary.mjs");
@@ -1163,7 +1185,9 @@ describe("review workflow contract", () => {
     assert.match(scriptsReadme, /read-only Boss App DB canary/);
     assert.match(dbCanaryScript, /"com\.administrator\.jobpilot"/);
     assert.match(dbCanaryScript, /"Application Support"/);
-    assert.match(dbCanaryScript, /spawn\("sqlite3", \["-readonly", "-json", dbPath, sql\]/);
+    assert.match(dbCanaryScript, /sqliteReadOnlyUri/);
+    assert.match(dbCanaryScript, /mode=ro&cache=shared/);
+    assert.match(dbCanaryScript, /"\.timeout 5000"/);
     assert.match(dbCanaryScript, /source_platform = 'boss'/);
     assert.match(dbCanaryScript, /status !== "finished"/);
     assert.match(dbCanaryScript, /finished_at/);
@@ -1190,6 +1214,46 @@ describe("review workflow contract", () => {
     assert.match(dbCanaryScript, /detail_json_valid/);
     assert.match(dbCanaryScript, /reason_json_valid/);
     assert.match(dbCanaryScript, /latest Boss run within/);
+    assert.doesNotMatch(dbCanaryScript, /\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/);
+  });
+
+  it("keeps a read-only Zhilian App DB canary that verifies unified library persistence", () => {
+    const packageJson = readProjectFile("package.json");
+    const dbCanaryScript = readProjectFile("scripts/zhilian-db-canary.mjs");
+    const dbCanaryTest = readProjectFile("test/zhilian-db-canary.test.js");
+    const scriptsReadme = readProjectFile("scripts/README.md");
+
+    assert.match(packageJson, /"zhilian:db-canary": "node scripts\/zhilian-db-canary\.mjs"/);
+    assert.match(packageJson, /"zhilian:sidecar-canary": "cargo test --manifest-path src-tauri\/Cargo\.toml real_zhilian_worker_events_persist_through_sidecar_path -- --ignored --nocapture"/);
+    assert.match(packageJson, /"test:zhilian-db-canary": "node --test test\/zhilian-db-canary\.test\.js"/);
+    assert.match(scriptsReadme, /zhilian-db-canary\.mjs/);
+    assert.match(scriptsReadme, /zhilian:sidecar-canary/);
+    assert.match(scriptsReadme, /read-only Zhilian App DB canary/);
+    assert.match(dbCanaryScript, /"com\.administrator\.jobpilot"/);
+    assert.match(dbCanaryScript, /sqliteReadOnlyUri/);
+    assert.match(dbCanaryScript, /mode=ro&cache=shared/);
+    assert.match(dbCanaryScript, /"\.timeout 5000"/);
+    assert.match(dbCanaryScript, /source_platform = 'zhilian'/);
+    assert.match(dbCanaryScript, /status !== "finished"/);
+    assert.match(dbCanaryScript, /captured=\$\{captured\}, expected > 0/);
+    assert.match(dbCanaryScript, /inserted\+updated\+duplicate/);
+    assert.match(dbCanaryScript, /--require-insert/);
+    assert.match(dbCanaryScript, /collection_failure/);
+    assert.match(dbCanaryScript, /"ERROR", "WORKER_EXIT", "CRAWL_AUTO_START"/);
+    assert.match(dbCanaryScript, /job_source_link/);
+    assert.match(dbCanaryScript, /job_detail_raw/);
+    assert.match(dbCanaryScript, /postDescription/);
+    assert.match(dbCanaryScript, /\["missing", "blocked", "detail"\]/);
+    assert.match(dbCanaryScript, /function isZhilianJobDetailUrl/);
+    assert.match(dbCanaryScript, /url\.hostname === "www\.zhaopin\.com"/);
+    assert.match(dbCanaryScript, /url\.pathname\.startsWith\("\/jobdetail\/"\)/);
+    assert.match(dbCanaryScript, /isZhilianJobDetailUrl\(row\.source_url\)/);
+    assert.match(dbCanaryScript, /raw_payload_json_valid/);
+    assert.match(dbCanaryScript, /filters_json_valid/);
+    assert.match(dbCanaryScript, /detail_json_valid/);
+    assert.match(dbCanaryScript, /latest Zhilian run within/);
+    assert.match(dbCanaryTest, /Zhilian DB canary accepts list-level sidecar evidence/);
+    assert.match(dbCanaryTest, /Zhilian DB canary rejects non-Zhilian detail URLs/);
     assert.doesNotMatch(dbCanaryScript, /\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/);
   });
 
@@ -1529,6 +1593,7 @@ describe("review workflow contract", () => {
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
     const crawlPage = readProjectFile("src/pages/Crawl.vue");
     const crawlConfigPage = readProjectFile("src/pages/CrawlConfig.vue");
+    const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
     const filterProfile = readProjectFile("src/lib/filterProfile.ts");
     const crawlTypes = readProjectFile("src/lib/crawl.ts");
@@ -1537,6 +1602,7 @@ describe("review workflow contract", () => {
     const jobsMutations = readProjectFile("src-tauri/src/commands/jobs/mutations.rs");
     const tauriLib = readProjectFile("src-tauri/src/lib.rs");
     const dbTests = readProjectFile("src-tauri/src/db/tests.rs");
+    const authCommand = readProjectFile("src-tauri/src/commands/auth.rs");
 
     assert.match(settingsPage, /统一职位来源/);
     assert.match(settingsPage, /统一职位来源维度/);
@@ -1544,6 +1610,12 @@ describe("review workflow contract", () => {
     assert.match(settingsPage, /set_job_source_enabled/);
     assert.match(settingsPage, /get_login_status/);
     assert.match(settingsPage, /start_login/);
+    assert.match(authCommand, /fn has_zhilian_session/);
+    assert.match(authCommand, /storage::zhilian_browser_profile_path\(app_data_dir\)\.is_dir\(\)/);
+    assert.match(authCommand, /storage::read_json\(&storage::zhilian_cookies_path\(app_data_dir\)\)/);
+    assert.match(authCommand, /map\(\|items\| !items\.is_empty\(\)\)/);
+    assert.match(settingsPage, /zhilian: null/);
+    assert.match(settingsPage, /不会停下来等人工验证/);
     assert.match(settingsPage, /登录预留/);
     assert.match(settingsPage, /visibleJobSources/);
     assert.match(settingsPage, /aria-pressed/);
@@ -1562,6 +1634,11 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(jobsPage, /来源平台、画像条件和公司维度都在「采集配置」里统一修改/);
     assert.match(crawlConfigPage, /来源/);
     assert.match(crawlConfigPage, /collectableSourceOptions/);
+    assert.match(crawlLogic, /if \(initialized\.value\) \{\s*void refreshCollectionSourceState\(\);\s*return;\s*\}/);
+    assert.match(crawlLogic, /async function refreshCollectionSourceState\(\)/);
+    assert.match(crawlLogic, /loadCollectionSources\(\)/);
+    assert.match(crawlPage, /Boss、智联、V2EX 或 LinuxDo/);
+    assert.match(crawlConfigPage, /连接一次 \/ 后台复用 profile/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeHint/);
     assert.match(filterProfile, /sourcePlatformOptions: JOB_SOURCE_PLATFORM_OPTIONS/);

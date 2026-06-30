@@ -265,7 +265,13 @@ fn build_normalized_job_detail_json(
     source: &NormalizedJobSource,
 ) -> Option<String> {
     let post_description = normalized_post_description(input, source)?;
+    let detail_status = input
+        .raw_payload
+        .get("detail_status")
+        .or_else(|| input.raw_payload.get("detailStatus"))
+        .and_then(Value::as_str);
     serde_json::to_string(&json!({
+        "detailStatus": detail_status,
         "sourcePlatform": source.source_platform,
         "sourceUrl": source.source_url,
         "dedupKey": source.dedup_key,

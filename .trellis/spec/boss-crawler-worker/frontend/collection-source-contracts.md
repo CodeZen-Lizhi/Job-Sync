@@ -99,7 +99,10 @@
   - post-collection profile and AI judgement own soft exclusion decisions after LinuxDo entries are written
 - Zhilian:
   - `source_platform = "zhilian"`
-  - uses direct public Zhilian search/detail reads first, then may reuse an isolated persistent visible-browser profile (`zhilian-browser-profile`) when public requests are blocked, empty, or require login/security verification
+  - uses direct public Zhilian search/detail reads as cheap probes, but real collection must be able to reuse the isolated persistent browser profile (`zhilian-browser-profile`) and read the PC search page in the background when public requests are blocked or empty
+  - Zhilian settings/login should open a real search page and mark the profile valid only after the page can expose job-list evidence; opening the homepage or merely collecting cookies is not enough
+  - Zhilian collection must not pause inside a crawl for manual login/captcha verification. Missing, expired, or verification-blocked profiles are terminal crawl errors that tell the user to reconnect Zhilian from Settings
+  - Zhilian PC search pages may include header login/register links such as `passport.zhaopin.com` even when the job search page is readable; login detection must not treat those header links as a blocked login page when normal search filters or job cards are visible
   - saved Zhilian cookies and localStorage snapshots are separate from Boss and LinuxDo snapshots; Zhilian collection must not carry Boss cookies
   - supports `filters.city` as a pass-through city/region text or id and `filters.keywords` as the platform keyword list
   - supports `limits.maxPages` as a positive page cap per keyword and `limits.maxJobs` as inserted job cap enforced by the sidecar run tracker; the worker must not treat duplicate/update normalized events as consuming the inserted-job cap
@@ -162,7 +165,7 @@
 - LinuxDo detail blocked but list topic data is stable -> worker may write a title-level normalized job with missing-detail evidence.
 - Zhilian selected without stored Boss session -> command still starts with an empty session payload and a Zhilian browser profile path.
 - Zhilian selected with empty keywords -> frontend blocks start with a clear keyword-required message.
-- Zhilian public search or detail returns EdgeOne/security verification/login/401/403 -> worker retries through the Zhilian browser profile when available; if no stable jobs are parsed, it emits an explicit error instead of reporting success.
+- Zhilian public search or detail returns EdgeOne/security verification/login/401/403 -> worker retries through the Zhilian browser profile when available; if the profile is missing or still blocked, it emits an explicit reconnect error instead of reporting success or waiting inside the crawl.
 - Zhilian detail blocked but list job id, title, and URL are stable -> worker may write a list-level normalized job with missing-detail evidence.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
@@ -190,7 +193,8 @@
 - Good: user selects only LinuxDo in collection config, the page shows the LinuxDo dedicated config panel with category URL/sort/page/job limits, and hides Boss-only dictionary/filter controls.
 - Good: LinuxDo detail JSON is blocked after list parse, and the job is still inserted with a clear missing-detail marker for AI/pending confirmation.
 - Good: user selects Zhilian, enters keywords and an optional city, worker emits normalized `zhilian:<stableId>` jobs, and the sidecar inserts them into the unified library using the normalized path.
-- Good: Zhilian public requests hit security verification, the worker opens the reusable Zhilian browser profile, waits for user verification, and continues only after page-context requests can read usable data.
+- Good: Zhilian public requests hit security verification, the worker opens the reusable Zhilian browser profile in the background and emits normalized jobs once the PC search page exposes `jobdetail` cards.
+- Good: a readable Zhilian search page shows header login/register links while also showing filters or job cards, and the worker treats it as a readable search page rather than a login block.
 - Good: repeated Zhilian normalized jobs update or duplicate existing rows without consuming the inserted-job `maxJobs` cap.
 - Base: user selects Boss, existing Boss payload and browser-session collection keep working.
 - Base: user leaves Boss limits at defaults, the task sends `limits.maxPages = 3`, `limits.maxJobs = 100`, `limits.bossDetailFetchLimit = 0`, and the worker still keeps `pageSize = 15`.
@@ -231,6 +235,7 @@
   - LinuxDo title-level fallback builds normalized payload with `detail_status`.
   - Zhilian parser extracts stable ids from detail URLs and common API fields.
   - Zhilian search API and HTML parsers normalize title, company, city, salary, experience, degree, and URL fields.
+  - Zhilian PC search parser keeps adjacent job cards isolated and removes list-action noise such as app download, chat, and favorite controls from fallback text.
   - Zhilian detail parser extracts readable JD text and detects security/login verification pages.
   - Zhilian normalized payload stores `source_platform = "zhilian"`, `encrypt_job_id = "zhilian:<stableId>"`, and stable `dedup_key`.
   - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
