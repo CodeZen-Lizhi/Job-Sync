@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 23
+- **Total Sessions**: 24
 - **Last Active**: 2026-06-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~780 | Active |
+| `journal-1.md` | ~813 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 24 | 2026-06-30 | 开启智联招聘采集 | `14ecde9` | `remote-job-intelligence` |
 | 23 | 2026-06-30 | Fix duplicate Telegram post-collection notifications | `371e5d0` | `remote-job-intelligence` |
 | 22 | 2026-06-30 | 岗位库交互与剩余改动提交 | `8554eda`, `9267b06` | `remote-job-intelligence` |
 | 21 | 2026-06-30 | 岗位库与简历库性能验收 | `3d90aba` | `remote-job-intelligence` |

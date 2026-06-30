@@ -778,3 +778,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 开启智联招聘采集
+
+**Date**: 2026-06-30
+**Task**: 开启智联招聘采集
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+为智联招聘新增自动采集入口、worker 解析与 normalized 入库链路，接入可见浏览器验证、前端配置、Tauri session/storage/source registry，并完成构建和测试验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `14ecde9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
