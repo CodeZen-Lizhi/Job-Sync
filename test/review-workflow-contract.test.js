@@ -1002,11 +1002,22 @@ describe("review workflow contract", () => {
   it("keeps sidecar-captured eligible jobs using the Rust filter projection", () => {
     const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
 
-    assert.match(sidecar, /commands::\{[\s\S]*filter_profile/);
+    assert.match(sidecar, /commands(?:::\{[\s\S]*filter_profile|::filter_profile)/);
     assert.match(sidecar, /recompute_default_filter_profile_for_job_on_conn\([\s\S]{0,120}&payload\.encrypt_job_id/);
     assert.match(sidecar, /upsert_job_from_list_item_with_outcome/);
     assert.match(sidecar, /filters_json =[\s\S]{0,120}payload[\s\S]{0,80}\.filters[\s\S]{0,80}\.as_ref\(\)[\s\S]{0,80}\.and_then\(\|v\| serde_json::to_string\(v\)\.ok\(\)\)/);
     assert.match(sidecar, /insert_job_source_link\([\s\S]*payload\.keyword\.as_deref\(\),[\s\S]*filters_json\.as_deref\(\),[\s\S]*\)/);
+  });
+
+  it("keeps post-collection AI judgement triggered once after all selected crawl sources finish", () => {
+    const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+    const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
+
+    assert.match(crawlLogic, /for \(const source of selectedSources\)/);
+    assert.match(crawlLogic, /if \(!stopRequested\.value && completedSources > 0\) \{[\s\S]{0,160}recomputeAiPostCollectionJudgementForAllJobs\(\)/);
+    assert.doesNotMatch(sidecar, /auto_recompute_ai_after_collection/);
+    assert.doesNotMatch(sidecar, /commands::\{ai,/);
+    assert.doesNotMatch(sidecar, /EventOut::Finished[\s\S]{0,260}recompute_ai_post_collection_judgement/);
   });
 
   it("keeps sidecar-filtered jobs stored and explained by the Rust filter projection", () => {

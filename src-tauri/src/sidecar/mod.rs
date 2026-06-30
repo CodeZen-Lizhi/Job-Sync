@@ -16,11 +16,11 @@ use serde_json::Value;
 use time::format_description::well_known::Rfc3339;
 
 use crate::{
-    commands::{ai, filter_profile},
+    commands::filter_profile,
     db,
     db::models,
     ipc,
-    ipc::protocol::{CommandIn, EventOut, JobListCapturedPayload, LogPayload},
+    ipc::protocol::{CommandIn, EventOut, JobListCapturedPayload},
     settings, storage,
 };
 
@@ -75,80 +75,6 @@ fn local_job_exists(conn: &rusqlite::Connection, encrypt_job_id: &str) -> bool {
     )
     .map(|exists| exists != 0)
     .unwrap_or(false)
-}
-
-fn emit_runtime_log(app_handle: &tauri::AppHandle, level: &str, message: impl Into<String>) {
-    let _ = ipc::emit_event_all(
-        app_handle,
-        &EventOut::Log(LogPayload {
-            level: level.to_string(),
-            message: message.into(),
-            ts: Some(now_rfc3339()),
-        }),
-    );
-}
-
-fn summarize_auto_ai_result(result: &Value) -> String {
-    let updated = result
-        .get("updated")
-        .and_then(Value::as_u64)
-        .unwrap_or_default();
-    let ai_judged = result
-        .get("ai_judged")
-        .and_then(Value::as_u64)
-        .unwrap_or_default();
-    let hard_skipped = result
-        .get("hard_skipped")
-        .and_then(Value::as_u64)
-        .unwrap_or_default();
-    let failed = result
-        .get("failed")
-        .and_then(Value::as_u64)
-        .unwrap_or_default();
-    let mut message = format!("AI 采后判断已更新 {updated} 个岗位，其中 {ai_judged} 个由 AI 判断");
-    if hard_skipped > 0 {
-        message.push_str(&format!("，{hard_skipped} 个保留硬规则结果"));
-    }
-    if failed > 0 {
-        message.push_str(&format!("，{failed} 个转入待确认"));
-    }
-    if result
-        .get("telegram_sent")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        message.push_str("，已推送 Telegram");
-    }
-    if let Some(error) = result
-        .get("telegram_error")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        message.push_str(&format!("，Telegram 推送失败：{error}"));
-    }
-    message
-}
-
-fn auto_recompute_ai_after_collection(app_handle: &tauri::AppHandle) {
-    let app_handle = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        match ai::recompute_ai_post_collection_judgement(
-            app_handle.clone(),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .await
-        {
-            Ok(result) => emit_runtime_log(&app_handle, "info", summarize_auto_ai_result(&result)),
-            Err(err) => emit_runtime_log(&app_handle, "error", format!("AI 采后判断失败：{err}")),
-        }
-    });
 }
 
 fn extract_job_id_from_list_item(item: &Value) -> Option<String> {
@@ -412,36 +338,6 @@ fn persist_collection_finished(conn: &rusqlite::Connection, active_run: &ActiveC
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn auto_ai_summary_includes_telegram_success() {
-        let summary = summarize_auto_ai_result(&json!({
-            "updated": 3,
-            "ai_judged": 2,
-            "hard_skipped": 1,
-            "failed": 0,
-            "telegram_sent": true,
-            "telegram_error": null,
-        }));
-
-        assert!(summary.contains("AI 采后判断已更新 3 个岗位"));
-        assert!(summary.contains("已推送 Telegram"));
-    }
-
-    #[test]
-    fn auto_ai_summary_includes_telegram_error() {
-        let summary = summarize_auto_ai_result(&json!({
-            "updated": 3,
-            "ai_judged": 2,
-            "hard_skipped": 0,
-            "failed": 1,
-            "telegram_sent": false,
-            "telegram_error": "Telegram 通知发送失败：HTTP 502",
-        }));
-
-        assert!(summary.contains("1 个转入待确认"));
-        assert!(summary.contains("Telegram 推送失败：Telegram 通知发送失败：HTTP 502"));
-    }
 
     #[test]
     fn extract_job_id_from_list_item_reads_nested_boss_ids() {
@@ -1303,12 +1199,6 @@ impl SidecarManager {
                         EventOut::Finished => {
                             if let Some(active_run) = active_run.as_ref() {
                                 persist_collection_finished(conn, active_run);
-                                if active_run.source_platform == "boss"
-                                    || active_run.source_platform == "v2ex"
-                                    || active_run.source_platform == "linuxdo"
-                                {
-                                    auto_recompute_ai_after_collection(&app_handle);
-                                }
                                 if let Ok(mut guard) = active_collection_run.lock() {
                                     if guard.as_ref().map(|run| run.id.as_str())
                                         == Some(active_run.id.as_str())

@@ -903,6 +903,10 @@ function createCrawlPageState() {
       } else if (skippedSources > 0) {
         appendRuntimeLog("info", `自动采集已结束：完成 ${completedSources} 个平台，跳过 ${skippedSources} 个平台。`);
       }
+      if (!stopRequested.value && completedSources > 0) {
+        const aiResult = await recomputeAiPostCollectionJudgementForAllJobs();
+        appendRuntimeLog("info", formatAiPostCollectionJudgeSummary(aiResult));
+      }
       return completedSources > 0;
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
