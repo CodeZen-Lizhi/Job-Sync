@@ -745,3 +745,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: Fix duplicate Telegram post-collection notifications
+
+**Date**: 2026-06-30
+**Task**: Fix duplicate Telegram post-collection notifications
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+Diagnosed duplicate Telegram notifications after automatic collection. Moved AI post-collection judgement trigger from per-sidecar Finished event to one frontend trigger after all selected crawl sources complete, added contract coverage, validated with review workflow contract tests, frontend build, and targeted Rust tests, then committed and pushed the fix.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `371e5d0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
