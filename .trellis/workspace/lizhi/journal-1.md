@@ -842,3 +842,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: 智联真实浏览器采集收尾
+
+**Date**: 2026-07-01
+**Task**: 智联真实浏览器采集收尾
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成智联招聘真实浏览器采集：复用 zhilian-browser-profile 读取 PC 搜索页，统一 normalized 入库，补齐 canary、DB 查询和真实 worker/sidecar 验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b2bbd78` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

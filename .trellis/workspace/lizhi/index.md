@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
-- **Last Active**: 2026-06-30
+- **Total Sessions**: 26
+- **Last Active**: 2026-07-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~844 | Active |
+| `journal-1.md` | ~877 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-07-01 | 智联真实浏览器采集收尾 | `b2bbd78` | `remote-job-intelligence` |
 | 25 | 2026-06-30 | 验证 Boss 匿名采集可行性 | - | `remote-job-intelligence` |
 | 24 | 2026-06-30 | 开启智联招聘采集 | `14ecde9` | `remote-job-intelligence` |
 | 23 | 2026-06-30 | Fix duplicate Telegram post-collection notifications | `371e5d0` | `remote-job-intelligence` |
