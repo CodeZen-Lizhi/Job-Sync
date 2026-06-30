@@ -875,3 +875,34 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: 打包 JobPilot release 产物
+
+**Date**: 2026-07-01
+**Task**: 打包 JobPilot release 产物
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+执行 npm run tauri:build 完成 macOS release 打包；清理残留 DMG 挂载后成功生成 JobPilot.app 和 JobPilot_0.1.3_aarch64.dmg，codesign、内置 worker runtime 与 hdiutil verify 均通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
