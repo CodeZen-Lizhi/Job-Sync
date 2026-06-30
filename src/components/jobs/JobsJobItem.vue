@@ -5,11 +5,7 @@ import {
   aiAuditStatusLabel,
   companyReviewStatusLabel,
   communicationStatusLabel,
-  formatAiPostCollectionJudgement,
-  formatFilterReasonSummary,
-  parseFilterReasonJson,
   reviewStatusLabel,
-  resolveAiAuditStatus,
   sourcePlatformLabel,
   type GreetingErrorState,
   type CommunicationStatus,
@@ -20,6 +16,7 @@ import {
 } from "../../lib/jobs";
 import { formatDate } from "../../lib/jobsPageHelpers";
 import type { ResumeJobLinkStatus } from "../../lib/resumeLibrary";
+import UiActionMenu from "../ui/UiActionMenu.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -33,6 +30,7 @@ const props = withDefaults(
     greetingDraft?: string;
     greetingError?: GreetingErrorState;
     greetingLoading?: boolean;
+    optimizedResumeGenerating?: boolean;
     resumeStatus?: ResumeJobLinkStatus;
   }>(),
   {
@@ -42,13 +40,14 @@ const props = withDefaults(
     greetingDraft: "",
     greetingError: undefined,
     greetingLoading: false,
+    optimizedResumeGenerating: false,
     resumeStatus: undefined,
   },
 );
 
 const { job, expanded, detailLoading, detail, rowPaddingClass, detailPaddingClass } = toRefs(props);
 
-defineEmits<{
+const emit = defineEmits<{
   (e: "toggle-detail", jobId: string): void;
   (e: "copy-link", job: JobRow): void;
   (e: "open-source-url", job: JobRow): void;
@@ -59,20 +58,14 @@ defineEmits<{
   (e: "update-company-review", job: JobRow, status: CompanyReviewStatus): void;
   (e: "generate-greeting", job: JobRow): void;
   (e: "copy-greeting", job: JobRow): void;
-  (e: "copy-application-packet", job: JobRow): void;
+  (e: "generate-optimized-resume", job: JobRow): void;
   (e: "open-resume", job: JobRow): void;
 }>();
 
-const filterReason = computed(() => parseFilterReasonJson(props.job.filter_reason_json));
-const aiPostCollectionJudgement = computed(() => filterReason.value?.ai_judgement);
-const aiAuditBucket = computed(() => aiPostCollectionJudgement.value?.bucket ?? (props.job.filter_eligible === false ? "filtered" : null));
+type MoreActionValue = "notes" | "company_not_fit" | "company_restore";
+
 const aiAuditStatus = computed(() =>
-  resolveAiAuditStatus(
-    aiPostCollectionJudgement.value,
-    aiAuditBucket.value,
-    props.job.filter_eligible,
-    props.aiAuditStatusOverride,
-  ),
+  props.aiAuditStatusOverride || props.job.ai_audit_status || (props.job.filter_eligible === false ? "rejected" : "not_judged"),
 );
 const aiAuditBadgeClass = computed(() => {
   if (aiAuditStatus.value === "passed") return "!bg-white !text-emerald-700 !ring-emerald-200";
@@ -82,17 +75,17 @@ const aiAuditBadgeClass = computed(() => {
   return "!bg-white !text-slate-600 !ring-slate-200";
 });
 const aiAuditReasonText = computed(() => {
-  const summary = aiPostCollectionJudgement.value?.summary?.trim();
+  const summary = props.job.ai_audit_summary?.trim();
   if (aiAuditStatus.value === "processing") return summary || "AI 正在审核";
   if (aiAuditStatus.value === "passed") return summary || "AI 已通过筛选";
   if (aiAuditStatus.value === "pending_confirmation") return summary || "AI 待确认";
   if (aiAuditStatus.value === "failed") return summary || "AI 审核失败";
-  if (aiAuditStatus.value === "rejected") return summary || formatFilterReasonSummary(filterReason.value);
+  if (aiAuditStatus.value === "rejected") return summary || "AI 未通过筛选";
   return summary || "待 AI 判断";
 });
 const aiPostCollectionJudgementText = computed(() => {
   if (props.aiAuditStatusOverride) return `AI 审核：${aiAuditStatusLabel(props.aiAuditStatusOverride)}`;
-  return formatAiPostCollectionJudgement(aiPostCollectionJudgement.value);
+  return props.job.ai_audit_summary || `AI 审核：${aiAuditStatusLabel(aiAuditStatus.value)}`;
 });
 
 const canGenerateGreeting = computed(
@@ -112,6 +105,33 @@ const resumeBadgeClass = computed(() =>
       : "!bg-white !text-slate-600 !ring-slate-200",
 );
 const descriptionOpen = ref(false);
+
+function handleReviewAction(value: string): void {
+  if (value === "restore") {
+    emit("restore-review-candidate", props.job);
+    return;
+  }
+  emit("update-review", props.job, value as ReviewStatus);
+}
+
+function handleCommunicationAction(value: string): void {
+  emit("update-communication", props.job, value as CommunicationStatus);
+}
+
+function handleMoreAction(value: string): void {
+  const action = value as MoreActionValue;
+  if (action === "notes") {
+    emit("update-review-notes", props.job);
+    return;
+  }
+  if (action === "company_not_fit") {
+    emit("update-company-review", props.job, "manual_not_fit");
+    return;
+  }
+  if (action === "company_restore") {
+    emit("update-company-review", props.job, "pending");
+  }
+}
 
 watch(
   () => expanded.value,
@@ -201,34 +221,41 @@ watch(
             公司：{{ companyReviewStatusLabel(job.company_review_status) }}
           </span>
         </div>
-        <div class="flex flex-wrap gap-2">
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('restore-review-candidate', job)">恢复候选</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-review', job, 'favorited')">收藏</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-review', job, 'ready_to_apply')">准备投递</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-review', job, 'applied')">已投递</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-review', job, 'ignored')">忽略</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-communication', job, 'not_contacted')">未打招呼</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-communication', job, 'greeted_unread')">已打招呼未读</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-communication', job, 'read_no_reply')">已读未回</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-communication', job, 'replied')">已回复</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-communication', job, 'rejected')">已拒绝</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-communication', job, 'manual_not_fit')">岗位不合适</button>
-          <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('update-review-notes', job)">编辑备注</button>
-          <button
-            class="ui-btn-secondary px-2.5 py-1 text-xs"
-            :disabled="!job.brand_name"
-            @click="$emit('update-company-review', job, 'manual_not_fit')"
+        <div class="grid gap-2 sm:grid-cols-3">
+          <UiActionMenu
+            label="岗位状态"
+            :summary="reviewStatusLabel(job.review_status)"
+            @select="handleReviewAction"
           >
-            公司不合适
-          </button>
-          <button
-            v-if="job.company_review_status === 'manual_not_fit'"
-            class="ui-btn-secondary px-2.5 py-1 text-xs"
-            :disabled="!job.brand_name"
-            @click="$emit('update-company-review', job, 'pending')"
+            <option value="restore">恢复候选</option>
+            <option value="favorited">收藏</option>
+            <option value="ready_to_apply">准备投递</option>
+            <option value="applied">已投递</option>
+            <option value="ignored">忽略</option>
+          </UiActionMenu>
+
+          <UiActionMenu
+            label="沟通状态"
+            :summary="communicationStatusLabel(job.communication_status)"
+            @select="handleCommunicationAction"
           >
-            恢复公司
-          </button>
+            <option value="not_contacted">未打招呼</option>
+            <option value="greeted_unread">已打招呼未读</option>
+            <option value="read_no_reply">已读未回</option>
+            <option value="replied">已回复</option>
+            <option value="rejected">已拒绝</option>
+            <option value="manual_not_fit">岗位不合适</option>
+          </UiActionMenu>
+
+          <UiActionMenu
+            label="其他操作"
+            summary="备注 / 公司"
+            @select="handleMoreAction"
+          >
+            <option value="notes">编辑备注</option>
+            <option value="company_not_fit" :disabled="!job.brand_name">公司不合适</option>
+            <option v-if="job.company_review_status === 'manual_not_fit'" value="company_restore" :disabled="!job.brand_name">恢复公司</option>
+          </UiActionMenu>
         </div>
         <div class="space-y-2 border-t border-border/90 pt-3">
           <div class="flex flex-wrap items-center gap-2">
@@ -246,7 +273,13 @@ watch(
             >
               复制打招呼
             </button>
-            <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('copy-application-packet', job)">复制材料包</button>
+            <button
+              class="ui-btn-secondary px-2.5 py-1 text-xs"
+              :disabled="props.optimizedResumeGenerating"
+              @click="$emit('generate-optimized-resume', job)"
+            >
+              {{ props.optimizedResumeGenerating ? "生成中…" : "生成岗位版简历" }}
+            </button>
           </div>
           <div v-if="props.greetingError" class="ui-status-danger space-y-1 px-3 py-2 text-xs">
             <div class="font-semibold">{{ props.greetingError.title }}</div>

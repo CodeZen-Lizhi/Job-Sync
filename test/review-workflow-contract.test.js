@@ -139,6 +139,14 @@ describe("review workflow contract", () => {
     assert.match(jobsLogic, /async function blacklistCompany/);
     assert.match(jobsLogic, /async function blacklistJob/);
     assert.match(jobsLogic, /async function blacklistKeyword/);
+    assert.match(jobsPage, /import JobsConfirmDialog/);
+    assert.match(jobsPage, /confirmDialog/);
+    assert.match(jobsPage, /closeConfirm/);
+    assert.match(jobsPage, /executeConfirm/);
+    assert.match(jobsPage, /<JobsConfirmDialog/);
+    assert.match(jobsPage, /:visible="confirmDialog\.visible"/);
+    assert.match(jobsPage, /@close="closeConfirm"/);
+    assert.match(jobsPage, /@confirm="executeConfirm"/);
 
     assert.match(jobItem, /平台：\{\{ sourcePlatformLabel\(job\.source_platform\) \}\}/);
     assert.match(jobItem, /职位 ID\/去重：\{\{ job\.dedup_key \}\}/);
@@ -146,6 +154,13 @@ describe("review workflow contract", () => {
     assert.match(jobsTypes, /review_updated_at: string \| null/);
     assert.match(jobsLogic, /lastGreetedAt/);
     assert.match(jobItem, /沟通更新/);
+    assert.match(jobItem, /import UiActionMenu/);
+    assert.match(jobItem, /<UiActionMenu/);
+    assert.match(jobItem, /@select="handleReviewAction"/);
+    assert.match(jobItem, /@select="handleCommunicationAction"/);
+    assert.match(jobItem, /@select="handleMoreAction"/);
+    assert.match(jobItem, /:summary="reviewStatusLabel\(job\.review_status\)"/);
+    assert.match(jobItem, /:summary="communicationStatusLabel\(job\.communication_status\)"/);
     assert.match(jobsLogic, /async function updateCommunicationStatus/);
     assert.match(jobsQueries, /rs\.updated_at/);
   });
@@ -1441,13 +1456,18 @@ describe("review workflow contract", () => {
     }
 
     assert.match(jobsPage, /JOB_STATUS_FILTER_OPTIONS/);
-    assert.match(jobsPage, /selectedJobStatusFilters\.includes\(option\.value\)/);
-    assert.match(jobsPage, /toggleJobStatusFilter\(option\.value\)/);
+    assert.match(jobsPage, /<UiMultiSelect/);
+    assert.match(jobsPage, /selectedJobStatusFilterModel/);
+    assert.match(jobsPage, /empty-label="全部岗位状态"/);
     assert.match(jobsPage, /AI_AUDIT_FILTER_OPTIONS/);
-    assert.match(jobsPage, /selectedAiAuditFilters\.includes\(option\.value\)/);
-    assert.match(jobsPage, /toggleAiAuditFilter\(option\.value\)/);
-    assert.match(jobsPage, /selectedSourcePlatformFilters\.includes\(option\.value\)/);
-    assert.match(jobsPage, /selectedCollectionMethodFilters\.includes\(option\.value\)/);
+    assert.match(jobsPage, /selectedAiAuditFilterModel/);
+    assert.match(jobsPage, /empty-label="全部 AI 结果"/);
+    assert.match(jobsPage, /selectedSourcePlatformFilterModel/);
+    assert.match(jobsPage, /empty-label="全部岗位平台"/);
+    assert.match(jobsPage, /selectedCollectionMethodFilterModel/);
+    assert.match(jobsPage, /empty-label="全部采集方式"/);
+    assert.doesNotMatch(jobsPage, /toggleJobStatusFilter\(option\.value\)/);
+    assert.doesNotMatch(jobsPage, /toggleAiAuditFilter\(option\.value\)/);
     assert.match(jobsLogic, /async function updateReviewStatus/);
     assert.match(jobsLogic, /async function updateCommunicationStatus/);
     assert.match(jobsQueries, /"favorited" \| "ready_to_apply" \| "applied" \| "ignored"/);

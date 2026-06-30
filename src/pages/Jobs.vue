@@ -4,7 +4,9 @@ import { useRoute, useRouter } from "vue-router";
 import { ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
 
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
+import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
 import JobsJobItem from "../components/jobs/JobsJobItem.vue";
+import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
 import { useJobsPage } from "../lib/useJobsPage";
 
@@ -41,6 +43,7 @@ const {
   optimizedResumeSaving,
   optimizedResumeMessage,
   optimizedResumeError,
+  confirmDialog,
   JOB_TIME_RANGE_OPTIONS,
   PROCESSED_FILTER_OPTIONS,
   JOB_STATUS_FILTER_OPTIONS,
@@ -48,10 +51,6 @@ const {
   SOURCE_PLATFORM_FILTER_OPTIONS,
   COLLECTION_METHOD_FILTER_OPTIONS,
   loadJobCandidates,
-  toggleJobStatusFilter,
-  toggleAiAuditFilter,
-  toggleSourcePlatformFilter,
-  toggleCollectionMethodFilter,
   goJobCandidatePage,
   toggleDetail,
   copy,
@@ -68,6 +67,8 @@ const {
   updateCommunicationStatus,
   updateReviewNotes,
   updateCompanyReviewStatus,
+  closeConfirm,
+  executeConfirm,
 } = useJobsPage();
 
 type JobLibraryBucket = "recommended" | "confirm" | "filtered" | "processed" | "all";
@@ -124,6 +125,38 @@ const displayedJobsLoading = computed(() => jobCandidatesLoading.value);
 const displayedJobsTotal = computed(() => jobCandidatesTotal.value);
 
 const showPagination = computed(() => true);
+
+const selectedJobStatusFilterModel = computed<string[]>({
+  get: () => selectedJobStatusFilters.value,
+  set: (value) => {
+    selectedJobStatusFilters.value = value as typeof selectedJobStatusFilters.value;
+    reloadCandidatesFromFirstPage();
+  },
+});
+
+const selectedAiAuditFilterModel = computed<string[]>({
+  get: () => selectedAiAuditFilters.value,
+  set: (value) => {
+    selectedAiAuditFilters.value = value as typeof selectedAiAuditFilters.value;
+    reloadCandidatesFromFirstPage();
+  },
+});
+
+const selectedSourcePlatformFilterModel = computed<string[]>({
+  get: () => selectedSourcePlatformFilters.value,
+  set: (value) => {
+    selectedSourcePlatformFilters.value = value;
+    reloadCandidatesFromFirstPage();
+  },
+});
+
+const selectedCollectionMethodFilterModel = computed<string[]>({
+  get: () => selectedCollectionMethodFilters.value,
+  set: (value) => {
+    selectedCollectionMethodFilters.value = value as typeof selectedCollectionMethodFilters.value;
+    reloadCandidatesFromFirstPage();
+  },
+});
 
 function applyBucket(bucket: JobLibraryBucket): void {
   activeJobLibraryBucket.value = bucket;
@@ -320,71 +353,63 @@ watch(
         </div>
       </div>
 
-      <div class="space-y-4 border-t border-border/90 p-4">
-        <div class="space-y-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">岗位状态</div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in JOB_STATUS_FILTER_OPTIONS"
-              :key="option.value"
-              type="button"
-              class="ui-badge transition-colors"
-              :class="selectedJobStatusFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
-              @click="toggleJobStatusFilter(option.value)"
+      <div class="border-t border-border/90 bg-surface-secondary/30 p-4">
+        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label class="space-y-1.5 text-xs text-content-muted">
+            <span class="font-semibold text-content-secondary">岗位状态</span>
+            <UiMultiSelect
+              v-model="selectedJobStatusFilterModel"
+              variant="filter"
+              empty-label="全部岗位状态"
+              empty-badge-label="全部"
             >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
+              <option v-for="option in JOB_STATUS_FILTER_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </UiMultiSelect>
+          </label>
 
-        <div class="space-y-2">
-          <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">AI 结果</div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              v-for="option in AI_AUDIT_FILTER_OPTIONS"
-              :key="option.value"
-              type="button"
-              class="ui-badge transition-colors"
-              :class="selectedAiAuditFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
-              @click="toggleAiAuditFilter(option.value)"
+          <label class="space-y-1.5 text-xs text-content-muted">
+            <span class="font-semibold text-content-secondary">AI 结果</span>
+            <UiMultiSelect
+              v-model="selectedAiAuditFilterModel"
+              variant="filter"
+              empty-label="全部 AI 结果"
+              empty-badge-label="全部"
             >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
-
-        <div class="grid gap-4 lg:grid-cols-2">
-          <div class="space-y-2">
-            <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">岗位平台</div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="option in SOURCE_PLATFORM_FILTER_OPTIONS"
-                :key="option.value"
-                type="button"
-                class="ui-badge transition-colors"
-                :class="selectedSourcePlatformFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
-                @click="toggleSourcePlatformFilter(option.value)"
-              >
+              <option v-for="option in AI_AUDIT_FILTER_OPTIONS" :key="option.value" :value="option.value">
                 {{ option.label }}
-              </button>
-            </div>
-          </div>
+              </option>
+            </UiMultiSelect>
+          </label>
 
-          <div class="space-y-2">
-            <div class="text-xs font-semibold uppercase tracking-wider text-content-muted">采集方式</div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="option in COLLECTION_METHOD_FILTER_OPTIONS"
-                :key="option.value"
-                type="button"
-                class="ui-badge transition-colors"
-                :class="selectedCollectionMethodFilters.includes(option.value) ? '!bg-slate-900 !text-white !ring-slate-900' : 'hover:bg-slate-50'"
-                @click="toggleCollectionMethodFilter(option.value)"
-              >
+          <label class="space-y-1.5 text-xs text-content-muted">
+            <span class="font-semibold text-content-secondary">岗位平台</span>
+            <UiMultiSelect
+              v-model="selectedSourcePlatformFilterModel"
+              variant="filter"
+              empty-label="全部岗位平台"
+              empty-badge-label="全部"
+            >
+              <option v-for="option in SOURCE_PLATFORM_FILTER_OPTIONS" :key="option.value" :value="option.value">
                 {{ option.label }}
-              </button>
-            </div>
-          </div>
+              </option>
+            </UiMultiSelect>
+          </label>
+
+          <label class="space-y-1.5 text-xs text-content-muted">
+            <span class="font-semibold text-content-secondary">采集方式</span>
+            <UiMultiSelect
+              v-model="selectedCollectionMethodFilterModel"
+              variant="filter"
+              empty-label="全部采集方式"
+              empty-badge-label="全部"
+            >
+              <option v-for="option in COLLECTION_METHOD_FILTER_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </UiMultiSelect>
+          </label>
         </div>
       </div>
     </section>
@@ -553,5 +578,15 @@ watch(
         </footer>
       </section>
     </div>
+
+    <JobsConfirmDialog
+      :visible="confirmDialog.visible"
+      :title="confirmDialog.title"
+      :message="confirmDialog.message"
+      :confirm-label="confirmDialog.confirmLabel"
+      :loading="confirmDialog.loading"
+      @close="closeConfirm"
+      @confirm="executeConfirm"
+    />
   </section>
 </template>
