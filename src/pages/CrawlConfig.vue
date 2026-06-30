@@ -3,7 +3,7 @@ import { CronLight } from "@vue-js-cron/light";
 
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
-import { BOSS_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
+import { BOSS_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
 import { useCrawlPage } from "../lib/useCrawlPage";
 
 const {
@@ -13,6 +13,7 @@ const {
   bossSelected,
   v2exSelected,
   linuxdoSelected,
+  zhilianSelected,
   collectableSourceOptions,
   collectionSourcesLoaded,
   v2exFeedSettingsOpen,
@@ -30,6 +31,12 @@ const {
   linuxdoMaxPages,
   linuxdoMaxJobs,
   linuxdoKeywords,
+  zhilianSettingsOpen,
+  zhilianKeywordsText,
+  zhilianCityText,
+  zhilianMaxPages,
+  zhilianMaxJobs,
+  zhilianKeywords,
   bossKeywordsText,
   bossMaxPages,
   bossMaxJobs,
@@ -106,6 +113,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
   if (value === BOSS_SOURCE_PLATFORM) bossSettingsOpen.value = true;
   if (value === V2EX_SOURCE_PLATFORM) v2exFeedSettingsOpen.value = true;
   if (value === LINUXDO_SOURCE_PLATFORM) linuxdoSettingsOpen.value = true;
+  if (value === ZHILIAN_SOURCE_PLATFORM) zhilianSettingsOpen.value = true;
 }
 </script>
 
@@ -497,6 +505,43 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <input v-model.number="linuxdoMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
           </label>
           <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ linuxdoKeywords.length > 0 ? linuxdoKeywords.join("、") : "仅用招聘信号识别" }}</div>
+        </div>
+      </section>
+
+      <section v-if="zhilianSelected" class="ui-panel overflow-hidden">
+        <button
+          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+          :class="zhilianSettingsOpen ? 'border-b border-border/90' : ''"
+          type="button"
+          @click="zhilianSettingsOpen = !zhilianSettingsOpen"
+        >
+          <span class="space-y-1">
+            <span class="block text-sm font-semibold text-content-primary">智联招聘</span>
+            <span class="block text-xs text-content-muted">公开采集 / 可见验证</span>
+          </span>
+          <span class="text-xs text-content-muted">{{ zhilianSettingsOpen ? "收起" : "展开" }}</span>
+        </button>
+
+        <div v-if="zhilianSettingsOpen" class="grid gap-3 p-4 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">关键词</div>
+            <textarea v-model="zhilianKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go 远程&#10;SRE&#10;Kubernetes" />
+            <div class="text-[11px] leading-5 text-content-muted">一行一个关键词；采集会先尝试公开路径，遇到验证时复用智联浏览器资料。</div>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">城市 / 地区</div>
+            <input v-model="zhilianCityText" class="ui-input w-full" placeholder="可留空；如 530 或 北京" />
+            <div class="text-[11px] leading-5 text-content-muted">当前按智联公开接口/页面可识别字段传入。</div>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">页数上限</div>
+            <input v-model.number="zhilianMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">入库上限</div>
+            <input v-model.number="zhilianMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
+          <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ zhilianKeywords.length > 0 ? zhilianKeywords.join("、") : "尚未配置" }}</div>
         </div>
       </section>
 

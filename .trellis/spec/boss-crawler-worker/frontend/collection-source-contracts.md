@@ -21,6 +21,7 @@
     - Boss: `city`, `salary`, `experience`, `degree`, `industry`, `scale`, `stage`, and `jobType` are the user-facing platform filters known to map to `/wapi/zpgeek/search/joblist.json`; `position`, `multiSubway`, and `multiBusinessDistrict` may pass through internally if available, but must not be surfaced as generic unknown filters.
     - V2EX: `feed_urls?: string[]`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
     - LinuxDo: `category_url?: string`, `sort_by?: "latest" | "created"`, `recent_days?: number | null`, `keywords?: string[]`
+    - Zhilian: `city?: string`, `keywords?: string[]`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -96,12 +97,25 @@
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains the topic title plus detail text or the missing-detail marker
   - only uses positive hiring signals before writing to `job`; configured keywords may add matches but must not alone turn a discussion thread into a job
   - post-collection profile and AI judgement own soft exclusion decisions after LinuxDo entries are written
+- Zhilian:
+  - `source_platform = "zhilian"`
+  - uses direct public Zhilian search/detail reads first, then may reuse an isolated persistent visible-browser profile (`zhilian-browser-profile`) when public requests are blocked, empty, or require login/security verification
+  - saved Zhilian cookies and localStorage snapshots are separate from Boss and LinuxDo snapshots; Zhilian collection must not carry Boss cookies
+  - supports `filters.city` as a pass-through city/region text or id and `filters.keywords` as the platform keyword list
+  - supports `limits.maxPages` as a positive page cap per keyword and `limits.maxJobs` as inserted job cap enforced by the sidecar run tracker; the worker must not treat duplicate/update normalized events as consuming the inserted-job cap
+  - recognizes Tencent EdgeOne/security verification, login pages, 401/403, and browser verification timeout as explicit blocked states; a Zhilian run with no parsed stable jobs must emit `ERROR` instead of `FINISHED` alone
+  - emits `JOB_NORMALIZED_CAPTURED`
+  - stores `encrypt_job_id = "zhilian:<stableId>"`
+  - stores `dedup_key = <stableId>`
+  - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains detail text when available, or list-level evidence plus `详情暂未抓取，需打开原岗位确认。`
+  - only applies hard validity checks before writing to `job`, such as requiring a stable Zhilian job id and title; user preferences, exclusions, and AI judgement run after ingestion
+  - post-collection profile and AI judgement own soft exclusion decisions after Zhilian entries are written
 - Collection limits:
   - For normalized feed adapters, `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates.
   - For the Boss adapter, `limits.maxJobs` follows the same inserted-job meaning and must not force detail endpoint requests. The sidecar stops the worker once inserted rows reach the cap.
   - the sidecar may stop a worker after counting an inserted job, and duplicate or updated rows must not consume the limit
 - Post-collection AI judgement:
-  - after Boss, V2EX, or LinuxDo automatic collection finishes, the sidecar may trigger `recompute_ai_post_collection_judgement`
+  - after Boss, V2EX, LinuxDo, or Zhilian automatic collection finishes, the sidecar may trigger `recompute_ai_post_collection_judgement`
   - persisted `reason_json.ai_judgement.status` is the UI status source when present: `passed`, `rejected`, `pending_confirmation`, or `failed`
   - missing `reason_json.ai_judgement` means the UI status is `pending_review`; in-flight frontend recompute may temporarily show `processing`
   - automatic AI judgement success must emit a runtime `LOG` summary with updated, AI-judged, hard-skipped, and fallback-failed counts
@@ -111,12 +125,13 @@
   - Boss adapter kind is `boss`
   - V2EX adapter kind is `feed`
   - LinuxDo adapter kind is `feed`
+  - Zhilian adapter kind is `zhilian`
   - other non-Boss platforms remain `manual_import` until their automatic adapter exists
   - enabled `manual_import` platforms may be shown in the collection source selector so users can save intended source scope, but automatic collection must skip them with a clear runtime log until an adapter exists
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`
-  - the default filter profile must include currently supported automatic collection sources (`boss`, `v2ex`, `linuxdo`) so a platform that can be collected is not hidden by source gating immediately after ingestion
+  - the default filter profile must include currently supported automatic collection sources (`boss`, `v2ex`, `linuxdo`, `zhilian`) so a platform that can be collected is not hidden by source gating immediately after ingestion
   - Boss-only filtering remains an explicit user-selected narrowing mode, not the default
 - Multi-source run:
   - UI stores all selected collectable sources, not a single `selectedCollectionSource`
@@ -145,6 +160,10 @@
 - LinuxDo direct API 403 / 429 with a reusable LinuxDo browser profile -> worker retries the same Discourse JSON API from browser page context; success requires `JOB_NORMALIZED_CAPTURED`, not only `FINISHED`.
 - LinuxDo browser profile still on Cloudflare / login verification or unable to read JSON -> worker logs that the user must finish verification in the opened browser and times out with an explicit error instead of reporting success.
 - LinuxDo detail blocked but list topic data is stable -> worker may write a title-level normalized job with missing-detail evidence.
+- Zhilian selected without stored Boss session -> command still starts with an empty session payload and a Zhilian browser profile path.
+- Zhilian selected with empty keywords -> frontend blocks start with a clear keyword-required message.
+- Zhilian public search or detail returns EdgeOne/security verification/login/401/403 -> worker retries through the Zhilian browser profile when available; if no stable jobs are parsed, it emits an explicit error instead of reporting success.
+- Zhilian detail blocked but list job id, title, and URL are stable -> worker may write a list-level normalized job with missing-detail evidence.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
@@ -170,6 +189,9 @@
 - Good: user selects LinuxDo, worker requests `https://linux.do/c/job/27.json` through the Discourse API, carries saved LinuxDo cookies when available, emits normalized `linuxdo:<topicId>` jobs, and post-collection AI judgement runs.
 - Good: user selects only LinuxDo in collection config, the page shows the LinuxDo dedicated config panel with category URL/sort/page/job limits, and hides Boss-only dictionary/filter controls.
 - Good: LinuxDo detail JSON is blocked after list parse, and the job is still inserted with a clear missing-detail marker for AI/pending confirmation.
+- Good: user selects Zhilian, enters keywords and an optional city, worker emits normalized `zhilian:<stableId>` jobs, and the sidecar inserts them into the unified library using the normalized path.
+- Good: Zhilian public requests hit security verification, the worker opens the reusable Zhilian browser profile, waits for user verification, and continues only after page-context requests can read usable data.
+- Good: repeated Zhilian normalized jobs update or duplicate existing rows without consuming the inserted-job `maxJobs` cap.
 - Base: user selects Boss, existing Boss payload and browser-session collection keep working.
 - Base: user leaves Boss limits at defaults, the task sends `limits.maxPages = 3`, `limits.maxJobs = 100`, `limits.bossDetailFetchLimit = 0`, and the worker still keeps `pageSize = 15`.
 - Good: user lowers Boss page cap to 1 or clears the job cap, and the payload changes only `limits` without adding unverified Boss sort/filter parameters.
@@ -179,6 +201,8 @@
 - Bad: Feed entries are written as Boss jobs or without a topic-based dedup key.
 - Bad: filter profile allowed candidate sources are used as a pre-ingest collection gate.
 - Bad: default filter profile allows only Boss while V2EX is an enabled automatic source; users see collected V2EX jobs blocked by "source not allowed".
+- Bad: Zhilian remains registered as `manual_import` after the automatic worker adapter exists, or collected Zhilian jobs are hidden by default source filters.
+- Bad: Zhilian worker stops after emitting `maxJobs` raw normalized events even when those events are duplicates or updates.
 - Bad: V2EX collection runs `https://www.v2ex.com/go/jobs` when the URL input is empty.
 - Bad: a V2EX feed URL is rewritten into a paginated node URL.
 
@@ -205,14 +229,18 @@
   - LinuxDo Cloudflare challenge detection recognizes common challenge HTML/text.
   - LinuxDo classifier accepts clear hiring posts and rejects keyword-only discussions.
   - LinuxDo title-level fallback builds normalized payload with `detail_status`.
+  - Zhilian parser extracts stable ids from detail URLs and common API fields.
+  - Zhilian search API and HTML parsers normalize title, company, city, salary, experience, degree, and URL fields.
+  - Zhilian detail parser extracts readable JD text and detects security/login verification pages.
+  - Zhilian normalized payload stores `source_platform = "zhilian"`, `encrypt_job_id = "zhilian:<stableId>"`, and stable `dedup_key`.
   - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
   - Boss natural job-list capture exposes `capture_source = "natural"`; DOM fallback exposes `"dom_fallback"`; page-context API fallback exposes `"api_fallback"`.
   - Boss HTML login/security-check responses are treated as recoverable risk/login states.
   - Boss empty-list / missing-stable-id runs emit `ERROR` before `FINISHED`.
 - Rust tests:
-  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo as `feed`, and reserved platforms as `manual_import`.
+  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo as `feed`, Zhilian as `zhilian`, and reserved platforms as `manual_import`.
   - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, `jd_text`, and `job_detail_raw.zp_data_json` with `jobInfo.postDescription`.
-  - default filter profile includes V2EX and legacy Boss-only default profile upgrades to Boss + V2EX.
+  - default filter profile includes V2EX/LinuxDo/Zhilian and legacy Boss-only default profile upgrades to all current automatic collection sources.
 - Frontend/browser smoke:
   - collection config source selector can select Boss and V2EX together.
   - Boss city selector supports multiple selected dictionary cities and explains that collection runs city variants sequentially.

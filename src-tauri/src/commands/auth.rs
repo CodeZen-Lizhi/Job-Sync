@@ -17,6 +17,11 @@ fn has_linuxdo_session(app_data_dir: &std::path::Path) -> bool {
         && storage::linuxdo_local_storage_path(app_data_dir).is_file()
 }
 
+fn has_zhilian_session(app_data_dir: &std::path::Path) -> bool {
+    storage::zhilian_cookies_path(app_data_dir).is_file()
+        && storage::zhilian_local_storage_path(app_data_dir).is_file()
+}
+
 fn normalize_login_platform(source_platform: Option<&str>) -> Result<&'static str, String> {
     match source_platform
         .map(str::trim)
@@ -27,6 +32,7 @@ fn normalize_login_platform(source_platform: Option<&str>) -> Result<&'static st
     {
         "boss" => Ok("boss"),
         "linuxdo" => Ok("linuxdo"),
+        "zhilian" => Ok("zhilian"),
         other => Err(format!("当前平台暂不支持登录：{other}")),
     }
 }
@@ -40,6 +46,7 @@ pub fn get_login_status(
     Ok(match platform {
         "boss" => has_boss_session(sidecar.app_data_dir()),
         "linuxdo" => has_linuxdo_session(sidecar.app_data_dir()),
+        "zhilian" => has_zhilian_session(sidecar.app_data_dir()),
         _ => false,
     })
 }
@@ -48,6 +55,7 @@ fn build_login_payload(app_data_dir: &std::path::Path, platform: &str) -> LoginS
     let user_data_dir = match platform {
         "boss" => Some(storage::boss_browser_profile_path(app_data_dir)),
         "linuxdo" => Some(storage::linuxdo_browser_profile_path(app_data_dir)),
+        "zhilian" => Some(storage::zhilian_browser_profile_path(app_data_dir)),
         _ => None,
     }
     .map(|path| path.to_string_lossy().to_string());
@@ -114,6 +122,10 @@ mod tests {
             normalize_login_platform(Some("linuxdo")).expect("linuxdo"),
             "linuxdo"
         );
+        assert_eq!(
+            normalize_login_platform(Some("zhilian")).expect("zhilian"),
+            "zhilian"
+        );
         assert!(normalize_login_platform(Some("liepin")).is_err());
     }
 
@@ -143,6 +155,22 @@ mod tests {
             .to_string_lossy()
             .to_string();
         assert_eq!(payload.source_platform.as_deref(), Some("boss"));
+        assert_eq!(
+            payload.user_data_dir.as_deref(),
+            Some(expected_user_data_dir.as_str())
+        );
+    }
+
+    #[test]
+    fn zhilian_login_payload_uses_zhilian_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+
+        let payload = build_login_payload(app_data_dir, "zhilian");
+        let expected_user_data_dir = storage::zhilian_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(payload.source_platform.as_deref(), Some("zhilian"));
         assert_eq!(
             payload.user_data_dir.as_deref(),
             Some(expected_user_data_dir.as_str())

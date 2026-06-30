@@ -18,6 +18,7 @@ import type { ApiFilters, PageFetchJsonResult } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
 import { runV2exFeedMode } from "../../v2ex/feed.js";
 import { runLinuxDoMode } from "../../linuxdo/feed.js";
+import { runZhilianMode } from "../../zhilian/feed.js";
 
 const NATURAL_JOB_LIST_TIMEOUT_MS = 20_000;
 const DEFAULT_DETAIL_FETCH_LIMIT = 0;
@@ -406,6 +407,17 @@ async function requestJobList(
 }
 
 export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeContext): Promise<void> {
+  if (payload.task.source_platform === "zhilian") {
+    try {
+      await runZhilianMode(payload, baseCtx);
+    } catch (err) {
+      baseCtx.emit({ type: "ERROR", payload: safeError(err) });
+    } finally {
+      baseCtx.emit({ type: "FINISHED" });
+    }
+    return;
+  }
+
   if (payload.task.source_platform === "linuxdo") {
     try {
       await runLinuxDoMode(payload, baseCtx);

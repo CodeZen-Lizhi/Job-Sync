@@ -63,3 +63,15 @@ pub fn linuxdo_local_storage_path(app_data_dir: &Path) -> PathBuf {
 pub fn linuxdo_browser_profile_path(app_data_dir: &Path) -> PathBuf {
     storage_dir(app_data_dir).join("linuxdo-browser-profile")
 }
+
+pub fn zhilian_cookies_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("zhilian-cookies.json")
+}
+
+pub fn zhilian_local_storage_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("zhilian-local-storage.json")
+}
+
+pub fn zhilian_browser_profile_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("zhilian-browser-profile")
+}

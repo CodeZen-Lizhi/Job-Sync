@@ -20,6 +20,10 @@ fn session_storage_paths(
             storage::linuxdo_cookies_path(app_data_dir),
             storage::linuxdo_local_storage_path(app_data_dir),
         ),
+        "zhilian" => (
+            storage::zhilian_cookies_path(app_data_dir),
+            storage::zhilian_local_storage_path(app_data_dir),
+        ),
         _ => (
             storage::boss_cookies_path(app_data_dir),
             storage::boss_local_storage_path(app_data_dir),
@@ -88,6 +92,7 @@ fn collection_browser_profile_path(
     match normalized_platform.as_str() {
         "boss" => Some(storage::boss_browser_profile_path(app_data_dir)),
         "linuxdo" => Some(storage::linuxdo_browser_profile_path(app_data_dir)),
+        "zhilian" => Some(storage::zhilian_browser_profile_path(app_data_dir)),
         _ => None,
     }
     .map(|path| path.to_string_lossy().to_string())
@@ -96,7 +101,7 @@ fn collection_browser_profile_path(
 fn collection_uses_optional_session(source_platform: &str) -> bool {
     matches!(
         normalize_collection_platform(Some(source_platform)).as_str(),
-        "boss" | "v2ex" | "linuxdo"
+        "boss" | "v2ex" | "linuxdo" | "zhilian"
     )
 }
 
@@ -243,6 +248,20 @@ mod tests {
     }
 
     #[test]
+    fn zhilian_collection_uses_zhilian_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        let expected = storage::zhilian_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            collection_browser_profile_path(app_data_dir, "zhilian").as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
     fn boss_collection_can_start_with_optional_session() {
         assert!(collection_uses_optional_session("boss"));
         assert!(collection_uses_optional_session(" Boss "));
@@ -250,6 +269,8 @@ mod tests {
         assert!(collection_uses_optional_session(" V2EX "));
         assert!(collection_uses_optional_session("linuxdo"));
         assert!(collection_uses_optional_session(" LinuxDo "));
+        assert!(collection_uses_optional_session("zhilian"));
+        assert!(collection_uses_optional_session(" ZhiLian "));
         assert!(!collection_uses_optional_session("liepin"));
     }
 
@@ -273,6 +294,29 @@ mod tests {
         assert_eq!(
             session.cookies,
             serde_json::json!([{ "name": "_t", "value": "linuxdo-token", "domain": "linux.do" }])
+        );
+    }
+
+    #[test]
+    fn zhilian_optional_session_reads_zhilian_cookie_snapshot() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        storage::write_json(
+            &storage::boss_cookies_path(app_data_dir),
+            &serde_json::json!([{ "name": "boss", "value": "wrong" }]),
+        )
+        .expect("write boss cookies");
+        storage::write_json(
+            &storage::zhilian_cookies_path(app_data_dir),
+            &serde_json::json!([{ "name": "ZP_TOKEN", "value": "zhilian-token", "domain": ".zhaopin.com" }]),
+        )
+        .expect("write zhilian cookies");
+
+        let session = load_session_optional(app_data_dir, "zhilian");
+
+        assert_eq!(
+            session.cookies,
+            serde_json::json!([{ "name": "ZP_TOKEN", "value": "zhilian-token", "domain": ".zhaopin.com" }])
         );
     }
 }

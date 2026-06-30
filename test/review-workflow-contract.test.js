@@ -1565,7 +1565,7 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeHint/);
     assert.match(filterProfile, /sourcePlatformOptions: JOB_SOURCE_PLATFORM_OPTIONS/);
-    assert.match(filterProfile, /允许 Boss、V2EX、LinuxDo 等已支持自动采集来源进入筛选和 Top 20/);
+    assert.match(filterProfile, /允许 Boss、V2EX、LinuxDo、智联等已支持自动采集来源进入筛选和 Top 20/);
     assert.match(crawlTypes, /JOB_SOURCE_PLATFORM_OPTIONS/);
     assert.match(crawlTypes, /MANUAL_IMPORT_SOURCE_PLATFORMS/);
     assert.match(crawlTypes, /manual_import/);

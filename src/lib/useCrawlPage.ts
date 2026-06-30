@@ -20,12 +20,15 @@ import {
   DEFAULT_LINUXDO_MAX_PAGES,
   DEFAULT_V2EX_MAX_PAGES,
   DEFAULT_V2EX_FEED_URL,
+  DEFAULT_ZHILIAN_MAX_JOBS,
+  DEFAULT_ZHILIAN_MAX_PAGES,
   filterBossOptions,
   JOB_SOURCE_PLATFORM_OPTIONS,
   LINUXDO_SOURCE_PLATFORM,
   MANUAL_IMPORT_SOURCE_PLATFORMS,
   parseList,
   V2EX_SOURCE_PLATFORM,
+  ZHILIAN_SOURCE_PLATFORM,
   type BossCityGroup,
   type BossFilterConditionGroup,
   type BossOption,
@@ -66,6 +69,10 @@ type CollectionConfigPayload = {
   linuxdoRecentDays?: number | null;
   linuxdoMaxPages?: number | null;
   linuxdoMaxJobs?: number | null;
+  zhilianKeywordsText?: string;
+  zhilianCityText?: string;
+  zhilianMaxPages?: number | null;
+  zhilianMaxJobs?: number | null;
   bossKeywordsText?: string;
   bossMaxPages?: number | null;
   bossMaxJobs?: number | null;
@@ -141,6 +148,11 @@ function createCrawlPageState() {
   const linuxdoRecentDays = ref<number | null>(null);
   const linuxdoMaxPages = ref(DEFAULT_LINUXDO_MAX_PAGES);
   const linuxdoMaxJobs = ref<number | null>(20);
+  const zhilianSettingsOpen = ref(false);
+  const zhilianKeywordsText = ref("");
+  const zhilianCityText = ref("");
+  const zhilianMaxPages = ref(DEFAULT_ZHILIAN_MAX_PAGES);
+  const zhilianMaxJobs = ref<number | null>(DEFAULT_ZHILIAN_MAX_JOBS);
   const bossKeywordsText = ref("");
   const bossMaxPages = ref(DEFAULT_BOSS_MAX_PAGES);
   const bossMaxJobs = ref<number | null>(DEFAULT_BOSS_MAX_JOBS);
@@ -209,6 +221,7 @@ function createCrawlPageState() {
           { platform: BOSS_SOURCE_PLATFORM, adapter_kind: "boss", enabled: bossCollectionEnabled.value },
           { platform: V2EX_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
           { platform: LINUXDO_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
+          { platform: ZHILIAN_SOURCE_PLATFORM, adapter_kind: "zhilian", enabled: true },
         ];
     return sources
       .filter((source) => {
@@ -278,11 +291,30 @@ function createCrawlPageState() {
   const v2exTaskKeywords = computed(() => v2exKeywords.value.length > 0 ? v2exKeywords.value : ["V2EX"]);
   const linuxdoKeywords = computed(() => uniqueList(parseList(linuxdoKeywordsText.value)));
   const linuxdoTaskKeywords = computed(() => linuxdoKeywords.value.length > 0 ? linuxdoKeywords.value : ["LinuxDo"]);
+  const zhilianKeywords = computed(() => uniqueList(parseList(zhilianKeywordsText.value)));
   const selectedCollectionSourceSet = computed(() => new Set(selectedCollectionSources.value));
   const bossSelected = computed(() => selectedCollectionSourceSet.value.has(BOSS_SOURCE_PLATFORM));
   const v2exSelected = computed(() => selectedCollectionSourceSet.value.has(V2EX_SOURCE_PLATFORM));
   const linuxdoSelected = computed(() => selectedCollectionSourceSet.value.has(LINUXDO_SOURCE_PLATFORM));
+  const zhilianSelected = computed(() => selectedCollectionSourceSet.value.has(ZHILIAN_SOURCE_PLATFORM));
   function buildTaskForSource(sourcePlatform: JobSourcePlatform) {
+    if (sourcePlatform === ZHILIAN_SOURCE_PLATFORM) {
+      return {
+        keywords: zhilianKeywords.value,
+        source_platform: ZHILIAN_SOURCE_PLATFORM,
+        filters: {
+          city: zhilianCityText.value.trim(),
+          keywords: zhilianKeywords.value,
+          profile: filterProfileState.filterProfile.value,
+        },
+        limits: {
+          delayMs: delayMs.value,
+          maxPages: optionalNumber(zhilianMaxPages.value) ?? DEFAULT_ZHILIAN_MAX_PAGES,
+          maxJobs: optionalNumber(zhilianMaxJobs.value),
+        },
+        mode: "auto",
+      };
+    }
     if (sourcePlatform === LINUXDO_SOURCE_PLATFORM) {
       return {
         keywords: linuxdoTaskKeywords.value,
@@ -371,6 +403,18 @@ function createCrawlPageState() {
       }
       if ((optionalNumber(linuxdoMaxPages.value) ?? 0) <= 0) {
         return "LinuxDo 页数上限必须大于 0。";
+      }
+    }
+    if (source === ZHILIAN_SOURCE_PLATFORM) {
+      if (zhilianKeywords.value.length === 0) {
+        return "智联搜索关键词为空。请在智联配置中输入至少 1 个关键词。";
+      }
+      if ((optionalNumber(zhilianMaxPages.value) ?? 0) <= 0) {
+        return "智联页数上限必须大于 0。";
+      }
+      const maxJobs = optionalNumber(zhilianMaxJobs.value);
+      if (maxJobs !== null && maxJobs <= 0) {
+        return "智联岗位上限必须大于 0，或留空不限。";
       }
     }
     return null;
@@ -521,6 +565,10 @@ function createCrawlPageState() {
       linuxdoRecentDays: optionalNumber(linuxdoRecentDays.value),
       linuxdoMaxPages: optionalNumber(linuxdoMaxPages.value) ?? DEFAULT_LINUXDO_MAX_PAGES,
       linuxdoMaxJobs: optionalNumber(linuxdoMaxJobs.value),
+      zhilianKeywordsText: zhilianKeywordsText.value,
+      zhilianCityText: zhilianCityText.value,
+      zhilianMaxPages: optionalNumber(zhilianMaxPages.value) ?? DEFAULT_ZHILIAN_MAX_PAGES,
+      zhilianMaxJobs: optionalNumber(zhilianMaxJobs.value),
       bossKeywordsText: bossKeywordsText.value,
       bossMaxPages: optionalNumber(bossMaxPages.value) ?? DEFAULT_BOSS_MAX_PAGES,
       bossMaxJobs: optionalNumber(bossMaxJobs.value),
@@ -570,6 +618,12 @@ function createCrawlPageState() {
     linuxdoRecentDays.value = optionalNumber(config.linuxdoRecentDays);
     linuxdoMaxPages.value = optionalNumber(config.linuxdoMaxPages) ?? DEFAULT_LINUXDO_MAX_PAGES;
     linuxdoMaxJobs.value = optionalNumber(config.linuxdoMaxJobs) ?? 20;
+    zhilianKeywordsText.value = textValue(config.zhilianKeywordsText);
+    zhilianCityText.value = textValue(config.zhilianCityText);
+    zhilianMaxPages.value = optionalNumber(config.zhilianMaxPages) ?? DEFAULT_ZHILIAN_MAX_PAGES;
+    zhilianMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "zhilianMaxJobs")
+      ? optionalNumber(config.zhilianMaxJobs)
+      : DEFAULT_ZHILIAN_MAX_JOBS;
     bossKeywordsText.value = textValue(config.bossKeywordsText);
     bossMaxPages.value = optionalNumber(config.bossMaxPages) ?? DEFAULT_BOSS_MAX_PAGES;
     bossMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "bossMaxJobs")
@@ -602,6 +656,7 @@ function createCrawlPageState() {
     bossSettingsOpen.value = bossSelected.value;
     v2exFeedSettingsOpen.value = v2exSelected.value;
     linuxdoSettingsOpen.value = linuxdoSelected.value;
+    zhilianSettingsOpen.value = zhilianSelected.value;
   }
 
   function sanitizeBossFilterConditionSelection(value: unknown): Record<string, string> {
@@ -998,6 +1053,7 @@ function createCrawlPageState() {
     bossSelected,
     v2exSelected,
     linuxdoSelected,
+    zhilianSelected,
     collectableSourceOptions,
     collectionSourcesLoaded,
     v2exFeedSettingsOpen,
@@ -1015,6 +1071,12 @@ function createCrawlPageState() {
     linuxdoMaxPages,
     linuxdoMaxJobs,
     linuxdoKeywords,
+    zhilianSettingsOpen,
+    zhilianKeywordsText,
+    zhilianCityText,
+    zhilianMaxPages,
+    zhilianMaxJobs,
+    zhilianKeywords,
     bossKeywordsText,
     bossMaxPages,
     bossMaxJobs,

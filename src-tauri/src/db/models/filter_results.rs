@@ -9,7 +9,7 @@ use super::{
 };
 
 pub(crate) const DEFAULT_FILTER_PROFILE_ID: &str = "default";
-const DEFAULT_SOURCE_PLATFORMS: &[&str] = &["boss", "v2ex", "linuxdo"];
+const DEFAULT_SOURCE_PLATFORMS: &[&str] = &["boss", "v2ex", "linuxdo", "zhilian"];
 const DEFAULT_AI_PREFERRED_TEXT: &str = "优先看 Go / Infra / DevOps / SRE / 平台工程 / AI Infra / 云原生方向。\nJD 里最好能看到真实工程建设、稳定性、自动化、平台化、可观测性、Kubernetes 或云基础设施证据。\n远程、混合办公、技术深度强、业务稳定的岗位可加分。";
 const DEFAULT_AI_REJECTED_TEXT: &str = "明显外包、驻场、培训机构、销售导向、纯实施交付、电话销售、低代码搭建、重复客服支持类岗位。\n标题写技术但正文主要是售前销售、客户驻场、人力外派、拉新获客、课程销售、招转培。\n技术栈与目标方向明显无关，或 JD 缺少真实研发/平台工程职责。";
 const DEFAULT_AI_RISK_TEXT: &str = "信息太少、职责含糊、公司业务不清楚、薪资/经验/城市描述矛盾时不要直接推荐。\n软排除只有隐约迹象但证据不够时，放入待确认并说明需要人工看的点。";

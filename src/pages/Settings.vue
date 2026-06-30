@@ -134,8 +134,8 @@ const previewJobSources = JOB_SOURCE_PLATFORM_OPTIONS.map((source) => ({
   updated_at: "预览",
 }));
 const visibleJobSources = computed(() => (jobSources.value.length > 0 ? jobSources.value : previewJobSources));
-const loginCapablePlatforms = new Set(["boss", "linuxdo"]);
-const automatedLoginPlatforms = new Set(["boss", "linuxdo"]);
+const loginCapablePlatforms = new Set(["boss", "linuxdo", "zhilian"]);
+const automatedLoginPlatforms = new Set(["boss", "linuxdo", "zhilian"]);
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -237,6 +237,7 @@ function clearSavedTelegramConfig(): void {
 function automaticCollectionLabel(source: JobSourceEntry): string {
   if (source.adapter_kind === "boss") return "支持自动采集";
   if (source.adapter_kind === "feed") return "支持自动采集";
+  if (source.adapter_kind === "zhilian") return "支持自动采集";
   return "自动采集预留";
 }
 
@@ -247,7 +248,7 @@ function sourceEnabledBadgeClass(source: JobSourceEntry): string {
 }
 
 function automaticCollectionBadgeClass(source: JobSourceEntry): string {
-  return source.adapter_kind === "boss" || source.adapter_kind === "feed"
+  return source.adapter_kind === "boss" || source.adapter_kind === "feed" || source.adapter_kind === "zhilian"
     ? "bg-cyan-50 text-cyan-700 ring-cyan-200"
     : "bg-amber-50 text-amber-700 ring-amber-200";
 }
@@ -258,6 +259,9 @@ function platformCapabilityHint(source: JobSourceEntry): string {
   }
   if (source.platform === "linuxdo") {
     return "LinuxDo 受 Cloudflare 保护；请点“打开”在应用内浏览器里完成登录，采集会复用同一 profile。";
+  }
+  if (source.platform === "zhilian") {
+    return "智联公开路径可能触发登录或安全验证；请点“打开”完成一次验证，采集会复用同一 profile。";
   }
   if (source.adapter_kind === "feed") {
     return "启用后可在采集配置中作为公开 Feed 自动采集来源；无需平台登录。";
@@ -272,6 +276,12 @@ function platformLoginLabel(source: JobSourceEntry): string {
     if (status === false) return "LinuxDo 未就绪";
     return "浏览器登录";
   }
+  if (source.platform === "zhilian") {
+    const status = loginStatusByPlatform.value[source.platform] ?? null;
+    if (status === true) return "智联已可采集";
+    if (status === false) return "智联未就绪";
+    return "浏览器验证";
+  }
   if (source.adapter_kind === "feed") return "无需登录";
   if (!loginCapablePlatforms.has(source.platform)) return "登录预留";
   const platformName = source.display_name || source.platform;
@@ -283,6 +293,12 @@ function platformLoginLabel(source: JobSourceEntry): string {
 
 function platformLoginBadgeClass(source: JobSourceEntry): string {
   if (source.platform === "linuxdo") {
+    const status = loginStatusByPlatform.value[source.platform] ?? null;
+    if (status === true) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    if (status === false) return "bg-rose-50 text-rose-700 ring-rose-200";
+    return "bg-cyan-50 text-cyan-700 ring-cyan-200";
+  }
+  if (source.platform === "zhilian") {
     const status = loginStatusByPlatform.value[source.platform] ?? null;
     if (status === true) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
     if (status === false) return "bg-rose-50 text-rose-700 ring-rose-200";
@@ -306,7 +322,7 @@ function liveLoginMessageClass(): string {
 function loginPlatformName(platform: string): string {
   const normalized = platform.trim().toLowerCase();
   return visibleJobSources.value.find((source) => source.platform === normalized)?.display_name
-    || (normalized === "boss" ? "Boss 直聘" : normalized === "linuxdo" ? "LinuxDo" : normalized);
+    || (normalized === "boss" ? "Boss 直聘" : normalized === "linuxdo" ? "LinuxDo" : normalized === "zhilian" ? "智联招聘" : normalized);
 }
 
 async function loadModels(): Promise<void> {
@@ -371,7 +387,7 @@ async function refreshPlatformLogin(sourcePlatform = "boss", showMessage = false
     const status = await invoke<boolean>("get_login_status", { sourcePlatform: platform });
     loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: status };
     if (showMessage) {
-      const statusLabel = platform === "linuxdo"
+      const statusLabel = platform === "linuxdo" || platform === "zhilian"
         ? status ? "已可采集" : "未就绪"
         : status ? "已登录" : "未登录";
       loginMessage.value = `${loginPlatformName(platform)} 登录状态已刷新：${statusLabel}`;
@@ -649,7 +665,7 @@ watch(
                   :disabled="!tauri || !source.enabled || loginLoading || sidecarRunning"
                   @click="startPlatformLogin(source)"
                 >
-                  {{ loginLoadingPlatform === source.platform ? "打开中…" : source.platform === "linuxdo" ? "打开" : "登录" }}
+                  {{ loginLoadingPlatform === source.platform ? "打开中…" : source.platform === "linuxdo" || source.platform === "zhilian" ? "打开" : "登录" }}
                 </button>
                 <button
                   v-if="automatedLoginPlatforms.has(source.platform)"

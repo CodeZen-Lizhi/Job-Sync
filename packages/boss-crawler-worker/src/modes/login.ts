@@ -256,6 +256,54 @@ async function runLinuxDoLoginMode(
   }
 }
 
+async function runZhilianLoginMode(
+  payload: LoginStartPayload,
+  ctx: ModeContext,
+): Promise<void> {
+  const loginUrl = "https://www.zhaopin.com/";
+  if (!payload.user_data_dir) {
+    throw new Error("智联登录需要可复用的浏览器资料目录。");
+  }
+
+  const { browser, page } = await launchBrowser({
+    headless: false,
+    executable_path: payload.executable_path,
+    user_data_dir: payload.user_data_dir,
+    stealth: false,
+    preserve_on_disconnect: true,
+  });
+
+  try {
+    await blockNavigation(page, { allow_domain_suffixes: ["zhaopin.com", "zhaopin.cn"] });
+    await page.goto(loginUrl, { waitUntil: "domcontentloaded" }).catch(() => undefined);
+    ctx.emit({
+      type: "LOGIN_STATUS",
+      payload: {
+        status: "captcha",
+        message: "已打开智联招聘窗口。请完成登录或安全验证；完成后保持窗口打开，应用会保存浏览器资料用于后续采集。",
+      },
+    });
+    await delay(8000, ctx.signal).catch(() => undefined);
+    const cookies = await page.cookies().catch(() => []);
+    const local_storage = await readLocalStorage(page).catch(() => ({}));
+    ctx.emit({
+      type: "COOKIE_COLLECTED",
+      payload: { source_platform: "zhilian", cookies, local_storage },
+    });
+    ctx.emit({
+      type: "LOGIN_STATUS",
+      payload: {
+        status: cookies.length > 0 ? "valid" : "invalid",
+        message: cookies.length > 0
+          ? "已保存智联浏览器资料；若采集仍遇到验证，请在打开的窗口内完成后重试。"
+          : "暂未检测到智联 Cookie；如果页面仍在验证，请完成后重试。",
+      },
+    });
+  } finally {
+    await browser.disconnect().catch(() => undefined);
+  }
+}
+
 export async function runLoginMode(payload: LoginStartPayload, baseCtx: ModeContext): Promise<void> {
   const sourcePlatform = payload.source_platform?.trim().toLowerCase() || "boss";
   const verificationTracker = createHumanVerificationTracker(baseCtx);
@@ -266,6 +314,8 @@ export async function runLoginMode(payload: LoginStartPayload, baseCtx: ModeCont
       level: "info",
       message: sourcePlatform === "linuxdo"
         ? "启动浏览器，等待用户完成 LinuxDo 登录。后续采集会复用同一浏览器资料。"
+        : sourcePlatform === "zhilian"
+          ? "启动浏览器，等待用户完成智联登录或安全验证。后续采集会复用同一浏览器资料。"
         : "启动浏览器，等待用户登录 Boss。",
     },
   });
@@ -273,6 +323,15 @@ export async function runLoginMode(payload: LoginStartPayload, baseCtx: ModeCont
   if (sourcePlatform === "linuxdo") {
     try {
       await runLinuxDoLoginMode(payload, ctx);
+    } finally {
+      ctx.emit({ type: "FINISHED" });
+    }
+    return;
+  }
+
+  if (sourcePlatform === "zhilian") {
+    try {
+      await runZhilianLoginMode(payload, ctx);
     } finally {
       ctx.emit({ type: "FINISHED" });
     }

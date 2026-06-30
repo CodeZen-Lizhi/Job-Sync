@@ -29,6 +29,7 @@ impl JobSourceAdapterSpec {
 pub(super) const SOURCE_PLATFORM_BOSS: &str = "boss";
 const SOURCE_ADAPTER_KIND_MANUAL_IMPORT: &str = "manual_import";
 const SOURCE_ADAPTER_KIND_FEED: &str = "feed";
+const SOURCE_ADAPTER_KIND_ZHILIAN: &str = "zhilian";
 const BOSS_SOURCE_ADAPTER_SPEC: JobSourceAdapterSpec =
     JobSourceAdapterSpec::new("boss", "Boss 直聘", "boss", true);
 const JOB_SOURCE_ADAPTER_SPECS: [JobSourceAdapterSpec; 6] = [
@@ -37,7 +38,7 @@ const JOB_SOURCE_ADAPTER_SPECS: [JobSourceAdapterSpec; 6] = [
     JobSourceAdapterSpec::new(
         "zhilian",
         "智联招聘",
-        SOURCE_ADAPTER_KIND_MANUAL_IMPORT,
+        SOURCE_ADAPTER_KIND_ZHILIAN,
         true,
     ),
     JobSourceAdapterSpec::new("maimai", "脉脉", SOURCE_ADAPTER_KIND_MANUAL_IMPORT, true),
@@ -165,7 +166,7 @@ mod tests {
         assert_eq!(spec.adapter_kind, "boss");
         assert!(spec.enabled_by_default);
         assert_eq!(specs.len(), 6);
-        for platform in ["liepin", "zhilian", "maimai"] {
+        for platform in ["liepin", "maimai"] {
             let manual = specs
                 .iter()
                 .find(|spec| spec.platform == platform)
@@ -173,6 +174,12 @@ mod tests {
             assert_eq!(manual.adapter_kind, SOURCE_ADAPTER_KIND_MANUAL_IMPORT);
             assert!(manual.enabled_by_default);
         }
+        let zhilian = specs
+            .iter()
+            .find(|spec| spec.platform == "zhilian")
+            .expect("zhilian source spec");
+        assert_eq!(zhilian.adapter_kind, SOURCE_ADAPTER_KIND_ZHILIAN);
+        assert!(zhilian.enabled_by_default);
         let v2ex = specs
             .iter()
             .find(|spec| spec.platform == "v2ex")

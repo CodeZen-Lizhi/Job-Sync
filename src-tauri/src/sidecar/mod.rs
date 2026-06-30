@@ -806,16 +806,19 @@ impl SidecarManager {
                 match &evt {
                     EventOut::CookieCollected(payload) => {
                         let platform = payload.source_platform.as_deref().unwrap_or("boss");
-                        let (cookies_path, local_storage_path) = if platform == "linuxdo" {
-                            (
+                        let (cookies_path, local_storage_path) = match platform {
+                            "linuxdo" => (
                                 storage::linuxdo_cookies_path(&app_data_dir),
                                 storage::linuxdo_local_storage_path(&app_data_dir),
-                            )
-                        } else {
-                            (
+                            ),
+                            "zhilian" => (
+                                storage::zhilian_cookies_path(&app_data_dir),
+                                storage::zhilian_local_storage_path(&app_data_dir),
+                            ),
+                            _ => (
                                 storage::boss_cookies_path(&app_data_dir),
                                 storage::boss_local_storage_path(&app_data_dir),
-                            )
+                            ),
                         };
                         let _ = storage::write_json(&cookies_path, &payload.cookies);
                         let _ = storage::write_json(&local_storage_path, &payload.local_storage);

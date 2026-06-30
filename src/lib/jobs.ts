@@ -441,6 +441,8 @@ export function sourcePlatformLabel(platform?: string | null): string {
   if (!normalized) return "未知平台";
   if (normalized === "boss") return "Boss";
   if (normalized === "v2ex") return "V2EX";
+  if (normalized === "linuxdo") return "LinuxDo";
+  if (normalized === "zhilian") return "智联招聘";
   return normalized;
 }
 

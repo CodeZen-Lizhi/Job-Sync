@@ -17,7 +17,7 @@ export type JobSourcePlatform = "boss" | "liepin" | "zhilian" | "maimai" | "v2ex
 export type JobSourcePlatformOption = {
   value: JobSourcePlatform;
   label: string;
-  adapterKind: "boss" | "feed" | "manual_import";
+  adapterKind: "boss" | "feed" | "manual_import" | "zhilian";
 };
 export type FilterProfilePayload = {
   aiPreferredText: string;
@@ -148,18 +148,21 @@ export const DEFAULT_AI_UNCERTAIN_STRATEGY: AiUncertainStrategy = "pending_confi
 export const BOSS_SOURCE_PLATFORM: JobSourcePlatform = "boss";
 export const V2EX_SOURCE_PLATFORM: JobSourcePlatform = "v2ex";
 export const LINUXDO_SOURCE_PLATFORM: JobSourcePlatform = "linuxdo";
-export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "zhilian", "maimai"] as const;
-export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM] as const;
+export const ZHILIAN_SOURCE_PLATFORM: JobSourcePlatform = "zhilian";
+export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["liepin", "maimai"] as const;
+export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM] as const;
 export const DEFAULT_V2EX_FEED_URL = "";
 export const DEFAULT_BOSS_MAX_PAGES = 3;
 export const DEFAULT_BOSS_MAX_JOBS = 100;
 export const DEFAULT_V2EX_MAX_PAGES = 5;
 export const DEFAULT_LINUXDO_CATEGORY_URL = "https://linux.do/c/job/27";
 export const DEFAULT_LINUXDO_MAX_PAGES = 3;
+export const DEFAULT_ZHILIAN_MAX_PAGES = 3;
+export const DEFAULT_ZHILIAN_MAX_JOBS = 50;
 export const JOB_SOURCE_PLATFORM_OPTIONS: JobSourcePlatformOption[] = [
   { value: BOSS_SOURCE_PLATFORM, label: "Boss 直聘", adapterKind: "boss" },
   { value: "liepin", label: "猎聘", adapterKind: "manual_import" },
-  { value: "zhilian", label: "智联招聘", adapterKind: "manual_import" },
+  { value: ZHILIAN_SOURCE_PLATFORM, label: "智联招聘", adapterKind: "zhilian" },
   { value: "maimai", label: "脉脉", adapterKind: "manual_import" },
   { value: V2EX_SOURCE_PLATFORM, label: "V2EX", adapterKind: "feed" },
   { value: LINUXDO_SOURCE_PLATFORM, label: "LinuxDo", adapterKind: "feed" },
