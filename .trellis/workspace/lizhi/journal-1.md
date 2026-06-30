@@ -811,3 +811,34 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: 验证 Boss 匿名采集可行性
+
+**Date**: 2026-06-30
+**Task**: 验证 Boss 匿名采集可行性
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+使用全新临时 Chrome profile 验证 BOSS 未登录访问：主页可打开，user info 返回登录失效，搜索页跳安全验证，joblist API 返回 code=37；结论是不实现 Boss 匿名岗位采集分支。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
