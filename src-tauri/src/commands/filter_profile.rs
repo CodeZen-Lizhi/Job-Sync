@@ -1165,7 +1165,7 @@ pub(crate) fn recompute_default_filter_profile_for_job_on_conn(
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
           'jd_text', j.jd_text,
-          'raw_payload_json', j.raw_payload_json,
+          'raw_payload_json', COALESCE(sp.raw_payload_json, j.raw_payload_json),
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
           'communication_status', COALESCE(rs.communication_status, 'not_contacted'),
@@ -1173,6 +1173,7 @@ pub(crate) fn recompute_default_filter_profile_for_job_on_conn(
         ),
         d.zp_data_json
       FROM job j
+      LEFT JOIN job_source_payload sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
@@ -1239,7 +1240,7 @@ fn recompute_filter_profile_on_conn(conn: &Connection) -> Result<u64, String> {
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
           'jd_text', j.jd_text,
-          'raw_payload_json', j.raw_payload_json,
+          'raw_payload_json', COALESCE(sp.raw_payload_json, j.raw_payload_json),
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
           'communication_status', COALESCE(rs.communication_status, 'not_contacted'),
@@ -1247,6 +1248,7 @@ fn recompute_filter_profile_on_conn(conn: &Connection) -> Result<u64, String> {
         ),
         d.zp_data_json
       FROM job j
+      LEFT JOIN job_source_payload sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
@@ -1307,7 +1309,7 @@ pub(crate) fn recompute_missing_default_filter_profile_on_conn(
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
           'jd_text', j.jd_text,
-          'raw_payload_json', j.raw_payload_json,
+          'raw_payload_json', COALESCE(sp.raw_payload_json, j.raw_payload_json),
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
           'communication_status', COALESCE(rs.communication_status, 'not_contacted'),
@@ -1315,6 +1317,7 @@ pub(crate) fn recompute_missing_default_filter_profile_on_conn(
         ),
         d.zp_data_json
       FROM job j
+      LEFT JOIN job_source_payload sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
@@ -1436,7 +1439,7 @@ pub fn get_default_filter_profile(
     app: tauri::AppHandle,
 ) -> Result<db::models::FilterProfile, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
-    let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
+    let conn = db::connect_db(&app_data_dir).map_err(|e| e.to_string())?;
     db::models::load_default_filter_profile(&conn).map_err(|e| e.to_string())
 }
 
@@ -1445,7 +1448,7 @@ pub fn list_filter_profiles(
     app: tauri::AppHandle,
 ) -> Result<Vec<db::models::FilterProfile>, String> {
     let app_data_dir = paths::resolve_data_dir(&app)?;
-    let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
+    let conn = db::connect_db(&app_data_dir).map_err(|e| e.to_string())?;
     db::models::list_filter_profiles(&conn).map_err(|e| e.to_string())
 }
 

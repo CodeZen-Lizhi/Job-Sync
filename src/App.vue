@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { getVersion } from "@tauri-apps/api/app";
+import { computed, onMounted, ref } from "vue";
 import type { Component } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { Bot, Database, FileSliders, FileText, Scan, Settings } from "lucide-vue-next";
 
-import TitleBar from "./components/layout/TitleBar.vue";
+import { useCrawlPage } from "./lib/useCrawlPage";
 
 interface NavItem {
   to: string;
@@ -40,13 +41,24 @@ const navItemExactActiveClass =
   "border-slate-900 bg-slate-900 !text-white hover:!border-slate-900 hover:!bg-slate-900 hover:!text-white before:!opacity-100 [&_.nav-icon]:!text-white [&_.nav-label]:font-semibold";
 
 const route = useRoute();
+const appVersion = ref(__APP_VERSION__);
 const contentMaxWidthClass = computed(() => (route.path === "/jobs" || route.path === "/crawl-config" || route.path === "/resume-library" ? "max-w-6xl" : "max-w-5xl"));
+
+onMounted(() => {
+  getVersion()
+    .then((version) => {
+      appVersion.value = version;
+    })
+    .catch(() => {
+      appVersion.value = __APP_VERSION__;
+    });
+});
+
+void useCrawlPage({ initialize: "schedule" });
 </script>
 
 <template>
   <div class="flex h-screen flex-col bg-base">
-    <TitleBar />
-
     <div class="relative flex-1 overflow-hidden">
       <!-- Content -->
       <div class="relative z-10 flex h-full flex-col gap-0 lg:flex-row">
@@ -60,7 +72,12 @@ const contentMaxWidthClass = computed(() => (route.path === "/jobs" || route.pat
                 <Bot class="h-5 w-5" />
               </div>
               <div class="min-w-0">
-                <div class="truncate text-sm font-semibold tracking-wide text-content-primary">JobPilot</div>
+                <div class="flex min-w-0 items-center gap-2">
+                  <div class="truncate text-sm font-semibold tracking-wide text-content-primary">JobPilot</div>
+                  <div class="shrink-0 rounded-sm border border-border/80 bg-white px-1.5 py-0.5 text-[10px] font-semibold leading-none text-content-muted">
+                    v{{ appVersion }}
+                  </div>
+                </div>
                 <div class="mt-1 truncate text-xs text-content-muted">精准求职工作台</div>
               </div>
             </div>
@@ -91,9 +108,7 @@ const contentMaxWidthClass = computed(() => (route.path === "/jobs" || route.pat
         <main class="min-w-0 flex-1 overflow-y-auto bg-white px-3 py-4 sm:px-6 sm:py-6">
           <div :class="['ui-panel mx-auto w-full p-4 sm:p-6', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
-              <KeepAlive>
-                <component :is="Component" />
-              </KeepAlive>
+              <component :is="Component" />
             </RouterView>
           </div>
         </main>

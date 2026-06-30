@@ -127,6 +127,33 @@ export const AiGreetingResultSchema = z
     });
   });
 
+export const AiOptimizeResumeForJobResultSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    optimized_resume_markdown: z
+      .string()
+      .trim()
+      .min(80)
+      .refine((value) => /^#\s+/m.test(value) || /^##\s+/m.test(value), {
+        message: "optimized_resume_markdown must look like a complete Markdown resume",
+      }),
+    change_summary: nonEmptyEvidenceArray,
+    job_keywords_used: z.array(z.string().trim().min(1)).default([]),
+    evidence: z
+      .array(
+        z
+          .object({
+            resume_fact: z.string().trim().min(1),
+            job_requirement: z.string().trim().min(1),
+            rewrite_location: z.string().trim().min(1),
+          })
+          .passthrough(),
+      )
+      .min(1),
+    risks: z.array(z.string().trim().min(1)).default([]),
+  })
+  .passthrough();
+
 export const AiCompanyScoreBatchResultSchema = z.object({
   companies: z
     .array(

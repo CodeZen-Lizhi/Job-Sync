@@ -84,27 +84,37 @@ fn run_generate_greeting(
 
     let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
     ensure_greeting_allowed_review_status(&conn, &encrypt_job_id)?;
-    let (resume_text_source, resolved_resume_files) =
-        if explicit_resume_text.is_some() || explicit_resume_files.is_some() {
-            (explicit_resume_text, explicit_resume_files)
-        } else {
-            let resolved = resume_library::resolve_resume_text_for_job(&app_data_dir, &encrypt_job_id)?;
-            (
-                resolved.map(|resume| resume.body),
-                None,
-            )
-        };
-    let resolved_resume_text = match (resume_text_source, resolved_resume_files.as_deref()) {
-        (Some(text), files) => Some(resume_text::resolve_resume_text(&text, files)?),
-        (None, Some(files)) => Some(resume_text::resolve_resume_text("", Some(files))?),
-        (None, None) => {
+    let job_detail_raw = load_job_detail_raw(&conn, &encrypt_job_id)?;
+    let job_detail = serde_json::from_str(&job_detail_raw).unwrap_or(Value::Null);
+    let match_report = load_latest_resume_match_report(&conn, &encrypt_job_id)?;
+    let (resume_text_source, resolved_resume_files) = if explicit_resume_text.is_some()
+        || explicit_resume_files.is_some()
+    {
+        (explicit_resume_text, explicit_resume_files)
+    } else {
+        let resolved = resume_library::resolve_resume_text_for_job(&app_data_dir, &encrypt_job_id)?;
+        (resolved.map(|resume| resume.body), None)
+    };
+    let resolved_resume_text = match (
+        resume_text_source,
+        resolved_resume_files.as_deref(),
+        match_report.as_ref(),
+    ) {
+        (Some(text), files, _) => Some(resume_text::resolve_resume_text(&text, files)?),
+        (None, Some(files), _) => Some(resume_text::resolve_resume_text("", Some(files))?),
+        (None, None, _)
+            if has_greeting_candidate_fallback(
+                resolved_context_text.as_deref(),
+                match_report.as_ref(),
+            ) =>
+        {
+            None
+        }
+        (None, None, _) => {
             return Err("请先在简历库为该岗位关联简历，或手工设置一份默认简历。".to_string());
         }
     };
 
-    let job_detail_raw = load_job_detail_raw(&conn, &encrypt_job_id)?;
-    let job_detail = serde_json::from_str(&job_detail_raw).unwrap_or(Value::Null);
-    let match_report = load_latest_resume_match_report(&conn, &encrypt_job_id)?;
     ensure_greeting_has_candidate_context(
         resolved_resume_text.as_deref(),
         resolved_context_text.as_deref(),
@@ -125,6 +135,24 @@ fn run_generate_greeting(
     });
 
     run_worker_command(&app, &app_data_dir, command, &config, debug)
+}
+
+fn has_greeting_candidate_fallback(
+    context_text: Option<&str>,
+    match_report: Option<&Value>,
+) -> bool {
+    context_text
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+        || match_report.map(is_non_empty_match_report).unwrap_or(false)
+}
+
+fn is_non_empty_match_report(report: &Value) -> bool {
+    report
+        .as_object()
+        .map(|object| !object.is_empty())
+        .unwrap_or(false)
 }
 
 fn ensure_greeting_allowed_review_status(
@@ -207,7 +235,10 @@ fn ensure_greeting_has_candidate_context(
 #[cfg(test)]
 mod tests {
     use super::super::shared::load_job_ai_context;
-    use super::{ensure_greeting_allowed_review_status, ensure_greeting_has_candidate_context};
+    use super::{
+        ensure_greeting_allowed_review_status, ensure_greeting_has_candidate_context,
+        has_greeting_candidate_fallback, is_non_empty_match_report,
+    };
     use crate::db::{self, models};
     use rusqlite::params;
     use serde_json::json;
@@ -391,6 +422,29 @@ mod tests {
             Some(&json!({ "matchScore": 82, "strengths": ["Go"] })),
         )
         .expect("match report allowed");
+    }
+
+    #[test]
+    fn greeting_treats_non_empty_match_report_as_resume_fallback() {
+        assert!(has_greeting_candidate_fallback(
+            Some("当前主攻 Go / SRE 岗位"),
+            None
+        ));
+        assert!(has_greeting_candidate_fallback(
+            None,
+            Some(&json!({
+                "matchScore": 82,
+                "matched_stack": ["Go"]
+            }))
+        ));
+        assert!(!has_greeting_candidate_fallback(None, Some(&json!({}))));
+        assert!(!has_greeting_candidate_fallback(Some("  "), None));
+        assert!(is_non_empty_match_report(&json!({
+            "matchScore": 82,
+            "matched_stack": ["Go"]
+        })));
+        assert!(!is_non_empty_match_report(&json!({})));
+        assert!(!is_non_empty_match_report(&json!(null)));
     }
 
     #[test]

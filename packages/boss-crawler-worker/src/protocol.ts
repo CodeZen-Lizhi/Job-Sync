@@ -72,6 +72,16 @@ export const AiGreetingPayloadSchema = z.object({
   review_context: z.any().optional(),
 });
 
+export const AiOptimizeResumeForJobPayloadSchema = z.object({
+  resume_text: z.string().trim().min(1),
+  job_detail: z.any(),
+  context_text: z.string().optional(),
+  filter_reason: z.any().optional(),
+  score_reason: z.any().optional(),
+  source_context: z.any().optional(),
+  review_context: z.any().optional(),
+});
+
 export const AiCompanyScoreBatchPayloadSchema = z.object({
   companies: z
     .array(
@@ -89,6 +99,18 @@ export const AiPostCollectionJudgePayloadSchema = z.object({
   profile: z.any().optional(),
   job: z.any(),
   filter_reason: z.any().optional(),
+});
+
+export const AiPostCollectionJudgeBatchJobSchema = z.object({
+  encrypt_job_id: z.string().trim().min(1),
+  job: z.any(),
+  filter_reason: z.any().optional(),
+});
+
+export const AiPostCollectionJudgeBatchPayloadSchema = z.object({
+  profile: z.any().optional(),
+  jobs: z.array(AiPostCollectionJudgeBatchJobSchema).min(1),
+  concurrency: z.number().int().positive().optional(),
 });
 
 export const CommandInSchema = z.union([
@@ -112,8 +134,10 @@ export const CommandInSchema = z.union([
   z.object({ type: z.literal("AI_ANALYZE"), payload: AiAnalyzePayloadSchema }),
   z.object({ type: z.literal("AI_ANALYZE_GROUP"), payload: AiAnalyzeGroupPayloadSchema }),
   z.object({ type: z.literal("AI_GREETING"), payload: AiGreetingPayloadSchema }),
+  z.object({ type: z.literal("AI_OPTIMIZE_RESUME_FOR_JOB"), payload: AiOptimizeResumeForJobPayloadSchema }),
   z.object({ type: z.literal("AI_COMPANY_SCORE_BATCH"), payload: AiCompanyScoreBatchPayloadSchema }),
   z.object({ type: z.literal("AI_POST_COLLECTION_JUDGE"), payload: AiPostCollectionJudgePayloadSchema }),
+  z.object({ type: z.literal("AI_POST_COLLECTION_JUDGE_BATCH"), payload: AiPostCollectionJudgeBatchPayloadSchema }),
   z.object({ type: z.literal("STOP") }),
   z.object({ type: z.literal("PAUSE") }),
   z.object({ type: z.literal("RESUME") }),

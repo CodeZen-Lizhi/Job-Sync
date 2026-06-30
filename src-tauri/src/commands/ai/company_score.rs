@@ -45,8 +45,7 @@ struct CandidateCompanyJob {
     experience_name: Option<String>,
     degree_name: Option<String>,
     jd_text: Option<String>,
-    raw_payload_json: Option<String>,
-    zp_data_json: Option<String>,
+    search_text: Option<String>,
     last_seen_at: Option<String>,
 }
 
@@ -220,11 +219,10 @@ fn load_candidate_company_jobs(conn: &Connection) -> Result<Vec<CandidateCompany
         j.experience_name,
         j.degree_name,
         j.jd_text,
-        j.raw_payload_json,
-        d.zp_data_json,
+        sp.search_text,
         j.last_seen_at
       FROM job j
-      LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
+      LEFT JOIN job_search_projection sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN company_review_state crs ON crs.company_name = j.brand_name
@@ -253,8 +251,7 @@ fn load_candidate_company_jobs(conn: &Connection) -> Result<Vec<CandidateCompany
               COALESCE(j.experience_name, '') || ' ' ||
               COALESCE(j.degree_name, '') || ' ' ||
               COALESCE(j.jd_text, '') || ' ' ||
-              COALESCE(j.raw_payload_json, '') || ' ' ||
-              COALESCE(d.zp_data_json, '')
+              COALESCE(sp.search_text, '')
             ) LIKE '%' || lower(kb.value) || '%'
         )
         AND COALESCE(rs.review_status, 'pending') NOT IN ('favorited', 'ready_to_apply', 'ignored', 'applied')
@@ -278,9 +275,8 @@ fn load_candidate_company_jobs(conn: &Connection) -> Result<Vec<CandidateCompany
                 experience_name: row.get(8)?,
                 degree_name: row.get(9)?,
                 jd_text: row.get(10)?,
-                raw_payload_json: row.get(11)?,
-                zp_data_json: row.get(12)?,
-                last_seen_at: row.get(13)?,
+                search_text: row.get(11)?,
+                last_seen_at: row.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -362,8 +358,7 @@ fn build_source_part(row: &CandidateCompanyJob) -> String {
     push_labeled(&mut parts, "经验", row.experience_name.as_deref());
     push_labeled(&mut parts, "学历", row.degree_name.as_deref());
     push_labeled(&mut parts, "JD", row.jd_text.as_deref());
-    push_labeled(&mut parts, "原始字段", row.raw_payload_json.as_deref());
-    push_labeled(&mut parts, "详情", row.zp_data_json.as_deref());
+    push_labeled(&mut parts, "搜索摘要", row.search_text.as_deref());
     truncate_chars(&parts.join(" / "), MAX_JOB_SOURCE_CHARS)
 }
 

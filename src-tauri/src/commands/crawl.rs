@@ -348,9 +348,10 @@ pub fn refresh_pending_job_evidence(
             r#"
             SELECT COALESCE(j.source_platform, 'boss'),
                    j.source_url,
-                   j.raw_payload_json,
+                   COALESCE(sp.raw_payload_json, j.raw_payload_json),
                    COALESCE(json_extract(r.reason_json, '$.bucket'), '')
             FROM job j
+            LEFT JOIN job_source_payload sp ON sp.encrypt_job_id = j.encrypt_job_id
             LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
             WHERE j.encrypt_job_id = ?1
             "#,

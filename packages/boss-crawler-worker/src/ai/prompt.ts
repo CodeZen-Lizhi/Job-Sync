@@ -7,6 +7,23 @@ type JobAiPromptContext = {
   reviewContext?: unknown;
 };
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function pickFields(value: unknown, keys: string[]): Record<string, unknown> | null {
+  const record = readRecord(value);
+  if (!record) return null;
+  const picked: Record<string, unknown> = {};
+  for (const key of keys) {
+    const item = record[key];
+    if (item !== null && item !== undefined && item !== "") {
+      picked[key] = item;
+    }
+  }
+  return Object.keys(picked).length > 0 ? picked : null;
+}
+
 function buildJobAiContextJson(context?: JobAiPromptContext): string {
   if (!context) return "（无）";
   const payload = {
@@ -14,6 +31,16 @@ function buildJobAiContextJson(context?: JobAiPromptContext): string {
     filter_reason: context.filterReason ?? null,
     score_reason: context.scoreReason ?? null,
     review_context: context.reviewContext ?? null,
+  };
+  const hasAny = Object.values(payload).some((value) => value !== null && value !== undefined);
+  return hasAny ? JSON.stringify(payload) : "（无）";
+}
+
+function buildGreetingContextJson(context?: JobAiPromptContext): string {
+  if (!context) return "（无）";
+  const payload = {
+    source_context: pickFields(context.sourceContext, ["source_platform", "last_seen_at"]),
+    review_context: pickFields(context.reviewContext, ["review_status", "communication_status", "last_greeted_at"]),
   };
   const hasAny = Object.values(payload).some((value) => value !== null && value !== undefined);
   return hasAny ? JSON.stringify(payload) : "（无）";
@@ -199,6 +226,7 @@ export function buildGreetingPrompts(args: {
       "你不能编造经历，候选人经历只能来自简历、当前情况说明、匹配报告或评分理由。",
       "你不能输出自动发送动作，只能生成供用户编辑复制的短文案。",
       "避免泛化模板，尤其不要使用“您好，我对贵司岗位/这个岗位/该职位很感兴趣”这类空话开头。",
+      "来源与审核上下文只用于判断沟通语境，不能作为候选人经历或对外文案内容。",
     ]),
     args.greetingPromptExtra ?? "",
   );
@@ -222,7 +250,8 @@ export function buildGreetingPrompts(args: {
     "5. 不要承诺自动发送、不要包含群发口吻。",
     "6. 优先使用匹配报告或评分理由中的 resume.matched_stack、resume.matched_direction、matched_resume_evidence 作为技术交集和候选人证据。",
     "7. candidateEvidence 必须来自简历原文、当前情况说明、匹配报告或评分理由，不能把岗位要求当成候选人经历。",
-    "8. 只输出 JSON 对象，字段必须包含 message、jobEvidence、candidateEvidence、overlapKeywords、editNotes。",
+    "8. 来源与审核上下文只能用于避免重复沟通或理解人工审核状态，不得写进 message、candidateEvidence 或 jobEvidence。",
+    "9. 只输出 JSON 对象，字段必须包含 message、jobEvidence、candidateEvidence、overlapKeywords、editNotes。",
     "",
     `输出示例结构（值可变）：${JSON.stringify(schemaHint)}`,
     "",
@@ -247,13 +276,90 @@ export function buildGreetingPrompts(args: {
     "【评分理由 JSON】",
     args.scoreReason ? JSON.stringify(args.scoreReason) : "（无）",
     "",
-    "【来源与审核上下文 JSON】",
-    buildJobAiContextJson({
+    "【来源与审核摘要 JSON】",
+    buildGreetingContextJson({
       sourceContext: args.sourceContext,
       reviewContext: args.reviewContext,
     }),
     "",
     "【岗位 JSON】",
+    JSON.stringify(args.jobDetail),
+  ]);
+
+  return { system, user };
+}
+
+export function buildResumeOptimizePrompts(args: {
+  resumeText: string;
+  jobDetail: unknown;
+  contextText?: string;
+  filterReason?: unknown;
+  scoreReason?: unknown;
+  sourceContext?: unknown;
+  reviewContext?: unknown;
+}): { system: string; user: string } {
+  const system = withPromptExtra([
+    "你是一名严谨的技术简历编辑与招聘经理。",
+    "你必须输出严格 JSON（不要 Markdown 代码块，不要额外文本）。",
+    "你要生成一份完整的 Markdown 简历，但 Markdown 内容只能放在 optimized_resume_markdown 字段里。",
+    "你不能编造事实；不得新增候选人没有提供的公司、项目、指标、技术栈、证书、学历、职责或成果。",
+    "你只能基于【原始简历】中已有事实进行重排、压缩、润色、突出和更贴合岗位的表达。",
+    "岗位信息、筛选理由、评分理由、来源与审核上下文只能用于理解目标岗位，不能当作候选人经历写入简历。",
+    "如果岗位要求在原始简历中没有证据，必须写入 risks，不能写进 optimized_resume_markdown。",
+    "evidence 必须逐条说明：原始简历事实、对应岗位要求、写入位置。",
+  ]);
+
+  const schemaHint = {
+    title: "岗位名称 - 公司名 岗位版",
+    optimized_resume_markdown: "# 姓名\n\n## 个人优势\n- ...\n\n## 项目经历\n- ...",
+    change_summary: ["前置与岗位最相关的项目经历", "强化原简历中已有的 Go / Kubernetes 证据"],
+    job_keywords_used: ["Go", "Kubernetes"],
+    evidence: [
+      {
+        resume_fact: "原简历中的真实经历或项目描述",
+        job_requirement: "岗位要求中的具体点",
+        rewrite_location: "个人优势 / 项目经历",
+      },
+    ],
+    risks: ["岗位要求 AWS，但原简历没有直接证据，未写入简历"],
+  };
+
+  const user = withSchemaExtra([
+    "任务：基于【原始简历】和【目标岗位】生成一份岗位定制版完整 Markdown 简历。",
+    "",
+    "输出要求：只输出一个 JSON 对象，字段必须包含：title、optimized_resume_markdown、change_summary、job_keywords_used、evidence、risks。",
+    "optimized_resume_markdown 必须是一份完整简历，不是局部建议；必须包含 Markdown 标题和多个简历段落。",
+    "change_summary 说明你做了哪些结构或表达调整。",
+    "job_keywords_used 只能包含岗位要求中且原始简历有事实支撑的关键词。",
+    "evidence 每项必须把“原始简历事实”映射到“岗位要求”和“写入位置”。",
+    "risks 必须列出岗位需要但原始简历缺少证据的内容。",
+    "",
+    "严禁：",
+    "1. 把目标岗位公司、岗位职责写成候选人过往经历。",
+    "2. 为了匹配岗位而新增原简历没有的项目、指标、年限、技术栈或证书。",
+    "3. 输出自动投递、自动发送或代替用户确认的动作。",
+    "",
+    `输出示例结构（值可变）：${JSON.stringify(schemaHint)}`,
+    "",
+    "【当前情况说明】",
+    (args.contextText ?? "").trim() || "（无）",
+    "",
+    "【原始简历】",
+    args.resumeText.trim(),
+    "",
+    "【筛选理由 JSON】",
+    args.filterReason ? JSON.stringify(args.filterReason) : "（无）",
+    "",
+    "【评分理由 JSON】",
+    args.scoreReason ? JSON.stringify(args.scoreReason) : "（无）",
+    "",
+    "【来源与审核摘要 JSON】",
+    buildGreetingContextJson({
+      sourceContext: args.sourceContext,
+      reviewContext: args.reviewContext,
+    }),
+    "",
+    "【目标岗位 JSON】",
     JSON.stringify(args.jobDetail),
   ]);
 

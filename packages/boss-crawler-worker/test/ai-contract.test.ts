@@ -6,12 +6,21 @@ import {
   buildAiPrompts,
   buildCompanyScoreBatchPrompts,
   buildGreetingPrompts,
+  buildResumeOptimizePrompts,
   buildPostCollectionJudgePrompts,
 } from "../src/ai/prompt.js";
+import { AiOptimizeResumeForJobPayloadSchema, AiPostCollectionJudgeBatchPayloadSchema, CommandInSchema } from "../src/protocol.js";
 import { normalizeAiResult } from "../src/modes/ai/normalizeResume.js";
 import { normalizeAiGroupResult } from "../src/modes/ai/normalizeGroup.js";
 import { normalizeAiCompanyScoreBatchResult } from "../src/modes/ai/normalizeCompanyScore.js";
-import { AiCompanyScoreBatchResultSchema, AiGreetingResultSchema, AiGroupResultSchema, AiResultSchema } from "../src/modes/ai/schemas.js";
+import {
+  AiCompanyScoreBatchResultSchema,
+  AiGreetingResultSchema,
+  AiGroupResultSchema,
+  AiOptimizeResumeForJobResultSchema,
+  AiResultSchema,
+} from "../src/modes/ai/schemas.js";
+import { __test__ as postCollectionJudgeTest } from "../src/modes/ai/postCollectionJudge.js";
 
 const fixtureJob = {
   encrypt_job_id: "boss-go-sre-001",
@@ -60,6 +69,7 @@ const fixtureJobContext = {
     review_status: "pending",
     communication_status: "greeted_unread",
     last_greeted_at: "2026-06-13T00:00:00Z",
+    notes: "内部备注：不要把这句话写给 HR",
   },
 };
 
@@ -149,6 +159,52 @@ describe("AI fixture contract", () => {
     assert.match(prompts.user, /证据不足、软排除只是隐约迹象/);
     assert.match(prompts.user, /pending_confirmation/);
     assert.match(prompts.user, /Go SRE 工程师/);
+  });
+
+  it("accepts AI post-collection batch commands with per-job identifiers", () => {
+    const payload = AiPostCollectionJudgeBatchPayloadSchema.parse({
+      profile: { aiPreferredText: "优先 Go / Infra" },
+      concurrency: 3,
+      jobs: [
+        {
+          encrypt_job_id: "job-b",
+          job: { ...fixtureJob, encrypt_job_id: "job-b" },
+          filter_reason: { bucket: "recommended" },
+        },
+        {
+          encrypt_job_id: "job-a",
+          job: { ...fixtureJob, encrypt_job_id: "job-a" },
+          filter_reason: { bucket: "pending_confirmation" },
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      payload.jobs.map((job) => job.encrypt_job_id),
+      ["job-b", "job-a"],
+    );
+    assert.equal(payload.concurrency, 3);
+
+    const command = CommandInSchema.parse({
+      type: "AI_POST_COLLECTION_JUDGE_BATCH",
+      payload,
+    });
+    assert.equal(command.type, "AI_POST_COLLECTION_JUDGE_BATCH");
+  });
+
+  it("keeps AI post-collection batch concurrency bounded while preserving result order", async () => {
+    let running = 0;
+    let peak = 0;
+    const results = await postCollectionJudgeTest.mapWithConcurrency([40, 10, 20, 5, 15], 2, async (delayMs, index) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      running -= 1;
+      return `job-${index}`;
+    });
+
+    assert.equal(peak, 2);
+    assert.deepEqual(results, ["job-0", "job-1", "job-2", "job-3", "job-4"]);
   });
 
   it("normalizes compatible resume-match model output into the strict schema", () => {
@@ -311,10 +367,12 @@ describe("AI fixture contract", () => {
     assert.match(prompts.user, /语气更自然，避免模板化/);
     assert.match(prompts.user, /matched_preferences/);
     assert.match(prompts.user, /company/);
-    assert.match(prompts.user, /来源与审核上下文 JSON/);
+    assert.match(prompts.user, /来源与审核摘要 JSON/);
     assert.match(prompts.user, /source_context/);
     assert.match(prompts.user, /review_context/);
     assert.match(prompts.user, /greeted_unread/);
+    assert.doesNotMatch(prompts.user, /内部备注/);
+    assert.doesNotMatch(prompts.user, /notes/);
 
     const parsed = AiGreetingResultSchema.parse({
       message:
@@ -381,6 +439,94 @@ describe("AI fixture contract", () => {
         /message must avoid generic greeting templates/,
       );
     }
+  });
+
+  it("builds job-specific resume prompts with anti-fabrication and evidence requirements", () => {
+    const prompts = buildResumeOptimizePrompts({
+      resumeText: fixtureResume,
+      contextText: "候选人偏 Go / Infra，不接受外包。",
+      jobDetail: fixtureJob,
+      filterReason: fixtureJobContext.filterReason,
+      scoreReason: fixtureJobContext.scoreReason,
+      sourceContext: fixtureJobContext.sourceContext,
+      reviewContext: fixtureJobContext.reviewContext,
+    });
+
+    assert.match(prompts.system, /技术简历编辑/);
+    assert.match(prompts.system, /严格 JSON/);
+    assert.match(prompts.system, /完整的 Markdown 简历/);
+    assert.match(prompts.system, /不能编造事实/);
+    assert.match(prompts.system, /不得新增候选人没有提供的公司、项目、指标、技术栈、证书、学历、职责或成果/);
+    assert.match(prompts.system, /必须写入 risks/);
+    assert.match(prompts.system, /evidence 必须逐条说明/);
+    assert.match(prompts.user, /optimized_resume_markdown/);
+    assert.match(prompts.user, /change_summary/);
+    assert.match(prompts.user, /job_keywords_used/);
+    assert.match(prompts.user, /evidence/);
+    assert.match(prompts.user, /risks/);
+    assert.match(prompts.user, /原始简历/);
+    assert.match(prompts.user, /目标岗位 JSON/);
+    assert.match(prompts.user, /Go SRE 工程师/);
+    assert.match(prompts.user, /Kubernetes/);
+    assert.match(prompts.user, /Prometheus/);
+    assert.match(prompts.user, /候选人偏 Go \/ Infra/);
+    assert.match(prompts.user, /greeted_unread/);
+  });
+
+  it("accepts strict job-specific resume results and rejects incomplete Markdown", () => {
+    const payload = AiOptimizeResumeForJobPayloadSchema.parse({
+      resume_text: fixtureResume,
+      job_detail: fixtureJob,
+      context_text: "候选人偏 Go / Infra。",
+      filter_reason: fixtureJobContext.filterReason,
+      score_reason: fixtureJobContext.scoreReason,
+      source_context: fixtureJobContext.sourceContext,
+      review_context: fixtureJobContext.reviewContext,
+    });
+    const command = CommandInSchema.parse({
+      type: "AI_OPTIMIZE_RESUME_FOR_JOB",
+      payload,
+    });
+    assert.equal(command.type, "AI_OPTIMIZE_RESUME_FOR_JOB");
+
+    const parsed = AiOptimizeResumeForJobResultSchema.parse({
+      title: "Go SRE 工程师 - 云原生科技 岗位版",
+      optimized_resume_markdown: [
+        "# Go / Infra 工程师",
+        "",
+        "## 个人优势",
+        "- 具备 Go 后端平台和 Kubernetes 多集群发布平台建设经验。",
+        "- 维护过 Prometheus 监控与告警，熟悉 Linux 和 CI/CD 自动化。",
+        "",
+        "## 项目经历",
+        "- Kubernetes 多集群发布平台：基于原简历事实突出平台稳定性与交付治理经验。",
+      ].join("\n"),
+      change_summary: ["前置 Go / Kubernetes / Prometheus 相关经历"],
+      job_keywords_used: ["Go", "Kubernetes", "Prometheus"],
+      evidence: [
+        {
+          resume_fact: "建设过 Kubernetes 多集群发布平台",
+          job_requirement: "Kubernetes 集群稳定性",
+          rewrite_location: "个人优势 / 项目经历",
+        },
+      ],
+      risks: ["AWS 未在原简历中出现，未写入简历正文"],
+    });
+
+    assert.match(parsed.optimized_resume_markdown, /^# /);
+    assert.deepEqual(parsed.job_keywords_used, ["Go", "Kubernetes", "Prometheus"]);
+    assert.throws(
+      () =>
+        AiOptimizeResumeForJobResultSchema.parse({
+          title: "过短",
+          optimized_resume_markdown: "只是一条建议",
+          change_summary: ["调整"],
+          job_keywords_used: [],
+          evidence: [{ resume_fact: "事实", job_requirement: "要求", rewrite_location: "位置" }],
+          risks: [],
+        }),
+      /String must contain at least 80 character/,
+    );
   });
 
   it("builds and normalizes AI company score batch output", () => {

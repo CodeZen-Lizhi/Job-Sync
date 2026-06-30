@@ -16,6 +16,8 @@ interface AppSettings {
   openai_model?: string | null;
   openai_api_mode?: string | null;
   openai_temperature?: number | null;
+  openai_prompt_extra?: string | null;
+  openai_schema_extra?: string | null;
   ai_greeting_prompt_extra?: string | null;
   telegram_bot_token?: string | null;
   has_telegram_bot_token?: boolean | null;
@@ -88,6 +90,8 @@ const baseUrl = ref("");
 const model = ref("");
 const apiMode = ref("chat_completions");
 const temperature = ref(0.2);
+const promptExtra = ref("");
+const schemaExtra = ref("");
 const greetingPromptExtra = ref("");
 const telegramBotToken = ref("");
 const hasSavedTelegramBotToken = ref(false);
@@ -186,6 +190,8 @@ async function loadSettings(): Promise<void> {
     baseUrl.value = settings.openai_base_url ?? "";
     model.value = settings.openai_model ?? "";
     temperature.value = clampTemperature(settings.openai_temperature ?? 0.2);
+    promptExtra.value = settings.openai_prompt_extra ?? "";
+    schemaExtra.value = settings.openai_schema_extra ?? "";
     greetingPromptExtra.value = settings.ai_greeting_prompt_extra ?? "";
     telegramBotToken.value = "";
     hasSavedTelegramBotToken.value = typeof settings.has_telegram_bot_token === "boolean"
@@ -234,6 +240,18 @@ function automaticCollectionLabel(source: JobSourceEntry): string {
   return "自动采集预留";
 }
 
+function sourceEnabledBadgeClass(source: JobSourceEntry): string {
+  return source.enabled
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+    : "bg-slate-100 text-slate-700 ring-slate-300";
+}
+
+function automaticCollectionBadgeClass(source: JobSourceEntry): string {
+  return source.adapter_kind === "boss" || source.adapter_kind === "feed"
+    ? "bg-cyan-50 text-cyan-700 ring-cyan-200"
+    : "bg-amber-50 text-amber-700 ring-amber-200";
+}
+
 function platformCapabilityHint(source: JobSourceEntry): string {
   if (source.adapter_kind === "boss") {
     return "启用后可在采集配置中作为本次自动采集来源；登录态在本页按平台管理。";
@@ -266,16 +284,16 @@ function platformLoginLabel(source: JobSourceEntry): string {
 function platformLoginBadgeClass(source: JobSourceEntry): string {
   if (source.platform === "linuxdo") {
     const status = loginStatusByPlatform.value[source.platform] ?? null;
-    if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
-    if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
-    return "bg-cyan-400/10 text-cyan-300 ring-cyan-400/20";
+    if (status === true) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    if (status === false) return "bg-rose-50 text-rose-700 ring-rose-200";
+    return "bg-cyan-50 text-cyan-700 ring-cyan-200";
   }
-  if (source.adapter_kind === "feed") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
-  if (!loginCapablePlatforms.has(source.platform)) return "bg-slate-400/10 text-slate-300 ring-slate-400/20";
+  if (source.adapter_kind === "feed") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (!loginCapablePlatforms.has(source.platform)) return "bg-slate-100 text-slate-700 ring-slate-300";
   const status = loginStatusByPlatform.value[source.platform] ?? null;
-  if (status === true) return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
-  if (status === false) return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
-  return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
+  if (status === true) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (status === false) return "bg-rose-50 text-rose-700 ring-rose-200";
+  return "bg-amber-50 text-amber-700 ring-amber-200";
 }
 
 function liveLoginMessageClass(): string {
@@ -471,6 +489,8 @@ async function save(): Promise<void> {
       openaiModel: model.value.trim() || null,
       openaiApiMode: apiMode.value,
       openaiTemperature: clampTemperature(temperature.value),
+      openaiPromptExtra: promptExtra.value.trim() || null,
+      openaiSchemaExtra: schemaExtra.value.trim() || null,
       aiGreetingPromptExtra: greetingPromptExtra.value.trim() || null,
       telegramBotToken: telegramBotToken.value.trim() || (hasSavedTelegramBotToken.value ? null : ""),
       telegramChatId: telegramChatId.value.trim() || (hasSavedTelegramChatId.value ? null : ""),
@@ -581,13 +601,13 @@ watch(
             <div class="flex flex-wrap gap-2">
               <span
                 class="ui-badge"
-                :class="source.enabled ? 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/20' : 'bg-slate-400/10 text-slate-300 ring-slate-400/20'"
+                :class="sourceEnabledBadgeClass(source)"
               >
                 {{ source.enabled ? "已启用" : "未启用" }}
               </span>
               <span
                 class="ui-badge"
-                :class="source.adapter_kind === 'boss' || source.adapter_kind === 'feed' ? 'bg-cyan-400/10 text-cyan-300 ring-cyan-400/20' : 'bg-amber-400/10 text-amber-300 ring-amber-400/20'"
+                :class="automaticCollectionBadgeClass(source)"
               >
                 {{ automaticCollectionLabel(source) }}
               </span>
@@ -606,7 +626,7 @@ watch(
               <button
                 class="inline-flex min-w-[6.25rem] items-center gap-2 rounded-full px-2 py-1 text-xs font-medium ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
-                :class="source.enabled ? 'bg-emerald-400/10 text-emerald-300 ring-emerald-400/20 hover:bg-emerald-400/15' : 'bg-slate-400/10 text-slate-300 ring-slate-400/20 hover:bg-slate-400/15'"
+                :class="source.enabled ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-700 ring-slate-300 hover:bg-slate-200'"
                 :disabled="!tauri || sourcesLoading || sourceUpdatingPlatform !== null"
                 @click="setJobSourceEnabled(source, !source.enabled)"
                 :aria-pressed="source.enabled"
@@ -641,8 +661,8 @@ watch(
                   {{ loginRefreshingPlatform === source.platform ? "检查中…" : "刷新状态" }}
                 </button>
               </template>
-              <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>无需登录</button>
-              <button v-else class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" disabled>登录预留</button>
+              <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs !text-content-secondary !opacity-100" type="button" disabled>无需登录</button>
+              <button v-else class="ui-btn-secondary px-3 py-1.5 text-xs !text-content-secondary !opacity-100" type="button" disabled>登录预留</button>
             </div>
           </div>
         </div>
@@ -788,10 +808,34 @@ watch(
               {{ modelsLoading ? "加载中…" : "加载模型" }}
             </button>
           </div>
-          <div v-if="models.length > 0" class="ui-badge mt-1">
-            已加载 {{ models.length }} 个模型
-          </div>
+        <div v-if="models.length > 0" class="ui-badge mt-1">
+          已加载 {{ models.length }} 个模型
         </div>
+      </div>
+
+        <label class="block space-y-1 md:col-span-2">
+          <div class="text-xs font-medium text-content-muted">通用 AI 补充提示（可选）</div>
+          <textarea
+            v-model="promptExtra"
+            class="ui-input min-h-24 w-full resize-y"
+            placeholder="例如：回答更保守；优先引用可验证证据；缺少证据时明确写入风险。"
+          />
+          <div class="text-xs text-content-muted">
+            会附加到简历匹配、岗位版简历、公司评分等通用 AI 任务；不能覆盖严格 JSON 输出。
+          </div>
+        </label>
+
+        <label class="block space-y-1 md:col-span-2">
+          <div class="text-xs font-medium text-content-muted">结构化输出 Schema 补充（可选）</div>
+          <textarea
+            v-model="schemaExtra"
+            class="ui-input min-h-24 w-full resize-y"
+            placeholder="例如：额外输出 evidenceLevel 字段，取值 low / medium / high。"
+          />
+          <div class="text-xs text-content-muted">
+            只能新增兼容字段；不能删除内置必填字段，也不能改变严格 JSON 输出要求。
+          </div>
+        </label>
 
         <label class="block space-y-1 md:col-span-2">
           <div class="text-xs font-medium text-content-muted">打招呼文案补充提示（可选）</div>

@@ -1,6 +1,14 @@
 import type { CommandIn, EventOut } from "./protocol.js";
 import { emitEvent, readCommands } from "./stdio.js";
-import { runAiMode, runAiGroupMode, runAiGreetingMode, runAiCompanyScoreBatchMode, runAiPostCollectionJudgeMode } from "./modes/ai.js";
+import {
+  runAiMode,
+  runAiGroupMode,
+  runAiGreetingMode,
+  runAiOptimizeResumeForJobMode,
+  runAiCompanyScoreBatchMode,
+  runAiPostCollectionJudgeBatchMode,
+  runAiPostCollectionJudgeMode,
+} from "./modes/ai.js";
 import { runAutoMode } from "./modes/auto.js";
 import { runRefreshJobEvidenceMode } from "./modes/evidenceRefresh.js";
 import { runBossChatSyncMode } from "./modes/chatSync.js";
@@ -96,11 +104,17 @@ readCommands((cmd: CommandIn) => {
       case "AI_GREETING":
         await startMode(runAiGreetingMode, cmd.payload);
         return;
+      case "AI_OPTIMIZE_RESUME_FOR_JOB":
+        await startMode(runAiOptimizeResumeForJobMode, cmd.payload);
+        return;
       case "AI_COMPANY_SCORE_BATCH":
         await startMode(runAiCompanyScoreBatchMode, cmd.payload);
         return;
       case "AI_POST_COLLECTION_JUDGE":
         await startMode(runAiPostCollectionJudgeMode, cmd.payload);
+        return;
+      case "AI_POST_COLLECTION_JUDGE_BATCH":
+        await startMode(runAiPostCollectionJudgeBatchMode, cmd.payload);
         return;
       case "STOP":
         stopRunning();

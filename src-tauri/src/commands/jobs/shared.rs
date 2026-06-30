@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use crate::db;
 
 pub(super) fn open_conn(app_data_dir: &std::path::Path) -> Result<Connection, String> {
-    db::init_db(app_data_dir).map_err(|e| e.to_string())
+    db::connect_db(app_data_dir).map_err(|e| e.to_string())
 }
 
 fn count_chars(input: &str) -> usize {

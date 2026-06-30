@@ -2,6 +2,7 @@ mod company_score;
 mod config;
 mod greeting;
 mod models;
+mod optimized_resume;
 mod post_collection_judge;
 mod shared;
 mod worker;
@@ -79,6 +80,32 @@ pub async fn recompute_ai_post_collection_judgement(
 ) -> Result<Value, String> {
     post_collection_judge::recompute_ai_post_collection_judgement(
         app, job_ids, limit, api_key, base_url, model, api_mode, debug,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn generate_optimized_resume_for_job(
+    app: tauri::AppHandle,
+    encrypt_job_id: String,
+    resume_id: Option<String>,
+    context_text: Option<String>,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+    api_mode: Option<String>,
+    debug: Option<bool>,
+) -> Result<Value, String> {
+    optimized_resume::generate_optimized_resume_for_job(
+        app,
+        encrypt_job_id,
+        resume_id,
+        context_text,
+        api_key,
+        base_url,
+        model,
+        api_mode,
+        debug,
     )
     .await
 }

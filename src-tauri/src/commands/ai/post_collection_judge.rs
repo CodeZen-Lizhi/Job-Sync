@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 use rusqlite::{Connection, OptionalExtension};
@@ -10,18 +10,24 @@ use crate::{
     commands::filter_profile,
     commands::settings::send_telegram_message_from_settings_with_format,
     db, ipc,
-    ipc::protocol::{AiPostCollectionJudgePayload, CommandIn, EventOut, LogPayload},
+    ipc::protocol::{
+        AiPostCollectionJudgeBatchJobPayload, AiPostCollectionJudgeBatchPayload, CommandIn,
+        EventOut, LogPayload,
+    },
     paths, settings,
 };
 
 use super::{
-    config::{resolve_openai_request, OpenAiOverrides},
+    config::{is_local_ollama_base_url, resolve_openai_request, OpenAiOverrides},
     worker::run_worker_command,
 };
 
 const AI_POST_COLLECTION_JUDGE_PANIC_PREFIX: &str = "AI 采后判断任务异常退出：";
 const DEFAULT_POST_COLLECTION_JUDGE_LIMIT: u32 = 20;
 const MAX_POST_COLLECTION_JUDGE_LIMIT: u32 = 50;
+const DEFAULT_REMOTE_POST_COLLECTION_JUDGE_CONCURRENCY: u32 = 3;
+const DEFAULT_LOCAL_POST_COLLECTION_JUDGE_CONCURRENCY: u32 = 1;
+const MAX_POST_COLLECTION_JUDGE_CONCURRENCY: u32 = 8;
 const LOW_CONFIDENCE_THRESHOLD: f64 = 0.65;
 const AI_STATUS_PASSED: &str = "passed";
 const AI_STATUS_REJECTED: &str = "rejected";
@@ -42,7 +48,7 @@ struct TelegramJobSummary {
     url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct WorkerPostCollectionJudgeResult {
     bucket: String,
     confidence: f64,
@@ -50,6 +56,21 @@ struct WorkerPostCollectionJudgeResult {
     evidence: Vec<String>,
     #[serde(default)]
     risks: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkerPostCollectionJudgeBatchItem {
+    encrypt_job_id: String,
+    ok: bool,
+    #[serde(default)]
+    result: Option<WorkerPostCollectionJudgeResult>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WorkerPostCollectionJudgeBatchResult {
+    results: Vec<WorkerPostCollectionJudgeBatchItem>,
 }
 
 pub async fn recompute_ai_post_collection_judgement(
@@ -115,6 +136,7 @@ fn run_recompute_ai_post_collection_judgement(
     let mut failed = 0_u64;
     let mut telegram_jobs = Vec::<TelegramJobSummary>::new();
 
+    let mut ai_inputs = Vec::<JobJudgeInput>::new();
     for input in inputs {
         let job_label = format_job_label(&input);
         if input.hard_blocked {
@@ -128,73 +150,78 @@ fn run_recompute_ai_post_collection_judgement(
         }
 
         emit_ai_judge_log(&app, "info", format!("AI 审核开始：{job_label}"));
-        let payload = AiPostCollectionJudgePayload {
-            profile: Some(profile.profile_json.clone()),
-            job: input.job.clone(),
-            filter_reason: Some(input.filter_reason.clone()),
-        };
-        let raw_result = match run_worker_command(
+        ai_inputs.push(input);
+    }
+
+    if !ai_inputs.is_empty() {
+        let batch_results = run_post_collection_judge_batch(
             &app,
             &app_data_dir,
-            CommandIn::AiPostCollectionJudge(payload),
             &config,
             debug,
-        ) {
-            Ok(value) => value,
-            Err(err) => {
-                persist_ai_failed_fallback(&conn, &profile.id, &input, &err)?;
-                emit_ai_judge_log(&app, "error", format!("AI 审核失败：{job_label}：{err}"));
-                failed += 1;
-                updated += 1;
-                continue;
-            }
-        };
-        let parsed: WorkerPostCollectionJudgeResult = match serde_json::from_value(raw_result) {
-            Ok(value) => value,
-            Err(err) => {
-                let message = format!("AI 采后判断输出不符合结构：{err}");
-                persist_ai_failed_fallback(&conn, &profile.id, &input, &message)?;
-                emit_ai_judge_log(
-                    &app,
-                    "error",
-                    format!("AI 审核失败：{job_label}：{message}"),
-                );
-                failed += 1;
-                updated += 1;
-                continue;
-            }
-        };
-        let reason = merge_ai_judgement(&input.filter_reason, parsed)?;
-        let bucket = reason_bucket(&reason);
-        let eligible = bucket == "recommended";
-        db::models::upsert_job_filter_result(
-            &conn,
-            &input.encrypt_job_id,
-            &profile.id,
-            eligible,
-            &reason,
-        )
-        .map_err(|e| e.to_string())?;
-        emit_ai_judge_log(
-            &app,
-            "info",
-            format!(
-                "AI 审核完成：{job_label}：{}{}",
-                ai_status_label(reason_ai_status(&reason), bucket),
-                reason
-                    .get("ai_judgement")
-                    .and_then(|judgement| judgement.get("summary"))
-                    .and_then(Value::as_str)
-                    .map(|summary| format!("，{summary}"))
-                    .unwrap_or_default()
-            ),
+            &profile.profile_json,
+            &ai_inputs,
         );
-        updated += 1;
-        ai_judged += 1;
+        let mut results_by_id =
+            HashMap::<String, Result<WorkerPostCollectionJudgeResult, String>>::new();
+        match batch_results {
+            Ok(items) => {
+                results_by_id = batch_results_by_job_id(items);
+            }
+            Err(err) => {
+                for input in &ai_inputs {
+                    results_by_id.insert(input.encrypt_job_id.clone(), Err(err.clone()));
+                }
+            }
+        }
 
-        if ai_status_for_bucket(bucket) == AI_STATUS_PASSED {
-            if let Some(job) = build_telegram_job_summary(&input.job, &input.encrypt_job_id) {
-                telegram_jobs.push(job);
+        for input in ai_inputs {
+            let job_label = format_job_label(&input);
+            let result = results_by_id
+                .remove(&input.encrypt_job_id)
+                .unwrap_or_else(|| Err("AI 采后判断批量结果缺少该岗位".to_string()));
+            let parsed = match result {
+                Ok(value) => value,
+                Err(err) => {
+                    persist_ai_failed_fallback(&conn, &profile.id, &input, &err)?;
+                    emit_ai_judge_log(&app, "error", format!("AI 审核失败：{job_label}：{err}"));
+                    failed += 1;
+                    updated += 1;
+                    continue;
+                }
+            };
+            let reason = merge_ai_judgement(&input.filter_reason, parsed)?;
+            let bucket = reason_bucket(&reason);
+            let eligible = bucket == "recommended";
+            db::models::upsert_job_filter_result(
+                &conn,
+                &input.encrypt_job_id,
+                &profile.id,
+                eligible,
+                &reason,
+            )
+            .map_err(|e| e.to_string())?;
+            emit_ai_judge_log(
+                &app,
+                "info",
+                format!(
+                    "AI 审核完成：{job_label}：{}{}",
+                    ai_status_label(reason_ai_status(&reason), bucket),
+                    reason
+                        .get("ai_judgement")
+                        .and_then(|judgement| judgement.get("summary"))
+                        .and_then(Value::as_str)
+                        .map(|summary| format!("，{summary}"))
+                        .unwrap_or_default()
+                ),
+            );
+            updated += 1;
+            ai_judged += 1;
+
+            if ai_status_for_bucket(bucket) == AI_STATUS_PASSED {
+                if let Some(job) = build_telegram_job_summary(&input.job, &input.encrypt_job_id) {
+                    telegram_jobs.push(job);
+                }
             }
         }
     }
@@ -251,6 +278,68 @@ fn emit_ai_judge_log(app: &AppHandle, level: &str, message: impl Into<String>) {
             ts: None,
         }),
     );
+}
+
+fn run_post_collection_judge_batch(
+    app: &AppHandle,
+    app_data_dir: &std::path::Path,
+    config: &super::config::ResolvedOpenAiRequest,
+    debug: bool,
+    profile_json: &Value,
+    inputs: &[JobJudgeInput],
+) -> Result<Vec<WorkerPostCollectionJudgeBatchItem>, String> {
+    let jobs = inputs
+        .iter()
+        .map(|input| AiPostCollectionJudgeBatchJobPayload {
+            encrypt_job_id: input.encrypt_job_id.clone(),
+            job: input.job.clone(),
+            filter_reason: Some(input.filter_reason.clone()),
+        })
+        .collect();
+    let payload = AiPostCollectionJudgeBatchPayload {
+        profile: Some(profile_json.clone()),
+        jobs,
+        concurrency: Some(default_post_collection_judge_concurrency(
+            &config.effective_base_url,
+        )),
+    };
+    let raw_result = run_worker_command(
+        app,
+        app_data_dir,
+        CommandIn::AiPostCollectionJudgeBatch(payload),
+        config,
+        debug,
+    )?;
+    let parsed: WorkerPostCollectionJudgeBatchResult = serde_json::from_value(raw_result)
+        .map_err(|err| format!("AI 采后判断批量输出不符合结构：{err}"))?;
+    Ok(parsed.results)
+}
+
+fn default_post_collection_judge_concurrency(base_url: &str) -> u32 {
+    let value = if is_local_ollama_base_url(base_url) {
+        DEFAULT_LOCAL_POST_COLLECTION_JUDGE_CONCURRENCY
+    } else {
+        DEFAULT_REMOTE_POST_COLLECTION_JUDGE_CONCURRENCY
+    };
+    value.clamp(1, MAX_POST_COLLECTION_JUDGE_CONCURRENCY)
+}
+
+fn batch_results_by_job_id(
+    items: Vec<WorkerPostCollectionJudgeBatchItem>,
+) -> HashMap<String, Result<WorkerPostCollectionJudgeResult, String>> {
+    let mut results_by_id = HashMap::new();
+    for item in items {
+        let result = if item.ok {
+            item.result
+                .ok_or_else(|| "AI 采后判断批量结果缺少 result".to_string())
+        } else {
+            Err(item
+                .error
+                .unwrap_or_else(|| "AI 采后判断批量任务返回失败但未提供错误原因".to_string()))
+        };
+        results_by_id.insert(item.encrypt_job_id, result);
+    }
+    results_by_id
 }
 
 fn format_job_label(input: &JobJudgeInput) -> String {
@@ -355,7 +444,7 @@ fn load_job_judge_input(
           'experience_name', j.experience_name,
           'degree_name', j.degree_name,
           'jd_text', j.jd_text,
-          'raw_payload_json', j.raw_payload_json,
+          'raw_payload_json', COALESCE(sp.raw_payload_json, j.raw_payload_json),
           'detail_json', d.zp_data_json,
           'last_seen_at', j.last_seen_at,
           'review_status', COALESCE(rs.review_status, 'pending'),
@@ -364,6 +453,7 @@ fn load_job_judge_input(
         ),
         r.reason_json
       FROM job j
+      LEFT JOIN job_source_payload sp ON sp.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_detail_raw d ON d.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_filter_result r ON r.encrypt_job_id = j.encrypt_job_id
       LEFT JOIN job_review_state rs ON rs.encrypt_job_id = j.encrypt_job_id
@@ -712,6 +802,57 @@ mod tests {
             "pending_confirmation"
         );
         assert_eq!(normalize_worker_bucket("recommended", 0.65), "recommended");
+    }
+
+    #[test]
+    fn default_batch_concurrency_is_conservative_by_provider() {
+        assert_eq!(
+            default_post_collection_judge_concurrency("https://api.openai.com/v1"),
+            3
+        );
+        assert_eq!(
+            default_post_collection_judge_concurrency("http://localhost:11434/v1"),
+            1
+        );
+    }
+
+    #[test]
+    fn batch_results_are_keyed_by_job_id_and_keep_partial_failures() {
+        let results = batch_results_by_job_id(vec![
+            WorkerPostCollectionJudgeBatchItem {
+                encrypt_job_id: "job-b".to_string(),
+                ok: true,
+                result: Some(WorkerPostCollectionJudgeResult {
+                    bucket: "recommended".to_string(),
+                    confidence: 0.9,
+                    summary: "匹配".to_string(),
+                    evidence: vec!["JD 提到 Go".to_string()],
+                    risks: Vec::new(),
+                }),
+                error: None,
+            },
+            WorkerPostCollectionJudgeBatchItem {
+                encrypt_job_id: "job-a".to_string(),
+                ok: false,
+                result: None,
+                error: Some("provider returned 429".to_string()),
+            },
+        ]);
+
+        assert_eq!(
+            results
+                .get("job-b")
+                .and_then(|result| result.as_ref().ok())
+                .map(|result| result.summary.as_str()),
+            Some("匹配")
+        );
+        assert_eq!(
+            results
+                .get("job-a")
+                .and_then(|result| result.as_ref().err())
+                .map(String::as_str),
+            Some("provider returned 429")
+        );
     }
 
     #[test]

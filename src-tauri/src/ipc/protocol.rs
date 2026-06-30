@@ -137,6 +137,27 @@ pub struct AiGreetingPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiOptimizeResumeForJobPayload {
+    pub resume_text: String,
+    pub job_detail: Value,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_text: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter_reason: Option<Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_reason: Option<Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_context: Option<Value>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_context: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiCompanyScoreCompanyPayload {
     pub company_name: String,
     pub jobs_count: u32,
@@ -163,6 +184,26 @@ pub struct AiPostCollectionJudgePayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiPostCollectionJudgeBatchJobPayload {
+    pub encrypt_job_id: String,
+    pub job: Value,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter_reason: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiPostCollectionJudgeBatchPayload {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Value>,
+    pub jobs: Vec<AiPostCollectionJudgeBatchJobPayload>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum CommandIn {
     #[serde(rename = "LOGIN_START")]
@@ -181,10 +222,14 @@ pub enum CommandIn {
     AiAnalyzeGroup(AiAnalyzeGroupPayload),
     #[serde(rename = "AI_GREETING")]
     AiGreeting(AiGreetingPayload),
+    #[serde(rename = "AI_OPTIMIZE_RESUME_FOR_JOB")]
+    AiOptimizeResumeForJob(AiOptimizeResumeForJobPayload),
     #[serde(rename = "AI_COMPANY_SCORE_BATCH")]
     AiCompanyScoreBatch(AiCompanyScoreBatchPayload),
     #[serde(rename = "AI_POST_COLLECTION_JUDGE")]
     AiPostCollectionJudge(AiPostCollectionJudgePayload),
+    #[serde(rename = "AI_POST_COLLECTION_JUDGE_BATCH")]
+    AiPostCollectionJudgeBatch(AiPostCollectionJudgeBatchPayload),
     #[serde(rename = "STOP")]
     Stop,
     #[serde(rename = "PAUSE")]
