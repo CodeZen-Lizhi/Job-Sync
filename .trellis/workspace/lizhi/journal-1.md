@@ -711,3 +711,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: 岗位库交互与剩余改动提交
+
+**Date**: 2026-06-30
+**Task**: 岗位库交互与剩余改动提交
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+修复岗位状态确认弹窗未挂载问题，优化岗位库筛选为多选下拉并将岗位状态操作收敛为动作菜单；随后提交剩余 AI、worker、Tauri、前端配置与 Trellis 任务文档改动。验证通过 npm run build、worker 测试、cargo fmt --check 与 cargo check。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8554eda` | (see git log) |
+| `9267b06` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 21
+- **Total Sessions**: 22
 - **Last Active**: 2026-06-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~713 | Active |
+| `journal-1.md` | ~747 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 22 | 2026-06-30 | 岗位库交互与剩余改动提交 | `8554eda`, `9267b06` | `remote-job-intelligence` |
 | 21 | 2026-06-30 | 岗位库与简历库性能验收 | `3d90aba` | `remote-job-intelligence` |
 | 20 | 2026-06-30 | 岗位库与简历库性能优化收尾 | `f5e6be9` | `remote-job-intelligence` |
 | 19 | 2026-06-29 | 采集 cron 定时与 0.1.1 打包 | `8c05120` | `remote-job-intelligence` |
