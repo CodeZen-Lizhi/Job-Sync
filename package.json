@@ -36,7 +36,9 @@
     "verify:worker:runtime": "node scripts/verify-worker-runtime.mjs",
     "verify:release:bundle": "node scripts/verify-release-bundle.mjs",
     "seed:desktop:smoke": "node scripts/seed-desktop-smoke-data.mjs",
-    "stage:worker:runtime:win": "node scripts/stage-worker-runtime.mjs"
+    "stage:worker:runtime:win": "node scripts/stage-worker-runtime.mjs",
+    "perf:crawl-routes": "node scripts/measure-crawl-route-performance.mjs",
+    "perf:crawl-routes:preview": "npm run build && node scripts/measure-crawl-route-performance.mjs --preview"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

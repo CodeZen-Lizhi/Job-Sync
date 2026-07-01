@@ -1,10 +1,33 @@
 <script setup lang="ts">
-import { CronLight } from "@vue-js-cron/light";
+import { defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
 
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
 import { BOSS_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
+import { runAfterInitialPaint } from "../lib/defer";
 import { useCrawlPage } from "../lib/useCrawlPage";
+
+const CronLight = defineAsyncComponent(async () => (await import("@vue-js-cron/light")).CronLight);
+const cronEditorReady = ref(false);
+let cronEditorTimer: number | null = null;
+let cancelCronEditorReady: (() => void) | null = null;
+
+onMounted(() => {
+  cronEditorTimer = window.setTimeout(() => {
+    cancelCronEditorReady = runAfterInitialPaint(() => {
+      cronEditorReady.value = true;
+    });
+  }, 1_000);
+});
+
+onUnmounted(() => {
+  if (cronEditorTimer !== null) {
+    window.clearTimeout(cronEditorTimer);
+    cronEditorTimer = null;
+  }
+  cancelCronEditorReady?.();
+  cancelCronEditorReady = null;
+});
 
 const {
   tauri,
@@ -211,11 +234,18 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
                 <span class="text-[11px] text-content-muted">仅支持 5 段式</span>
               </div>
               <CronLight
+                v-if="cronEditorReady"
                 v-model="crawlScheduleExpression"
                 v-model:period="crawlScheduleEditorPeriod"
                 class="ui-cron-light"
                 locale="en"
                 theme="legacy"
+                :disabled="!crawlScheduleEnabled"
+              />
+              <input
+                v-else
+                v-model="crawlScheduleExpression"
+                class="ui-input w-full"
                 :disabled="!crawlScheduleEnabled"
               />
               <div class="mt-3 rounded-md border border-border/80 bg-slate-50 px-3 py-2 font-mono text-xs text-content-primary">

@@ -38,6 +38,7 @@ import {
   type JobSourcePlatform,
 } from "./crawl";
 import { formatAiPostCollectionJudgeSummary, recomputeAiPostCollectionJudgementForAllJobs } from "./aiRecompute";
+import { runAfterInitialPaint } from "./defer";
 import { useFilterProfile } from "./filterProfile";
 import { appendRuntimeLog, clearLogs, resetCrawlProgress, runtime } from "./runtime";
 import { invoke, isTauri } from "./tauri";
@@ -110,7 +111,7 @@ const PREVIEW_COLLECTION_SOURCES: CollectionSourceRegistryEntry[] = [
 
 let crawlPageState: CrawlPageState | null = null;
 
-type CrawlPageInitializeMode = "full" | "schedule";
+type CrawlPageInitializeMode = "full" | "runtime" | "schedule";
 
 export function useCrawlPage(options: { initialize?: CrawlPageInitializeMode } = {}): CrawlPageState {
   const state = crawlPageState ?? createCrawlPageState();
@@ -118,7 +119,11 @@ export function useCrawlPage(options: { initialize?: CrawlPageInitializeMode } =
 
   onMounted(() => {
     if (options.initialize === "schedule") {
-      void state.initializeSchedule();
+      runAfterInitialPaint(() => void state.initializeSchedule());
+      return;
+    }
+    if (options.initialize === "runtime") {
+      runAfterInitialPaint(() => void state.initializeRuntime());
       return;
     }
     void state.initialize();
@@ -134,6 +139,7 @@ export function useCrawlPage(options: { initialize?: CrawlPageInitializeMode } =
 function createCrawlPageState() {
   const tauri = isTauri();
   const initialized = ref(false);
+  const runtimeInitialized = ref(false);
   const scheduleInitialized = ref(false);
   const selectedCollectionSources = ref<JobSourcePlatform[]>([BOSS_SOURCE_PLATFORM]);
   const bossCollectionEnabled = ref(false);
@@ -1002,14 +1008,27 @@ function createCrawlPageState() {
 
   async function initialize(): Promise<void> {
     if (initialized.value) {
-      void refreshCollectionSourceState();
+      void loadCollectionSources();
       return;
     }
     initialized.value = true;
+    runtimeInitialized.value = true;
+    void initializeSchedule();
+    void loadCollectionSources();
+    runAfterInitialPaint(() => {
+      void loadBossMeta();
+      void loadDefaultFilterProfile();
+    });
+  }
+
+  async function initializeRuntime(): Promise<void> {
+    if (runtimeInitialized.value) {
+      void refreshCollectionSourceState();
+      return;
+    }
+    runtimeInitialized.value = true;
     void initializeSchedule();
     void refreshCollectionSourceState();
-    void loadBossMeta();
-    void loadDefaultFilterProfile();
   }
 
   async function refreshCollectionSourceState(): Promise<void> {
@@ -1163,6 +1182,7 @@ function createCrawlPageState() {
     saveCollectionConfig,
     loadCollectionSummary,
     initialize,
+    initializeRuntime,
     initializeSchedule,
     clearBossMetaSyncTimeout,
     clearCrawlScheduleTimer,

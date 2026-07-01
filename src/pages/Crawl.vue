@@ -17,7 +17,7 @@ const {
   latestCollectionRun,
   start,
   stop,
-} = useCrawlPage();
+} = useCrawlPage({ initialize: "runtime" });
 </script>
 
 <template>

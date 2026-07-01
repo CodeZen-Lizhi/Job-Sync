@@ -632,6 +632,42 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(workerMain, /CRAWL_MANUAL_START/);
   });
 
+  it("keeps crawl entry navigation lightweight without loading the cron editor in the route shell", () => {
+    const appShell = readProjectFile("src/App.vue");
+    const router = readProjectFile("src/router.ts");
+    const crawlPage = readProjectFile("src/pages/Crawl.vue");
+    const crawlConfigPage = readProjectFile("src/pages/CrawlConfig.vue");
+    const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+    const frontendQualityGuide = readProjectFile(".trellis/spec/boss-crawler-worker/frontend/quality-guidelines.md");
+    const configInitializer =
+      crawlLogic.match(/async function initialize\(\): Promise<void> \{[\s\S]*?\n  }\n/)?.[0] ?? "";
+    const runtimeInitializer =
+      crawlLogic.match(/async function initializeRuntime\(\): Promise<void> \{[\s\S]*?\n  }\n/)?.[0] ?? "";
+
+    assert.match(router, /import Crawl from "\.\/pages\/Crawl\.vue"/);
+    assert.match(router, /import CrawlConfig from "\.\/pages\/CrawlConfig\.vue"/);
+    assert.match(router, /path: "\/crawl", component: Crawl/);
+    assert.match(router, /path: "\/crawl-config", component: CrawlConfig/);
+    assert.doesNotMatch(appShell, /import\("\.\/pages\/CrawlConfig\.vue"\)/);
+    assert.match(crawlConfigPage, /defineAsyncComponent\(async \(\) => \(await import\("@vue-js-cron\/light"\)\)\.CronLight\)/);
+    assert.match(crawlConfigPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,80}cronEditorReady\.value = true/);
+    assert.match(crawlConfigPage, /v-if="cronEditorReady"/);
+    assert.match(crawlPage, /useCrawlPage\(\{ initialize: "runtime" \}\)/);
+    assert.match(crawlLogic, /type CrawlPageInitializeMode = "full" \| "runtime" \| "schedule"/);
+    assert.match(configInitializer, /initializeSchedule/);
+    assert.match(configInitializer, /loadCollectionSources/);
+    assert.match(configInitializer, /runAfterInitialPaint\(\(\) => \{/);
+    assert.match(configInitializer, /loadBossMeta/);
+    assert.match(configInitializer, /loadDefaultFilterProfile/);
+    assert.doesNotMatch(configInitializer, /refreshCollectionSourceState/);
+    assert.match(crawlLogic, /options\.initialize === "runtime"[\s\S]{0,120}runAfterInitialPaint\(\(\) => void state\.initializeRuntime\(\)\)/);
+    assert.match(runtimeInitializer, /initializeSchedule/);
+    assert.match(runtimeInitializer, /refreshCollectionSourceState/);
+    assert.doesNotMatch(runtimeInitializer, /loadBossMeta/);
+    assert.doesNotMatch(runtimeInitializer, /loadDefaultFilterProfile/);
+    assert.match(frontendQualityGuide, /Split heavy widgets out of primary route shells/);
+  });
+
   it("shows a short success log when normalized jobs are captured", () => {
     const runtime = readProjectFile("src/lib/runtime.ts");
     const crawlPanel = readProjectFile("src/components/crawl/CrawlRuntimePanel.vue");
@@ -1634,9 +1670,10 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(jobsPage, /来源平台、画像条件和公司维度都在「采集配置」里统一修改/);
     assert.match(crawlConfigPage, /来源/);
     assert.match(crawlConfigPage, /collectableSourceOptions/);
-    assert.match(crawlLogic, /if \(initialized\.value\) \{\s*void refreshCollectionSourceState\(\);\s*return;\s*\}/);
+    assert.match(crawlLogic, /if \(initialized\.value\) \{\s*void loadCollectionSources\(\);\s*return;\s*\}/);
     assert.match(crawlLogic, /async function refreshCollectionSourceState\(\)/);
     assert.match(crawlLogic, /loadCollectionSources\(\)/);
+    assert.match(crawlLogic, /loadCollectionSummary\(\)/);
     assert.match(crawlPage, /Boss、智联、V2EX 或 LinuxDo/);
     assert.match(crawlConfigPage, /连接一次 \/ 后台复用 profile/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
