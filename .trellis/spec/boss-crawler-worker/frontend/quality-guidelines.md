@@ -38,6 +38,11 @@ Questions to answer:
 
 ## Required Patterns
 
+- Split heavy widgets out of primary route shells. Primary sidebar targets that
+  users click repeatedly, such as crawl execution and crawl configuration,
+  should keep their route shell cheap; move expensive editors/widgets into
+  async components instead of making the user wait on them during the route
+  click. Heavier non-primary pages may still use Vue Router dynamic imports.
 - Route components with timers or polling must clean them up on unmount. If a
   page also supports `<KeepAlive>`, clean up in both `onDeactivated` and
   `onUnmounted`.
@@ -58,6 +63,10 @@ Questions to answer:
 - For performance fixes, include a real-data observation in the handoff or final
   response: database row counts, largest relevant payload sizes, and which layer
   was measured as the bottleneck.
+- For route-click performance fixes, include a repeatable browser or desktop
+  measurement command with before/after p50 and p95 timings. Browser-only
+  measurements must be labeled as frontend route/render coverage, not Tauri IPC
+  coverage.
 
 ---
 
