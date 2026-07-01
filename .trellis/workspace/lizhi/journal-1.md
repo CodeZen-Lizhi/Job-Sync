@@ -906,3 +906,37 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: 优化采集入口性能
+
+**Date**: 2026-07-01
+**Task**: 优化采集入口性能
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+优化采集和采集配置入口性能：延后非首屏初始化，异步拆分 Cron 编辑器，新增路由点击性能测试并记录前端性能规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `596b10d` | (see git log) |
+| `7c90f09` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
