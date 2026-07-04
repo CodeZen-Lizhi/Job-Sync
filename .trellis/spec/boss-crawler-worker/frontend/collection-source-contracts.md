@@ -23,6 +23,7 @@
     - LinuxDo: `category_url?: string`, `sort_by?: "latest" | "created"`, `recent_days?: number | null`, `keywords?: string[]`
     - Zhilian: `city?: string | string[]`, `keywords?: string[]`, optional pass-through search filters `salary`, `experience`, `degree`, `industry`, `company_type`, `company_scale`, `job_type`, `publish_date`, `sort_by`, and `raw_params`
     - Liepin: `city?: string | string[]`, `keywords?: string[]`, optional pass-through search filters `salary`, `experience`, `degree`, `industry`, `company_type`, `company_scale`, `job_type`, `publish_date`, `sort_by`, and `raw_params`
+    - Maimai: `feed_urls?: string[]`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`, `keywords?: string[]`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -131,12 +132,29 @@
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains detail text when available, or list-level evidence plus `详情暂未抓取，需打开原岗位确认。`
   - only applies hard validity checks before writing to `job`, such as requiring a stable Liepin job id and title; user preferences, exclusions, and AI judgement run after ingestion
   - post-collection profile and AI judgement own soft exclusion decisions after Liepin entries are written
+- Maimai:
+  - `source_platform = "maimai"`
+  - does not require Boss session
+  - uses user-configured public Maimai article/search/list URLs from `filters.feed_urls`; empty or missing URLs must skip Maimai collection instead of falling back to a built-in source
+  - frontend URL input may contain multiple URLs split by newline, comma, Chinese comma, or Chinese enumeration comma
+  - only `maimai.cn` and subdomains are accepted
+  - article detail URLs such as `/article/detail?...` are fetched directly; search/list pages are scanned for article detail links and may paginate until the configured page cap or first page without links
+  - supports `filters.sort_by = "published_desc" | "updated_desc"`; missing or invalid values default to `published_desc`
+  - supports `filters.recent_days` as a positive day window applied to the selected timestamp field; null, missing, or non-positive values mean no time pre-filter
+  - supports `limits.maxPages` as a positive list/search pagination cap and `limits.maxJobs` as inserted job cap enforced by the sidecar run tracker
+  - emits `JOB_NORMALIZED_CAPTURED`
+  - stores `encrypt_job_id = "maimai:article:<stableId>"`
+  - stores `dedup_key = "article:<stableId>"`
+  - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains title, article body, visible hiring evidence, and missing standard-field notes
+  - only uses positive hiring/referral signals before writing to `job`; configured keywords may add matches but must not alone turn an article into a job
+  - if no stable article is parsed because the page requires login, verification, or exposes no detail links, the worker emits an explicit `ERROR` instead of reporting success
+  - post-collection profile and AI judgement own soft exclusion decisions after Maimai entries are written
 - Collection limits:
   - For normalized feed adapters, `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates.
   - For the Boss adapter, `limits.maxJobs` follows the same inserted-job meaning and must not force detail endpoint requests. The sidecar stops the worker once inserted rows reach the cap.
   - the sidecar may stop a worker after counting an inserted job, and duplicate or updated rows must not consume the limit
 - Post-collection AI judgement:
-  - after Boss, V2EX, LinuxDo, Liepin, or Zhilian automatic collection finishes, the frontend must run `recompute_ai_post_collection_judgement` only for job ids newly inserted by the just-finished collection runs; duplicate and updated jobs from the run must not be re-AI-judged or included in the Telegram notification
+  - after Boss, V2EX, LinuxDo, Liepin, Zhilian, or Maimai automatic collection finishes, the frontend must run `recompute_ai_post_collection_judgement` only for job ids newly inserted by the just-finished collection runs; duplicate and updated jobs from the run must not be re-AI-judged or included in the Telegram notification
   - manual "save and recompute normal+AI" remains the full-library path because profile rules may have changed
   - persisted `reason_json.ai_judgement.status` is the UI status source when present: `passed`, `rejected`, `pending_confirmation`, or `failed`
   - missing `reason_json.ai_judgement` means the UI status is `pending_review`; in-flight frontend recompute may temporarily show `processing`
@@ -149,6 +167,7 @@
   - LinuxDo adapter kind is `feed`
   - Liepin adapter kind is `liepin`
   - Zhilian adapter kind is `zhilian`
+  - Maimai adapter kind is `feed`
   - other non-Boss platforms remain `manual_import` until their automatic adapter exists
   - enabled `manual_import` platforms may be shown in the collection source selector so users can save intended source scope, but automatic collection must skip them with a clear runtime log until an adapter exists
 - Scheduled collection:
@@ -157,7 +176,7 @@
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`
-  - the default filter profile must include currently supported automatic collection sources (`boss`, `liepin`, `v2ex`, `linuxdo`, `zhilian`) so a platform that can be collected is not hidden by source gating immediately after ingestion
+  - the default filter profile must include currently supported automatic collection sources (`boss`, `liepin`, `v2ex`, `linuxdo`, `zhilian`, `maimai`) so a platform that can be collected is not hidden by source gating immediately after ingestion
   - Boss-only filtering remains an explicit user-selected narrowing mode, not the default
 - Multi-source run:
   - UI stores all selected collectable sources, not a single `selectedCollectionSource`
@@ -195,6 +214,11 @@
 - Liepin selected with missing `liepin-browser-profile` -> worker emits an explicit reconnect error and emits no normalized fake job.
 - Liepin search or detail returns security verification/login/401/403 -> worker uses the Liepin browser profile when available; if the profile is missing or still blocked before any stable job is parsed, it emits an explicit reconnect error instead of reporting success or waiting inside the crawl.
 - Liepin detail blocked but list job id, title, and URL are stable -> worker may write a list-level normalized job with missing-detail evidence.
+- Maimai selected without stored Boss session -> command still starts with an empty session payload and no browser profile path.
+- Maimai selected with an empty URL input -> frontend blocks start with a clear URL-required message; if an empty payload reaches the worker, the worker logs that no URL was provided and skips collection.
+- Maimai selected with a non-`maimai.cn` URL -> frontend blocks start with a clear domain message; worker also ignores non-Maimai URLs.
+- Maimai article/list page returns login, verification, 403, or 429 and no stable article is parsed -> worker emits an explicit error instead of reporting success.
+- Maimai article lacks positive hiring/referral signals -> emit `JOB_FILTERED` with `缺少招聘或内推信号词`; do not insert `job`.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
@@ -280,10 +304,10 @@
   - Boss HTML login/security-check responses are treated as recoverable risk/login states.
   - Boss empty-list / missing-stable-id runs emit `ERROR` before `FINISHED`.
 - Rust tests:
-  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo as `feed`, Liepin as `liepin`, Zhilian as `zhilian`, and reserved platforms as `manual_import`.
+  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo/Maimai as `feed`, Liepin as `liepin`, Zhilian as `zhilian`, and reserved platforms as `manual_import`.
   - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, `jd_text`, and `job_detail_raw.zp_data_json` with `jobInfo.postDescription`.
   - collection start and login payloads use `liepin-browser-profile`, `liepin-cookies.json`, and `liepin-local-storage.json` for Liepin, never Boss or Zhilian paths.
-  - default filter profile includes Liepin/V2EX/LinuxDo/Zhilian and legacy Boss-only default profile upgrades to all current automatic collection sources.
+  - default filter profile includes Liepin/V2EX/LinuxDo/Zhilian/Maimai and legacy Boss-only default profile upgrades to all current automatic collection sources.
 - Frontend/browser smoke:
   - scheduled collection initialization loads collection sources and the default filter profile before loading collection config and arranging the timer.
   - collection config source selector can select Boss and V2EX together.

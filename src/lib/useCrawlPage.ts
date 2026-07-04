@@ -20,6 +20,9 @@ import {
   DEFAULT_LINUXDO_MAX_PAGES,
   DEFAULT_LIEPIN_MAX_JOBS,
   DEFAULT_LIEPIN_MAX_PAGES,
+  DEFAULT_MAIMAI_FEED_URL,
+  DEFAULT_MAIMAI_MAX_JOBS,
+  DEFAULT_MAIMAI_MAX_PAGES,
   DEFAULT_V2EX_MAX_PAGES,
   DEFAULT_V2EX_FEED_URL,
   DEFAULT_ZHILIAN_MAX_JOBS,
@@ -28,6 +31,7 @@ import {
   JOB_SOURCE_PLATFORM_OPTIONS,
   LIEPIN_SOURCE_PLATFORM,
   LINUXDO_SOURCE_PLATFORM,
+  MAIMAI_SOURCE_PLATFORM,
   MANUAL_IMPORT_SOURCE_PLATFORMS,
   parseList,
   V2EX_SOURCE_PLATFORM,
@@ -71,6 +75,12 @@ type CollectionConfigPayload = {
   v2exRecentDays?: number | null;
   v2exMaxPages?: number | null;
   v2exMaxEntries?: number | null;
+  maimaiFeedUrl?: string;
+  maimaiKeywordsText?: string;
+  maimaiFeedSortBy?: string;
+  maimaiRecentDays?: number | null;
+  maimaiMaxPages?: number | null;
+  maimaiMaxJobs?: number | null;
   linuxdoCategoryUrl?: string;
   linuxdoKeywordsText?: string;
   linuxdoSortBy?: string;
@@ -139,6 +149,7 @@ const PREVIEW_COLLECTION_SOURCES: CollectionSourceRegistryEntry[] = [
   { platform: V2EX_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
   { platform: LINUXDO_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
   { platform: ZHILIAN_SOURCE_PLATFORM, adapter_kind: "zhilian", enabled: true },
+  { platform: MAIMAI_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
 ];
 
 let crawlPageState: CrawlPageState | null = null;
@@ -186,6 +197,13 @@ function createCrawlPageState() {
   const v2exFeedSortBy = ref<V2exFeedSortBy>("published_desc");
   const v2exRecentDays = ref<number | null>(null);
   const v2exMaxPages = ref(DEFAULT_V2EX_MAX_PAGES);
+  const maimaiSettingsOpen = ref(false);
+  const maimaiFeedUrl = ref(DEFAULT_MAIMAI_FEED_URL);
+  const maimaiKeywordsText = ref("");
+  const maimaiFeedSortBy = ref<V2exFeedSortBy>("published_desc");
+  const maimaiRecentDays = ref<number | null>(null);
+  const maimaiMaxPages = ref(DEFAULT_MAIMAI_MAX_PAGES);
+  const maimaiMaxJobs = ref<number | null>(DEFAULT_MAIMAI_MAX_JOBS);
   const linuxdoSettingsOpen = ref(false);
   const linuxdoCategoryUrl = ref(DEFAULT_LINUXDO_CATEGORY_URL);
   const linuxdoKeywordsText = ref("");
@@ -356,6 +374,8 @@ function createCrawlPageState() {
   });
   const v2exKeywords = computed(() => uniqueList(parseList(v2exKeywordsText.value)));
   const v2exTaskKeywords = computed(() => v2exKeywords.value.length > 0 ? v2exKeywords.value : ["V2EX"]);
+  const maimaiKeywords = computed(() => uniqueList(parseList(maimaiKeywordsText.value)));
+  const maimaiTaskKeywords = computed(() => maimaiKeywords.value.length > 0 ? maimaiKeywords.value : ["脉脉"]);
   const linuxdoKeywords = computed(() => uniqueList(parseList(linuxdoKeywordsText.value)));
   const linuxdoTaskKeywords = computed(() => linuxdoKeywords.value.length > 0 ? linuxdoKeywords.value : ["LinuxDo"]);
   const liepinKeywords = computed(() => uniqueList(parseList(liepinKeywordsText.value)));
@@ -365,6 +385,7 @@ function createCrawlPageState() {
   const selectedCollectionSourceSet = computed(() => new Set(selectedCollectionSources.value));
   const bossSelected = computed(() => selectedCollectionSourceSet.value.has(BOSS_SOURCE_PLATFORM));
   const v2exSelected = computed(() => selectedCollectionSourceSet.value.has(V2EX_SOURCE_PLATFORM));
+  const maimaiSelected = computed(() => selectedCollectionSourceSet.value.has(MAIMAI_SOURCE_PLATFORM));
   const linuxdoSelected = computed(() => selectedCollectionSourceSet.value.has(LINUXDO_SOURCE_PLATFORM));
   const liepinSelected = computed(() => selectedCollectionSourceSet.value.has(LIEPIN_SOURCE_PLATFORM));
   const zhilianSelected = computed(() => selectedCollectionSourceSet.value.has(ZHILIAN_SOURCE_PLATFORM));
@@ -442,6 +463,26 @@ function createCrawlPageState() {
         mode: "auto",
       };
     }
+    if (sourcePlatform === MAIMAI_SOURCE_PLATFORM) {
+      const feedUrls = splitUrlList(maimaiFeedUrl.value);
+      return {
+        keywords: maimaiTaskKeywords.value,
+        source_platform: MAIMAI_SOURCE_PLATFORM,
+        filters: {
+          feed_urls: feedUrls,
+          sort_by: maimaiFeedSortBy.value,
+          recent_days: optionalNumber(maimaiRecentDays.value),
+          keywords: maimaiKeywords.value,
+          profile: filterProfileState.filterProfile.value,
+        },
+        limits: {
+          delayMs: delayMs.value,
+          maxPages: optionalNumber(maimaiMaxPages.value) ?? DEFAULT_MAIMAI_MAX_PAGES,
+          maxJobs: optionalNumber(maimaiMaxJobs.value),
+        },
+        mode: "auto",
+      };
+    }
     if (sourcePlatform === V2EX_SOURCE_PLATFORM) {
       const feedUrls = splitUrlList(v2exFeedUrl.value);
       return {
@@ -497,6 +538,29 @@ function createCrawlPageState() {
     }
     if (source === V2EX_SOURCE_PLATFORM && splitUrlList(v2exFeedUrl.value).length === 0) {
       return "V2EX URL 为空。请填写至少 1 个 feed 或节点 URL。";
+    }
+    if (source === MAIMAI_SOURCE_PLATFORM) {
+      const urls = splitUrlList(maimaiFeedUrl.value);
+      if (urls.length === 0) {
+        return "脉脉 URL 为空。请填写至少 1 个公开文章或搜索页 URL。";
+      }
+      for (const url of urls) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.hostname !== "maimai.cn" && !parsed.hostname.endsWith(".maimai.cn")) {
+            return "脉脉 URL 必须是 maimai.cn 域名。";
+          }
+        } catch {
+          return "脉脉 URL 格式不正确。";
+        }
+      }
+      if ((optionalNumber(maimaiMaxPages.value) ?? 0) <= 0) {
+        return "脉脉页数上限必须大于 0。";
+      }
+      const maxJobs = optionalNumber(maimaiMaxJobs.value);
+      if (maxJobs !== null && maxJobs <= 0) {
+        return "脉脉入库上限必须大于 0，或留空不限。";
+      }
     }
     if (source === LINUXDO_SOURCE_PLATFORM) {
       const url = linuxdoCategoryUrl.value.trim();
@@ -686,6 +750,12 @@ function createCrawlPageState() {
       v2exFeedSortBy: v2exFeedSortBy.value,
       v2exRecentDays: optionalNumber(v2exRecentDays.value),
       v2exMaxPages: optionalNumber(v2exMaxPages.value) ?? DEFAULT_V2EX_MAX_PAGES,
+      maimaiFeedUrl: maimaiFeedUrl.value,
+      maimaiKeywordsText: maimaiKeywordsText.value,
+      maimaiFeedSortBy: maimaiFeedSortBy.value,
+      maimaiRecentDays: optionalNumber(maimaiRecentDays.value),
+      maimaiMaxPages: optionalNumber(maimaiMaxPages.value) ?? DEFAULT_MAIMAI_MAX_PAGES,
+      maimaiMaxJobs: optionalNumber(maimaiMaxJobs.value),
       linuxdoCategoryUrl: linuxdoCategoryUrl.value,
       linuxdoKeywordsText: linuxdoKeywordsText.value,
       linuxdoSortBy: linuxdoSortBy.value,
@@ -763,6 +833,14 @@ function createCrawlPageState() {
     v2exFeedSortBy.value = sanitizeV2exFeedSortBy(config.v2exFeedSortBy);
     v2exRecentDays.value = optionalNumber(config.v2exRecentDays);
     v2exMaxPages.value = optionalNumber(config.v2exMaxPages ?? config.v2exMaxEntries) ?? DEFAULT_V2EX_MAX_PAGES;
+    maimaiFeedUrl.value = textValue(config.maimaiFeedUrl);
+    maimaiKeywordsText.value = textValue(config.maimaiKeywordsText);
+    maimaiFeedSortBy.value = sanitizeV2exFeedSortBy(config.maimaiFeedSortBy);
+    maimaiRecentDays.value = optionalNumber(config.maimaiRecentDays);
+    maimaiMaxPages.value = optionalNumber(config.maimaiMaxPages) ?? DEFAULT_MAIMAI_MAX_PAGES;
+    maimaiMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "maimaiMaxJobs")
+      ? optionalNumber(config.maimaiMaxJobs)
+      : DEFAULT_MAIMAI_MAX_JOBS;
     linuxdoCategoryUrl.value = textValue(config.linuxdoCategoryUrl) || DEFAULT_LINUXDO_CATEGORY_URL;
     linuxdoKeywordsText.value = textValue(config.linuxdoKeywordsText);
     linuxdoSortBy.value = sanitizeLinuxDoSortBy(config.linuxdoSortBy);
@@ -833,6 +911,7 @@ function createCrawlPageState() {
     bossSettingsOpen.value = bossSelected.value;
     liepinSettingsOpen.value = liepinSelected.value;
     v2exFeedSettingsOpen.value = v2exSelected.value;
+    maimaiSettingsOpen.value = maimaiSelected.value;
     linuxdoSettingsOpen.value = linuxdoSelected.value;
     zhilianSettingsOpen.value = zhilianSelected.value;
   }
@@ -1277,6 +1356,7 @@ function createCrawlPageState() {
     bossSelected,
     liepinSelected,
     v2exSelected,
+    maimaiSelected,
     linuxdoSelected,
     zhilianSelected,
     collectableSourceOptions,
@@ -1288,6 +1368,14 @@ function createCrawlPageState() {
     v2exRecentDays,
     v2exMaxPages,
     v2exKeywords,
+    maimaiSettingsOpen,
+    maimaiFeedUrl,
+    maimaiKeywordsText,
+    maimaiFeedSortBy,
+    maimaiRecentDays,
+    maimaiMaxPages,
+    maimaiMaxJobs,
+    maimaiKeywords,
     linuxdoSettingsOpen,
     linuxdoCategoryUrl,
     linuxdoKeywordsText,

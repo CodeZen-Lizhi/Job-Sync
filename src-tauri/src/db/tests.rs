@@ -57,6 +57,9 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
     assert!(source_platforms
         .iter()
         .any(|item| item.as_str() == Some("zhilian")));
+    assert!(source_platforms
+        .iter()
+        .any(|item| item.as_str() == Some("maimai")));
     assert_eq!(
         profile
             .profile_json
@@ -304,7 +307,8 @@ fn existing_default_filter_profile_with_legacy_boss_only_source_upgrades_automat
             "liepin".to_string(),
             "v2ex".to_string(),
             "linuxdo".to_string(),
-            "zhilian".to_string()
+            "zhilian".to_string(),
+            "maimai".to_string()
         ]
     );
 }
@@ -1893,13 +1897,11 @@ fn init_db_seeds_job_source_registry_with_platform_adapters() {
                 && adapter_kind == "boss"
                 && *enabled == 1
         }));
-    for platform in ["maimai"] {
-        assert!(sources
-            .iter()
-            .any(|(source_platform, _, adapter_kind, enabled)| {
-                source_platform == platform && adapter_kind == "manual_import" && *enabled == 1
-            }));
-    }
+    assert!(sources
+        .iter()
+        .any(|(source_platform, _, adapter_kind, enabled)| {
+            source_platform == "maimai" && adapter_kind == "feed" && *enabled == 1
+        }));
     assert!(sources
         .iter()
         .any(|(source_platform, _, adapter_kind, enabled)| {
@@ -1974,6 +1976,9 @@ fn init_db_exposes_supported_job_source_adapter_spec() {
         && spec.adapter_kind == "feed"
         && spec.enabled_by_default));
     assert!(specs.iter().any(|spec| spec.platform == "linuxdo"
+        && spec.adapter_kind == "feed"
+        && spec.enabled_by_default));
+    assert!(specs.iter().any(|spec| spec.platform == "maimai"
         && spec.adapter_kind == "feed"
         && spec.enabled_by_default));
 }

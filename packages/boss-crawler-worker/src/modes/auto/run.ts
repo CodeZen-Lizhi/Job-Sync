@@ -20,6 +20,7 @@ import { runV2exFeedMode } from "../../v2ex/feed.js";
 import { runLinuxDoMode } from "../../linuxdo/feed.js";
 import { runZhilianMode } from "../../zhilian/feed.js";
 import { runLiepinMode } from "../../liepin/feed.js";
+import { runMaimaiMode } from "../../maimai/feed.js";
 
 const NATURAL_JOB_LIST_TIMEOUT_MS = 20_000;
 const DEFAULT_DETAIL_FETCH_LIMIT = 0;
@@ -444,6 +445,17 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
   if (payload.task.source_platform === "v2ex") {
     try {
       await runV2exFeedMode(payload, baseCtx);
+    } catch (err) {
+      baseCtx.emit({ type: "ERROR", payload: safeError(err) });
+    } finally {
+      baseCtx.emit({ type: "FINISHED" });
+    }
+    return;
+  }
+
+  if (payload.task.source_platform === "maimai") {
+    try {
+      await runMaimaiMode(payload, baseCtx);
     } catch (err) {
       baseCtx.emit({ type: "ERROR", payload: safeError(err) });
     } finally {

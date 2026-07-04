@@ -106,7 +106,7 @@ fn collection_browser_profile_path(
 fn collection_uses_optional_session(source_platform: &str) -> bool {
     matches!(
         normalize_collection_platform(Some(source_platform)).as_str(),
-        "boss" | "v2ex" | "linuxdo" | "zhilian" | "liepin"
+        "boss" | "v2ex" | "linuxdo" | "zhilian" | "liepin" | "maimai"
     )
 }
 
@@ -260,6 +260,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
 
         assert_eq!(collection_browser_profile_path(tmp.path(), "v2ex"), None);
+        assert_eq!(collection_browser_profile_path(tmp.path(), "maimai"), None);
     }
 
     #[test]
@@ -301,7 +302,8 @@ mod tests {
         assert!(collection_uses_optional_session(" LinuxDo "));
         assert!(collection_uses_optional_session("zhilian"));
         assert!(collection_uses_optional_session(" ZhiLian "));
-        assert!(!collection_uses_optional_session("maimai"));
+        assert!(collection_uses_optional_session("maimai"));
+        assert!(collection_uses_optional_session(" MaiMai "));
     }
 
     #[test]

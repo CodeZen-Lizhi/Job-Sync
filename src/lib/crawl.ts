@@ -150,12 +150,16 @@ export const V2EX_SOURCE_PLATFORM: JobSourcePlatform = "v2ex";
 export const LINUXDO_SOURCE_PLATFORM: JobSourcePlatform = "linuxdo";
 export const ZHILIAN_SOURCE_PLATFORM: JobSourcePlatform = "zhilian";
 export const LIEPIN_SOURCE_PLATFORM: JobSourcePlatform = "liepin";
-export const MANUAL_IMPORT_SOURCE_PLATFORMS = ["maimai"] as const;
-export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, LIEPIN_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM] as const;
+export const MAIMAI_SOURCE_PLATFORM: JobSourcePlatform = "maimai";
+export const MANUAL_IMPORT_SOURCE_PLATFORMS = [] as const;
+export const COLLECTABLE_SOURCE_PLATFORMS = [BOSS_SOURCE_PLATFORM, LIEPIN_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, MAIMAI_SOURCE_PLATFORM] as const;
 export const DEFAULT_V2EX_FEED_URL = "";
+export const DEFAULT_MAIMAI_FEED_URL = "";
 export const DEFAULT_BOSS_MAX_PAGES = 3;
 export const DEFAULT_BOSS_MAX_JOBS = 100;
 export const DEFAULT_V2EX_MAX_PAGES = 5;
+export const DEFAULT_MAIMAI_MAX_PAGES = 3;
+export const DEFAULT_MAIMAI_MAX_JOBS = 20;
 export const DEFAULT_LINUXDO_CATEGORY_URL = "https://linux.do/c/job/27";
 export const DEFAULT_LINUXDO_MAX_PAGES = 3;
 export const DEFAULT_ZHILIAN_MAX_PAGES = 3;
@@ -166,7 +170,7 @@ export const JOB_SOURCE_PLATFORM_OPTIONS: JobSourcePlatformOption[] = [
   { value: BOSS_SOURCE_PLATFORM, label: "Boss 直聘", adapterKind: "boss" },
   { value: LIEPIN_SOURCE_PLATFORM, label: "猎聘", adapterKind: "liepin" },
   { value: ZHILIAN_SOURCE_PLATFORM, label: "智联招聘", adapterKind: "zhilian" },
-  { value: "maimai", label: "脉脉", adapterKind: "manual_import" },
+  { value: MAIMAI_SOURCE_PLATFORM, label: "脉脉", adapterKind: "feed" },
   { value: V2EX_SOURCE_PLATFORM, label: "V2EX", adapterKind: "feed" },
   { value: LINUXDO_SOURCE_PLATFORM, label: "LinuxDo", adapterKind: "feed" },
 ];

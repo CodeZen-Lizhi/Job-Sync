@@ -1681,15 +1681,15 @@ describe("review workflow contract", () => {
     assert.match(crawlLogic, /async function refreshCollectionSourceState\(\)/);
     assert.match(crawlLogic, /loadCollectionSources\(\)/);
     assert.match(crawlLogic, /loadCollectionSummary\(\)/);
-    assert.match(crawlPage, /Boss、猎聘、智联、V2EX 或 LinuxDo/);
+    assert.match(crawlPage, /Boss、猎聘、智联、V2EX、LinuxDo 或脉脉/);
     assert.match(crawlConfigPage, /连接一次 \/ 后台复用 profile/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeHint/);
     assert.match(filterProfile, /sourcePlatformOptions: JOB_SOURCE_PLATFORM_OPTIONS/);
-    assert.match(filterProfile, /允许 Boss、猎聘、V2EX、LinuxDo、智联等已支持自动采集来源进入筛选和 Top 20/);
+    assert.match(filterProfile, /允许 Boss、猎聘、V2EX、LinuxDo、智联、脉脉等已支持自动采集来源进入筛选和 Top 20/);
     assert.match(crawlTypes, /JOB_SOURCE_PLATFORM_OPTIONS/);
     assert.match(crawlTypes, /MANUAL_IMPORT_SOURCE_PLATFORMS/);
-    assert.match(crawlTypes, /manual_import/);
+    assert.match(crawlTypes, /adapterKind: "feed"/);
     assert.doesNotMatch(jobsLogic, /import_external_job/);
     assert.doesNotMatch(jobsLogic, /externalImportPayloadText/);
     assert.doesNotMatch(jobsLogic, /fillExternalImportExample/);
@@ -1714,7 +1714,7 @@ describe("review workflow contract", () => {
     assert.match(dbTests, /Boss 直聘/);
     assert.match(dbTests, /liepin/);
     assert.match(dbTests, /adapter_kind == "liepin"/);
-    assert.match(dbTests, /manual_import/);
+    assert.match(dbTests, /source_platform == "maimai" && adapter_kind == "feed"/);
     assert.match(dbTests, /enabled == 1/);
   });
 

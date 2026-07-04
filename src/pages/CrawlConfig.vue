@@ -3,7 +3,7 @@ import { defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
 
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
-import { BOSS_SOURCE_PLATFORM, LIEPIN_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
+import { BOSS_SOURCE_PLATFORM, LIEPIN_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, MAIMAI_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
 import { runAfterInitialPaint } from "../lib/defer";
 import { useCrawlPage } from "../lib/useCrawlPage";
 
@@ -36,6 +36,7 @@ const {
   bossSelected,
   liepinSelected,
   v2exSelected,
+  maimaiSelected,
   linuxdoSelected,
   zhilianSelected,
   collectableSourceOptions,
@@ -47,6 +48,14 @@ const {
   v2exRecentDays,
   v2exMaxPages,
   v2exKeywords,
+  maimaiSettingsOpen,
+  maimaiFeedUrl,
+  maimaiKeywordsText,
+  maimaiFeedSortBy,
+  maimaiRecentDays,
+  maimaiMaxPages,
+  maimaiMaxJobs,
+  maimaiKeywords,
   linuxdoSettingsOpen,
   linuxdoCategoryUrl,
   linuxdoKeywordsText,
@@ -163,6 +172,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
   if (value === BOSS_SOURCE_PLATFORM) bossSettingsOpen.value = true;
   if (value === LIEPIN_SOURCE_PLATFORM) liepinSettingsOpen.value = true;
   if (value === V2EX_SOURCE_PLATFORM) v2exFeedSettingsOpen.value = true;
+  if (value === MAIMAI_SOURCE_PLATFORM) maimaiSettingsOpen.value = true;
   if (value === LINUXDO_SOURCE_PLATFORM) linuxdoSettingsOpen.value = true;
   if (value === ZHILIAN_SOURCE_PLATFORM) zhilianSettingsOpen.value = true;
 }
@@ -517,6 +527,56 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <input v-model.number="v2exMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
           </label>
           <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ v2exKeywords.length > 0 ? v2exKeywords.join("、") : "仅用招聘信号识别" }}</div>
+        </div>
+      </section>
+
+      <section v-if="maimaiSelected" class="ui-panel overflow-hidden">
+        <button
+          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+          :class="maimaiSettingsOpen ? 'border-b border-border/90' : ''"
+          type="button"
+          @click="maimaiSettingsOpen = !maimaiSettingsOpen"
+        >
+          <span class="space-y-1">
+            <span class="block text-sm font-semibold text-content-primary">脉脉</span>
+            <span class="block text-xs text-content-muted">公开文章 / 搜索页</span>
+          </span>
+          <span class="text-xs text-content-muted">{{ maimaiSettingsOpen ? "收起" : "展开" }}</span>
+        </button>
+
+        <div v-if="maimaiSettingsOpen" class="grid gap-3 p-4 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+          <label class="space-y-1 md:col-span-2">
+            <div class="text-xs font-medium text-content-muted">URL</div>
+            <textarea
+              v-model="maimaiFeedUrl"
+              class="ui-textarea h-20 w-full"
+              placeholder="https://maimai.cn/article/detail?fid=...&#10;https://maimai.cn/search?query=Go"
+            />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">关键词</div>
+            <textarea v-model="maimaiKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go&#10;远程&#10;Kubernetes" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">排序</div>
+            <UiSelect v-model="maimaiFeedSortBy">
+              <option value="published_desc">发布时间倒序</option>
+              <option value="updated_desc">更新时间倒序</option>
+            </UiSelect>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">最近天数</div>
+            <input v-model.number="maimaiRecentDays" type="number" min="0" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">页数上限</div>
+            <input v-model.number="maimaiMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">入库上限</div>
+            <input v-model.number="maimaiMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
+          <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ maimaiKeywords.length > 0 ? maimaiKeywords.join("、") : "仅用招聘信号识别" }}</div>
         </div>
       </section>
 
