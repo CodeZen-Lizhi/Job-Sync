@@ -940,3 +940,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 29: 修复定时采集初始化状态
+
+**Date**: 2026-07-04
+**Task**: 修复定时采集初始化状态
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+修复应用打开期间定时采集初始化缺少采集源 registry 和默认采后规则的问题，补充契约测试与 collection source spec，避免未打开采集页时定时任务被判断为无可执行平台。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `358c025` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 28
-- **Last Active**: 2026-07-01
+- **Total Sessions**: 29
+- **Last Active**: 2026-07-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~942 | Active |
+| `journal-1.md` | ~975 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 29 | 2026-07-04 | 修复定时采集初始化状态 | `358c025` | `remote-job-intelligence` |
 | 28 | 2026-07-01 | 优化采集入口性能 | `596b10d`, `7c90f09` | `remote-job-intelligence` |
 | 27 | 2026-07-01 | 打包 JobPilot release 产物 | - | `remote-job-intelligence` |
 | 26 | 2026-07-01 | 智联真实浏览器采集收尾 | `b2bbd78` | `remote-job-intelligence` |
