@@ -32,6 +32,8 @@ type ZhilianRequestOptions = {
   onRetry?: (attempt: number, error: Error) => void;
 };
 
+type ZhilianSearchFilters = Record<string, unknown>;
+
 export type ZhilianJobEntry = {
   jobId: string;
   title: string;
@@ -381,6 +383,78 @@ function normalizePositiveInteger(fallback: number, ...values: unknown[]): numbe
   return fallback;
 }
 
+function filterString(filters: ZhilianSearchFilters, ...keys: string[]): string | undefined {
+  return firstString(...keys.map((key) => filters[key]));
+}
+
+export function normalizeZhilianSearchCities(filters: ZhilianSearchFilters): string[] {
+  const values: string[] = [];
+  const push = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) push(item);
+      return;
+    }
+    if (typeof value !== "string" && typeof value !== "number") return;
+    for (const part of String(value).split(/[\n,，、]+/g)) {
+      const trimmed = part.trim();
+      if (trimmed) values.push(trimmed);
+    }
+  };
+  push(filters.city);
+  push(filters.cityId);
+  push(filters.city_id);
+  push(filters.cityText);
+  const seen = new Set<string>();
+  const out = values.filter((value) => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return out.length > 0 ? out : [""];
+}
+
+function applyRawSearchParams(url: URL, value: string | undefined): void {
+  if (!value) return;
+  const trimmedValue = value.trim();
+  let normalized = trimmedValue;
+  try {
+    normalized = new URL(trimmedValue).search;
+  } catch {
+    normalized = trimmedValue
+      .split(/\r?\n/g)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("&");
+  }
+  if (!normalized) return;
+  const params = new URLSearchParams(normalized.startsWith("?") ? normalized.slice(1) : normalized);
+  for (const [key, paramValue] of params.entries()) {
+    const cleanKey = key.trim();
+    if (!cleanKey || !/^[A-Za-z0-9_.-]+$/.test(cleanKey)) continue;
+    url.searchParams.set(cleanKey, paramValue.trim());
+  }
+}
+
+function applyZhilianSearchFilters(url: URL, filters: ZhilianSearchFilters): URL {
+  const mappedParams: Array<[string, string | undefined]> = [
+    ["salary", filterString(filters, "salary", "salaryId", "salary_id", "salaryText")],
+    ["workExperience", filterString(filters, "experience", "workExperience", "work_experience", "workingExp", "working_exp", "experienceId", "experience_id")],
+    ["education", filterString(filters, "degree", "education", "eduLevel", "edu_level", "degreeId", "degree_id")],
+    ["industry", filterString(filters, "industry", "industryId", "industry_id")],
+    ["companyType", filterString(filters, "company_type", "companyType", "companyKind", "company_kind")],
+    ["companySize", filterString(filters, "company_scale", "companyScale", "companySize", "company_size", "scale")],
+    ["jobType", filterString(filters, "job_type", "jobType", "positionType", "position_type")],
+    ["publishDate", filterString(filters, "publish_date", "publishDate", "date", "dateRange", "date_range")],
+    ["sortType", filterString(filters, "sort_by", "sortBy", "sortType", "sort_type")],
+  ];
+  for (const [key, value] of mappedParams) {
+    if (value) url.searchParams.set(key, value);
+  }
+  applyRawSearchParams(url, filterString(filters, "raw_params", "rawParams", "query_params", "queryParams"));
+  return url;
+}
+
 function buildCookieHeader(cookies: unknown, hostname: string): string | undefined {
   if (!Array.isArray(cookies)) return undefined;
   const pairs = cookies
@@ -397,25 +471,25 @@ function buildCookieHeader(cookies: unknown, hostname: string): string | undefin
   return pairs.length > 0 ? pairs.join("; ") : undefined;
 }
 
-function searchApiUrl(keyword: string, pageIndex: number, pageSize: number, city: string): string {
+function searchApiUrl(keyword: string, pageIndex: number, pageSize: number, city: string, filters: ZhilianSearchFilters = {}): string {
   const url = new URL("https://fe-api.zhaopin.com/c/i/sou");
   url.searchParams.set("pageSize", String(pageSize));
   url.searchParams.set("kw", keyword);
   url.searchParams.set("kt", "3");
   url.searchParams.set("start", String((pageIndex - 1) * pageSize));
   if (city) url.searchParams.set("cityId", city);
-  return url.toString();
+  return applyZhilianSearchFilters(url, filters).toString();
 }
 
-function mobileSearchUrl(keyword: string, pageIndex: number, city: string): string {
+function mobileSearchUrl(keyword: string, pageIndex: number, city: string, filters: ZhilianSearchFilters = {}): string {
   const url = new URL("https://m.zhaopin.com/searchresult/");
   url.searchParams.set("keyword", keyword);
   url.searchParams.set("page", String(pageIndex));
   if (city) url.searchParams.set("city", city);
-  return url.toString();
+  return applyZhilianSearchFilters(url, filters).toString();
 }
 
-function pcSearchUrl(keyword: string, pageIndex: number, city: string): string {
+function pcSearchUrl(keyword: string, pageIndex: number, city: string, filters: ZhilianSearchFilters = {}): string {
   const normalizedKeyword = keyword.trim();
   const normalizedCity = city.trim();
   const url = new URL("https://www.zhaopin.com/sou/");
@@ -423,7 +497,21 @@ function pcSearchUrl(keyword: string, pageIndex: number, city: string): string {
   if (normalizedKeyword) url.searchParams.set("kw", normalizedKeyword);
   url.searchParams.set("p", String(pageIndex));
   url.searchParams.set("kt", "3");
-  return url.toString();
+  return applyZhilianSearchFilters(url, filters).toString();
+}
+
+export function buildZhilianSearchUrls(
+  keyword: string,
+  pageIndex: number,
+  pageSize: number,
+  city: string,
+  filters: ZhilianSearchFilters = {},
+): { api: string; mobile: string; pc: string } {
+  return {
+    api: searchApiUrl(keyword, pageIndex, pageSize, city, filters),
+    mobile: mobileSearchUrl(keyword, pageIndex, city, filters),
+    pc: pcSearchUrl(keyword, pageIndex, city, filters),
+  };
 }
 
 function responseToPageFetchResult(response: ZhilianHttpResponse): PageFetchResult {
@@ -574,6 +662,7 @@ async function openZhilianBrowserClient(
   ctx: ModeContext,
   keyword: string,
   city: string,
+  filters: ZhilianSearchFilters,
 ): Promise<{ browser: Awaited<ReturnType<typeof launchBrowser>>["browser"]; page: Page }> {
   if (!payload.user_data_dir) {
     throw new Error(`${ZHILIAN_RECONNECT_MESSAGE}（缺少 zhilian-browser-profile）`);
@@ -589,7 +678,7 @@ async function openZhilianBrowserClient(
     preserve_on_disconnect: true,
   });
   await blockNavigation(page, { allow_domain_suffixes: ["zhaopin.com", "zhaopin.cn"] });
-  await page.goto(pcSearchUrl(keyword, 1, city), { waitUntil: "domcontentloaded" }).catch(() => undefined);
+  await page.goto(pcSearchUrl(keyword, 1, city, filters), { waitUntil: "domcontentloaded" }).catch(() => undefined);
   await waitForZhilianSearchSettled(page, ctx.signal);
   const snapshot = await zhilianPageSnapshot(page);
   if (snapshot.securityBlocked || snapshot.loginBlocked) {
@@ -611,10 +700,11 @@ async function fetchSearchEntriesDirect(
   pageIndex: number,
   pageSize: number,
   city: string,
+  filters: ZhilianSearchFilters,
   signal: AbortSignal,
   options: ZhilianRequestOptions,
 ): Promise<{ entries: ZhilianJobEntry[]; blocked: boolean; status: number }> {
-  const apiResult = responseToPageFetchResult(await fetchZhilianUrl(searchApiUrl(keyword, pageIndex, pageSize, city), signal, {
+  const apiResult = responseToPageFetchResult(await fetchZhilianUrl(searchApiUrl(keyword, pageIndex, pageSize, city, filters), signal, {
     ...options,
     label: `智联第 ${pageIndex} 页搜索 API`,
   }));
@@ -628,7 +718,7 @@ async function fetchSearchEntriesDirect(
   if (isZhilianSecurityVerificationText(apiResult.text) || looksLikeLoginText(apiResult.text) || apiResult.status === 401 || apiResult.status === 403) {
     return { entries: [], blocked: true, status: apiResult.status };
   }
-  const htmlResult = responseToPageFetchResult(await fetchZhilianUrl(mobileSearchUrl(keyword, pageIndex, city), signal, {
+  const htmlResult = responseToPageFetchResult(await fetchZhilianUrl(mobileSearchUrl(keyword, pageIndex, city, filters), signal, {
     ...options,
     label: `智联第 ${pageIndex} 页移动搜索`,
   }));
@@ -645,8 +735,9 @@ async function fetchSearchEntriesFromBrowser(
   pageIndex: number,
   pageSize: number,
   city: string,
+  filters: ZhilianSearchFilters,
 ): Promise<{ entries: ZhilianJobEntry[]; blocked: boolean; status: number }> {
-  await page.goto(pcSearchUrl(keyword, pageIndex, city), { waitUntil: "domcontentloaded", timeout: 45_000 }).catch(() => undefined);
+  await page.goto(pcSearchUrl(keyword, pageIndex, city, filters), { waitUntil: "domcontentloaded", timeout: 45_000 }).catch(() => undefined);
   for (let attempt = 0; attempt < 8 && !signal.aborted; attempt += 1) {
     if (await page.evaluate(() => document.querySelectorAll('a[href*="jobdetail/"]').length > 0).catch(() => false)) break;
     if (await page.evaluate(() => /Security Verification|Tencent Cloud EdgeOne|eo-bot-captcha-token|TEOCaptchaWidget/i.test(document.documentElement.innerText + document.documentElement.innerHTML)).catch(() => false)) {
@@ -752,7 +843,7 @@ async function fetchSearchEntriesFromBrowser(
     };
   }
 
-  const apiResult = await fetchFromBrowserPage(page, searchApiUrl(keyword, pageIndex, pageSize, city));
+  const apiResult = await fetchFromBrowserPage(page, searchApiUrl(keyword, pageIndex, pageSize, city, filters));
   if (apiResult.json) {
     const entries = parseZhilianSearchApi(apiResult.json);
     if (entries.length > 0) return { entries, blocked: false, status: apiResult.status };
@@ -760,7 +851,7 @@ async function fetchSearchEntriesFromBrowser(
   if (isZhilianSecurityVerificationText(apiResult.text) || looksLikeLoginText(apiResult.text) || apiResult.status === 401 || apiResult.status === 403) {
     return { entries: [], blocked: true, status: apiResult.status };
   }
-  const htmlResult = await fetchFromBrowserPage(page, mobileSearchUrl(keyword, pageIndex, city));
+  const htmlResult = await fetchFromBrowserPage(page, mobileSearchUrl(keyword, pageIndex, city, filters));
   if (isZhilianSecurityVerificationText(htmlResult.text) || looksLikeLoginText(htmlResult.text) || htmlResult.status === 401 || htmlResult.status === 403) {
     return { entries: [], blocked: true, status: htmlResult.status };
   }
@@ -850,7 +941,7 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
   const maxPages = normalizePositiveInteger(DEFAULT_MAX_PAGES, limits.maxPages, limits.max_pages);
   const delayMs = normalizePositiveInteger(0, limits.delayMs, limits.delay_ms);
   const pageSize = normalizePositiveInteger(30, limits.pageSize, limits.page_size);
-  const city = firstString(filters.city, filters.cityId, filters.city_id, filters.cityText) ?? "";
+  const cities = normalizeZhilianSearchCities(filters);
   const cookieHeader = buildCookieHeader(payload.session?.cookies, "zhaopin.com");
   const logKeyword = keywords[0] ?? "智联招聘";
 
@@ -865,8 +956,8 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
 
   let browserClient: { browser: Awaited<ReturnType<typeof launchBrowser>>["browser"]; page: Page } | null = null;
   let useBrowser = false;
-  const ensureBrowserClient = async (keyword: string) => {
-    if (!browserClient) browserClient = await openZhilianBrowserClient(payload, ctx, keyword, city);
+  const ensureBrowserClient = async (keyword: string, city: string) => {
+    if (!browserClient) browserClient = await openZhilianBrowserClient(payload, ctx, keyword, city, filters);
     useBrowser = true;
     return browserClient;
   };
@@ -876,60 +967,65 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
     const seen = new Set<string>();
     for (const keyword of keywords) {
       if (ctx.signal.aborted) break;
-      ctx.emit({
-        type: "LOG",
-        payload: { level: "info", message: `开始智联招聘采集：${keyword}，最多 ${maxPages} 页。` },
-      });
-      for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
+      for (const city of cities) {
         if (ctx.signal.aborted) break;
-        ctx.emit({ type: "PROGRESS", payload: { keyword, current_page: pageIndex } });
-        let result: { entries: ZhilianJobEntry[]; blocked: boolean; status: number };
-        if (useBrowser) {
-          result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword)).page, ctx.signal, keyword, pageIndex, pageSize, city);
-        } else {
-          result = await fetchSearchEntriesDirect(keyword, pageIndex, pageSize, city, ctx.signal, {
-            cookieHeader,
-            referer: "https://www.zhaopin.com/",
-            onRetry: (attempt, error) => {
-              ctx.emit({
-                type: "LOG",
-                payload: { level: "warn", message: `智联第 ${pageIndex} 页请求失败，准备重试第 ${attempt} 次：${error.message}` },
-              });
-            },
-          });
-        }
-        if ((result.blocked || result.entries.length === 0 && collected.length === 0) && !useBrowser && payload.user_data_dir) {
-          if (result.blocked) {
-            ctx.emit({
-              type: "LOG",
-              payload: { level: "warn", message: `智联公开请求被登录/安全验证拦截（HTTP ${result.status || 0}），改用已连接的智联 profile 后台采集。` },
-            });
-          }
-          result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword)).page, ctx.signal, keyword, pageIndex, pageSize, city);
-        }
-        if (result.blocked) {
-          if (collected.length === 0) throw new Error(ZHILIAN_RECONNECT_MESSAGE);
-          ctx.emit({
-            type: "LOG",
-            payload: { level: "warn", message: `智联第 ${pageIndex} 页被登录/安全验证拦截，停止后续分页；请到设置页重新连接智联。` },
-          });
-          break;
-        }
-        const fresh = result.entries
-          .map((entry) => ({ ...entry, sourcePage: pageIndex }))
-          .filter((entry) => {
-            if (seen.has(entry.jobId)) return false;
-            seen.add(entry.jobId);
-            return true;
-          });
+        const cityLabel = city || "默认范围";
+        const progressKeyword = city ? `${keyword} / ${city}` : keyword;
         ctx.emit({
           type: "LOG",
-          payload: { level: "info", message: `智联第 ${pageIndex} 页解析：${fresh.length} 条。` },
+          payload: { level: "info", message: `开始智联招聘采集：${keyword}，城市/地区：${cityLabel}，最多 ${maxPages} 页。` },
         });
-        if (fresh.length === 0) break;
-        collected.push(...fresh);
-        ctx.emit({ type: "PROGRESS", payload: { keyword, current_page: pageIndex, captured_job_list: collected.length } });
-        await delayWithJitter(delayMs, ctx.signal, 300);
+        for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
+          if (ctx.signal.aborted) break;
+          ctx.emit({ type: "PROGRESS", payload: { keyword: progressKeyword, current_page: pageIndex } });
+          let result: { entries: ZhilianJobEntry[]; blocked: boolean; status: number };
+          if (useBrowser) {
+            result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword, city)).page, ctx.signal, keyword, pageIndex, pageSize, city, filters);
+          } else {
+            result = await fetchSearchEntriesDirect(keyword, pageIndex, pageSize, city, filters, ctx.signal, {
+              cookieHeader,
+              referer: "https://www.zhaopin.com/",
+              onRetry: (attempt, error) => {
+                ctx.emit({
+                  type: "LOG",
+                  payload: { level: "warn", message: `智联第 ${pageIndex} 页请求失败，准备重试第 ${attempt} 次：${error.message}` },
+                });
+              },
+            });
+          }
+          if ((result.blocked || result.entries.length === 0 && collected.length === 0) && !useBrowser && payload.user_data_dir) {
+            if (result.blocked) {
+              ctx.emit({
+                type: "LOG",
+                payload: { level: "warn", message: `智联公开请求被登录/安全验证拦截（HTTP ${result.status || 0}），改用已连接的智联 profile 后台采集。` },
+              });
+            }
+            result = await fetchSearchEntriesFromBrowser((await ensureBrowserClient(keyword, city)).page, ctx.signal, keyword, pageIndex, pageSize, city, filters);
+          }
+          if (result.blocked) {
+            if (collected.length === 0) throw new Error(ZHILIAN_RECONNECT_MESSAGE);
+            ctx.emit({
+              type: "LOG",
+              payload: { level: "warn", message: `智联第 ${pageIndex} 页被登录/安全验证拦截，停止后续分页；请到设置页重新连接智联。` },
+            });
+            break;
+          }
+          const fresh = result.entries
+            .map((entry) => ({ ...entry, sourcePage: pageIndex }))
+            .filter((entry) => {
+              if (seen.has(entry.jobId)) return false;
+              seen.add(entry.jobId);
+              return true;
+            });
+          ctx.emit({
+            type: "LOG",
+            payload: { level: "info", message: `智联 ${cityLabel} 第 ${pageIndex} 页解析：${fresh.length} 条。` },
+          });
+          if (fresh.length === 0) break;
+          collected.push(...fresh);
+          ctx.emit({ type: "PROGRESS", payload: { keyword: progressKeyword, current_page: pageIndex, captured_job_list: collected.length } });
+          await delayWithJitter(delayMs, ctx.signal, 300);
+        }
       }
     }
 
@@ -943,10 +1039,10 @@ export async function runZhilianMode(payload: CrawlAutoStartPayload, ctx: ModeCo
     for (const entry of entries) {
       if (ctx.signal.aborted) break;
       let detailedEntry = useBrowser
-        ? await fetchDetailFromBrowser((await ensureBrowserClient(logKeyword)).page, entry)
+        ? await fetchDetailFromBrowser((await ensureBrowserClient(logKeyword, cities[0] ?? "")).page, entry)
         : await fetchDetailDirect(entry, ctx.signal, { cookieHeader, referer: entry.url });
       if (detailedEntry.detailStatus === "blocked" && !useBrowser && payload.user_data_dir) {
-        detailedEntry = await fetchDetailFromBrowser((await ensureBrowserClient(logKeyword)).page, entry);
+        detailedEntry = await fetchDetailFromBrowser((await ensureBrowserClient(logKeyword, cities[0] ?? "")).page, entry);
       }
       if (detailedEntry.detailStatus !== "ok") {
         ctx.emit({

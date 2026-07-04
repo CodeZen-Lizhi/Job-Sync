@@ -17,11 +17,13 @@ pub(crate) use collection::JobUpsertOutcome;
 pub(crate) use collection::{
     create_collection_run, fail_collection_run, fail_stale_running_collection_runs,
     finish_collection_run, increment_collection_counter, new_collection_run_id,
-    record_collection_failure, refresh_collection_run_bucket_counts, BucketCounts,
-    CollectionCounter, NewCollectionFailure, NewCollectionRun,
+    record_collection_failure, record_collection_run_job_inserted,
+    refresh_collection_run_bucket_counts, BucketCounts, CollectionCounter, NewCollectionFailure,
+    NewCollectionRun,
 };
 pub use collection::{
-    list_collection_failures, list_collection_runs, CollectionFailure, CollectionRun,
+    list_collection_failures, list_collection_run_inserted_job_ids, list_collection_runs,
+    CollectionFailure, CollectionRun,
 };
 pub(crate) use company_score::{
     compute_company_score, rebuild_company_scores, upsert_company_score,

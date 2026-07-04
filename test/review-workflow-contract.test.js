@@ -1049,9 +1049,15 @@ describe("review workflow contract", () => {
   it("keeps post-collection AI judgement triggered once after all selected crawl sources finish", () => {
     const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
     const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
+    const crawlCommand = readProjectFile("src-tauri/src/commands/crawl.rs");
 
     assert.match(crawlLogic, /for \(const source of selectedSources\)/);
-    assert.match(crawlLogic, /if \(!stopRequested\.value && completedSources > 0\) \{[\s\S]{0,160}recomputeAiPostCollectionJudgementForAllJobs\(\)/);
+    assert.match(crawlCommand, /pub fn list_collection_run_inserted_job_ids/);
+    assert.match(sidecar, /record_collection_run_job_inserted/);
+    assert.match(crawlLogic, /const runId = await invoke<string>\("crawl_auto_start"/);
+    assert.match(crawlLogic, /loadCollectionRunInsertedJobIds\(runId\)/);
+    assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForJobIds\(\[\.\.\.insertedJobIds\]\)/);
+    assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForAllJobs\(\)/);
     assert.doesNotMatch(sidecar, /auto_recompute_ai_after_collection/);
     assert.doesNotMatch(sidecar, /commands::\{ai,/);
     assert.doesNotMatch(sidecar, /EventOut::Finished[\s\S]{0,260}recompute_ai_post_collection_judgement/);

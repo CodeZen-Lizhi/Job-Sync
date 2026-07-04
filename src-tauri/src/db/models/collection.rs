@@ -169,6 +169,26 @@ pub(crate) fn increment_collection_counter(
     Ok(())
 }
 
+pub(crate) fn record_collection_run_job_inserted(
+    conn: &Connection,
+    run_id: &str,
+    encrypt_job_id: &str,
+) -> Result<()> {
+    let clean_id = encrypt_job_id.trim();
+    if clean_id.is_empty() {
+        return Ok(());
+    }
+    conn.execute(
+        r#"
+        INSERT INTO collection_run_job (run_id, encrypt_job_id, outcome, created_at)
+        VALUES (?1, ?2, 'inserted', ?3)
+        ON CONFLICT(run_id, encrypt_job_id, outcome) DO NOTHING
+        "#,
+        params![run_id, clean_id, now_rfc3339()],
+    )?;
+    Ok(())
+}
+
 pub(crate) fn record_collection_failure(
     conn: &Connection,
     input: &NewCollectionFailure<'_>,
@@ -305,6 +325,22 @@ pub fn list_collection_runs(conn: &Connection, limit: Option<u32>) -> Result<Vec
             all_jobs: row.get(18)?,
         })
     })?;
+    Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+pub fn list_collection_run_inserted_job_ids(
+    conn: &Connection,
+    run_id: &str,
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT encrypt_job_id
+        FROM collection_run_job
+        WHERE run_id = ?1 AND outcome = 'inserted'
+        ORDER BY created_at ASC, encrypt_job_id ASC
+        "#,
+    )?;
+    let rows = stmt.query_map([run_id], |row| row.get::<_, String>(0))?;
     Ok(rows.filter_map(|row| row.ok()).collect())
 }
 

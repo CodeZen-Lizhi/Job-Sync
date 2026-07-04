@@ -21,7 +21,7 @@
     - Boss: `city`, `salary`, `experience`, `degree`, `industry`, `scale`, `stage`, and `jobType` are the user-facing platform filters known to map to `/wapi/zpgeek/search/joblist.json`; `position`, `multiSubway`, and `multiBusinessDistrict` may pass through internally if available, but must not be surfaced as generic unknown filters.
     - V2EX: `feed_urls?: string[]`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
     - LinuxDo: `category_url?: string`, `sort_by?: "latest" | "created"`, `recent_days?: number | null`, `keywords?: string[]`
-    - Zhilian: `city?: string`, `keywords?: string[]`
+    - Zhilian: `city?: string | string[]`, `keywords?: string[]`, optional pass-through search filters `salary`, `experience`, `degree`, `industry`, `company_type`, `company_scale`, `job_type`, `publish_date`, `sort_by`, and `raw_params`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -104,7 +104,8 @@
   - Zhilian collection must not pause inside a crawl for manual login/captcha verification. Missing, expired, or verification-blocked profiles are terminal crawl errors that tell the user to reconnect Zhilian from Settings
   - Zhilian PC search pages may include header login/register links such as `passport.zhaopin.com` even when the job search page is readable; login detection must not treat those header links as a blocked login page when normal search filters or job cards are visible
   - saved Zhilian cookies and localStorage snapshots are separate from Boss and LinuxDo snapshots; Zhilian collection must not carry Boss cookies
-  - supports `filters.city` as a pass-through city/region text or id and `filters.keywords` as the platform keyword list
+  - supports `filters.city` as a pass-through city/region text/id or list; multiple cities are split by newline, comma, Chinese comma, or Chinese enumeration comma and collected sequentially per keyword
+  - supports optional pass-through search filters for salary, experience, degree, industry, company type/scale, job type, publish date, and sort order; `raw_params` may carry copied Zhilian URL query parameters and must override same-name shortcut fields when present
   - supports `limits.maxPages` as a positive page cap per keyword and `limits.maxJobs` as inserted job cap enforced by the sidecar run tracker; the worker must not treat duplicate/update normalized events as consuming the inserted-job cap
   - recognizes Tencent EdgeOne/security verification, login pages, 401/403, and browser verification timeout as explicit blocked states; a Zhilian run with no parsed stable jobs must emit `ERROR` instead of `FINISHED` alone
   - emits `JOB_NORMALIZED_CAPTURED`
@@ -118,7 +119,8 @@
   - For the Boss adapter, `limits.maxJobs` follows the same inserted-job meaning and must not force detail endpoint requests. The sidecar stops the worker once inserted rows reach the cap.
   - the sidecar may stop a worker after counting an inserted job, and duplicate or updated rows must not consume the limit
 - Post-collection AI judgement:
-  - after Boss, V2EX, LinuxDo, or Zhilian automatic collection finishes, the sidecar may trigger `recompute_ai_post_collection_judgement`
+  - after Boss, V2EX, LinuxDo, or Zhilian automatic collection finishes, the frontend must run `recompute_ai_post_collection_judgement` only for job ids newly inserted by the just-finished collection runs; duplicate and updated jobs from the run must not be re-AI-judged or included in the Telegram notification
+  - manual "save and recompute normal+AI" remains the full-library path because profile rules may have changed
   - persisted `reason_json.ai_judgement.status` is the UI status source when present: `passed`, `rejected`, `pending_confirmation`, or `failed`
   - missing `reason_json.ai_judgement` means the UI status is `pending_review`; in-flight frontend recompute may temporarily show `processing`
   - automatic AI judgement success must emit a runtime `LOG` summary with updated, AI-judged, hard-skipped, and fallback-failed counts

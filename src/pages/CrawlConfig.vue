@@ -57,6 +57,16 @@ const {
   zhilianSettingsOpen,
   zhilianKeywordsText,
   zhilianCityText,
+  zhilianSalaryText,
+  zhilianExperienceText,
+  zhilianDegreeText,
+  zhilianIndustryText,
+  zhilianCompanyTypeText,
+  zhilianCompanyScaleText,
+  zhilianJobTypeText,
+  zhilianPublishDateText,
+  zhilianSortByText,
+  zhilianRawParamsText,
   zhilianMaxPages,
   zhilianMaxJobs,
   zhilianKeywords,
@@ -461,7 +471,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
         </button>
 
         <div v-if="v2exFeedSettingsOpen" class="grid gap-3 p-4 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
-          <label class="space-y-1">
+          <label class="space-y-1 md:col-span-2">
             <div class="text-xs font-medium text-content-muted">URL</div>
             <textarea
               v-model="v2exFeedUrl"
@@ -552,7 +562,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
           <span class="text-xs text-content-muted">{{ zhilianSettingsOpen ? "收起" : "展开" }}</span>
         </button>
 
-        <div v-if="zhilianSettingsOpen" class="grid gap-3 p-4 md:grid-cols-[minmax(0,2fr)_minmax(12rem,1fr)]">
+        <div v-if="zhilianSettingsOpen" class="grid gap-3 p-4 md:grid-cols-3">
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">关键词</div>
             <textarea v-model="zhilianKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go 远程&#10;SRE&#10;Kubernetes" />
@@ -560,8 +570,44 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
           </label>
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">城市 / 地区</div>
-            <input v-model="zhilianCityText" class="ui-input w-full" placeholder="可留空；如 530 或 北京" />
-            <div class="text-[11px] leading-5 text-content-muted">智联城市编码可直接填写，例如北京 530；留空则使用平台默认范围。</div>
+            <input v-model="zhilianCityText" class="ui-input w-full" placeholder="可留空；如 北京、上海、深圳 或 530、538" />
+            <div class="text-[11px] leading-5 text-content-muted">支持多个城市或智联城市编码，用换行、逗号或顿号分隔；留空则使用平台默认范围。</div>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">薪资</div>
+            <input v-model="zhilianSalaryText" class="ui-input w-full" placeholder="智联薪资编码或文本" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">经验</div>
+            <input v-model="zhilianExperienceText" class="ui-input w-full" placeholder="如 3-5年 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">学历</div>
+            <input v-model="zhilianDegreeText" class="ui-input w-full" placeholder="如 本科 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">行业</div>
+            <input v-model="zhilianIndustryText" class="ui-input w-full" placeholder="公司行业编码或文本" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">公司性质</div>
+            <input v-model="zhilianCompanyTypeText" class="ui-input w-full" placeholder="民营 / 外企 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">公司规模</div>
+            <input v-model="zhilianCompanyScaleText" class="ui-input w-full" placeholder="100-299人 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">职位类型</div>
+            <input v-model="zhilianJobTypeText" class="ui-input w-full" placeholder="职位类别编码或文本" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">发布时间</div>
+            <input v-model="zhilianPublishDateText" class="ui-input w-full" placeholder="如 today / 3 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">排序</div>
+            <input v-model="zhilianSortByText" class="ui-input w-full" placeholder="默认相关度；可填排序编码" />
           </label>
           <label class="space-y-1">
             <div class="text-xs font-medium text-content-muted">页数上限</div>
@@ -571,7 +617,12 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <div class="text-xs font-medium text-content-muted">入库上限</div>
             <input v-model.number="zhilianMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
           </label>
-          <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ zhilianKeywords.length > 0 ? zhilianKeywords.join("、") : "尚未配置" }}</div>
+          <label class="space-y-1 md:col-span-3">
+            <div class="text-xs font-medium text-content-muted">高级 URL 参数</div>
+            <textarea v-model="zhilianRawParamsText" class="ui-textarea h-16 w-full" placeholder="可粘完整搜索 URL，或一行一个参数，例如 workExperience=3&education=4" />
+            <div class="text-[11px] leading-5 text-content-muted">用于智联参数变化或复制搜索页查询串；同名参数会覆盖上面的快捷字段。</div>
+          </label>
+          <div class="md:col-span-3 text-xs text-content-muted">关键词：{{ zhilianKeywords.length > 0 ? zhilianKeywords.join("、") : "尚未配置" }}</div>
         </div>
       </section>
 

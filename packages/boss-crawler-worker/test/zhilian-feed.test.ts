@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildZhilianSearchUrls,
   buildZhilianNormalizedPayload,
   extractZhilianJobId,
   isZhilianSecurityVerificationText,
@@ -9,6 +10,7 @@ import {
   parseZhilianJobLinks,
   parseZhilianPcSearchHtml,
   parseZhilianSearchApi,
+  normalizeZhilianSearchCities,
   runZhilianMode,
 } from "../src/zhilian/feed.js";
 
@@ -48,6 +50,54 @@ test("parseZhilianSearchApi normalizes old search API items", () => {
   assert.equal(entries[0]?.title, "Go 平台工程师");
   assert.equal(entries[0]?.company, "智联测试科技");
   assert.deepEqual(entries[0]?.welfare, ["五险一金", "远程"]);
+});
+
+test("buildZhilianSearchUrls carries extended filters and raw params", () => {
+  const urls = buildZhilianSearchUrls("Java", 2, 30, "530", {
+    salary: "25-45K",
+    experience: "3-5年",
+    degree: "本科",
+    industry: "software",
+    company_type: "private",
+    company_scale: "100-299",
+    job_type: "backend",
+    publish_date: "3",
+    sort_by: "date",
+    raw_params: "https://www.zhaopin.com/sou/?salary=override&customFlag=1",
+  });
+
+  const api = new URL(urls.api);
+  assert.equal(api.searchParams.get("kw"), "Java");
+  assert.equal(api.searchParams.get("cityId"), "530");
+  assert.equal(api.searchParams.get("start"), "30");
+  assert.equal(api.searchParams.get("salary"), "override");
+  assert.equal(api.searchParams.get("workExperience"), "3-5年");
+  assert.equal(api.searchParams.get("education"), "本科");
+  assert.equal(api.searchParams.get("industry"), "software");
+  assert.equal(api.searchParams.get("companyType"), "private");
+  assert.equal(api.searchParams.get("companySize"), "100-299");
+  assert.equal(api.searchParams.get("jobType"), "backend");
+  assert.equal(api.searchParams.get("publishDate"), "3");
+  assert.equal(api.searchParams.get("sortType"), "date");
+  assert.equal(api.searchParams.get("customFlag"), "1");
+
+  const pc = new URL(urls.pc);
+  assert.equal(pc.searchParams.get("jl"), "530");
+  assert.equal(pc.searchParams.get("kw"), "Java");
+  assert.equal(pc.searchParams.get("salary"), "override");
+  assert.equal(pc.searchParams.get("customFlag"), "1");
+});
+
+test("normalizeZhilianSearchCities splits multi-city text and arrays", () => {
+  assert.deepEqual(
+    normalizeZhilianSearchCities({
+      city: ["北京、上海", "深圳"],
+      cityId: "530，538",
+      cityText: "上海\n广州",
+    }),
+    ["北京", "上海", "深圳", "530", "538", "广州"],
+  );
+  assert.deepEqual(normalizeZhilianSearchCities({ city: "" }), [""]);
 });
 
 test("parseZhilianJobLinks extracts stable jobs from html links", () => {

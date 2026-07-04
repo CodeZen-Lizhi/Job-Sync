@@ -700,6 +700,10 @@ fn collection_run_and_failure_helpers_persist_summary_records() {
         },
     )
     .expect("refresh counts");
+    models::record_collection_run_job_inserted(&conn, &run_id, "job-a")
+        .expect("record inserted job");
+    models::record_collection_run_job_inserted(&conn, &run_id, "job-a")
+        .expect("dedupe inserted job");
     models::finish_collection_run(&conn, &run_id, None).expect("finish run");
 
     let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
@@ -710,6 +714,11 @@ fn collection_run_and_failure_helpers_persist_summary_records() {
     assert_eq!(runs[0].recommended, 1);
     assert_eq!(runs[0].pending, 1);
     assert_eq!(runs[0].all_jobs, 3);
+    assert_eq!(
+        models::list_collection_run_inserted_job_ids(&conn, &run_id)
+            .expect("list inserted job ids"),
+        vec!["job-a".to_string()]
+    );
 
     let failures = models::list_collection_failures(&conn, Some(5)).expect("list failures");
     assert_eq!(failures.len(), 1);

@@ -280,6 +280,10 @@ fn persist_job_list_capture(
                     {
                         should_stop_worker = true;
                     }
+                    if matches!(outcome.counter(), models::CollectionCounter::Inserted) {
+                        let _ =
+                            models::record_collection_run_job_inserted(conn, &active_run.id, id);
+                    }
                 }
             }
             Err(err) => {
@@ -374,6 +378,11 @@ fn persist_normalized_capture(
                     1,
                 );
                 if matches!(outcome.counter(), models::CollectionCounter::Inserted) {
+                    let _ = models::record_collection_run_job_inserted(
+                        conn,
+                        &active_run.id,
+                        &payload.encrypt_job_id,
+                    );
                     should_stop_worker = note_inserted_and_should_stop(active_collection_run);
                 }
             }
@@ -544,6 +553,11 @@ mod tests {
         assert_eq!(runs[0].captured, 1);
         assert_eq!(runs[0].inserted, 1);
         assert_eq!(runs[0].failed, 0);
+        assert_eq!(
+            models::list_collection_run_inserted_job_ids(&conn, &run_id)
+                .expect("list inserted job ids"),
+            vec!["canary-sec-1".to_string()]
+        );
 
         let row: (
             String,
@@ -745,6 +759,11 @@ mod tests {
         assert_eq!(runs[0].captured, 1);
         assert_eq!(runs[0].inserted, 1);
         assert_eq!(runs[0].failed, 0);
+        assert_eq!(
+            models::list_collection_run_inserted_job_ids(&conn, &run_id)
+                .expect("list inserted job ids"),
+            vec!["zhilian:CCL1405333700J40877845205".to_string()]
+        );
 
         let row: (
             String,
@@ -1350,6 +1369,11 @@ impl SidecarManager {
                                                 outcome.counter(),
                                                 models::CollectionCounter::Inserted
                                             ) {
+                                                let _ = models::record_collection_run_job_inserted(
+                                                    conn,
+                                                    &active_run.id,
+                                                    &payload.encrypt_job_id,
+                                                );
                                                 request_stop_when_ready(
                                                     &active_collection_run,
                                                     &inner,
@@ -1511,6 +1535,12 @@ impl SidecarManager {
                                                     outcome.counter(),
                                                     models::CollectionCounter::Inserted
                                                 ) {
+                                                    let _ =
+                                                        models::record_collection_run_job_inserted(
+                                                            conn,
+                                                            &active_run.id,
+                                                            encrypt_job_id,
+                                                        );
                                                     request_stop_when_ready(
                                                         &active_collection_run,
                                                         &inner,

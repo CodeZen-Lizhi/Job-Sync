@@ -37,7 +37,11 @@ import {
   type CollectionRun,
   type JobSourcePlatform,
 } from "./crawl";
-import { formatAiPostCollectionJudgeSummary, recomputeAiPostCollectionJudgementForAllJobs } from "./aiRecompute";
+import {
+  formatAiPostCollectionJudgeSummary,
+  recomputeAiPostCollectionJudgementForAllJobs,
+  recomputeAiPostCollectionJudgementForJobIds,
+} from "./aiRecompute";
 import { runAfterInitialPaint } from "./defer";
 import { useFilterProfile } from "./filterProfile";
 import { appendRuntimeLog, clearLogs, resetCrawlProgress, runtime } from "./runtime";
@@ -72,6 +76,16 @@ type CollectionConfigPayload = {
   linuxdoMaxJobs?: number | null;
   zhilianKeywordsText?: string;
   zhilianCityText?: string;
+  zhilianSalaryText?: string;
+  zhilianExperienceText?: string;
+  zhilianDegreeText?: string;
+  zhilianIndustryText?: string;
+  zhilianCompanyTypeText?: string;
+  zhilianCompanyScaleText?: string;
+  zhilianJobTypeText?: string;
+  zhilianPublishDateText?: string;
+  zhilianSortByText?: string;
+  zhilianRawParamsText?: string;
   zhilianMaxPages?: number | null;
   zhilianMaxJobs?: number | null;
   bossKeywordsText?: string;
@@ -164,6 +178,16 @@ function createCrawlPageState() {
   const zhilianSettingsOpen = ref(false);
   const zhilianKeywordsText = ref("");
   const zhilianCityText = ref("");
+  const zhilianSalaryText = ref("");
+  const zhilianExperienceText = ref("");
+  const zhilianDegreeText = ref("");
+  const zhilianIndustryText = ref("");
+  const zhilianCompanyTypeText = ref("");
+  const zhilianCompanyScaleText = ref("");
+  const zhilianJobTypeText = ref("");
+  const zhilianPublishDateText = ref("");
+  const zhilianSortByText = ref("");
+  const zhilianRawParamsText = ref("");
   const zhilianMaxPages = ref(DEFAULT_ZHILIAN_MAX_PAGES);
   const zhilianMaxJobs = ref<number | null>(DEFAULT_ZHILIAN_MAX_JOBS);
   const bossKeywordsText = ref("");
@@ -302,6 +326,7 @@ function createCrawlPageState() {
   const linuxdoKeywords = computed(() => uniqueList(parseList(linuxdoKeywordsText.value)));
   const linuxdoTaskKeywords = computed(() => linuxdoKeywords.value.length > 0 ? linuxdoKeywords.value : ["LinuxDo"]);
   const zhilianKeywords = computed(() => uniqueList(parseList(zhilianKeywordsText.value)));
+  const zhilianCities = computed(() => uniqueList(splitZhilianCityList(zhilianCityText.value)));
   const selectedCollectionSourceSet = computed(() => new Set(selectedCollectionSources.value));
   const bossSelected = computed(() => selectedCollectionSourceSet.value.has(BOSS_SOURCE_PLATFORM));
   const v2exSelected = computed(() => selectedCollectionSourceSet.value.has(V2EX_SOURCE_PLATFORM));
@@ -313,7 +338,17 @@ function createCrawlPageState() {
         keywords: zhilianKeywords.value,
         source_platform: ZHILIAN_SOURCE_PLATFORM,
         filters: {
-          city: zhilianCityText.value.trim(),
+          city: zhilianCities.value,
+          salary: zhilianSalaryText.value.trim(),
+          experience: zhilianExperienceText.value.trim(),
+          degree: zhilianDegreeText.value.trim(),
+          industry: zhilianIndustryText.value.trim(),
+          company_type: zhilianCompanyTypeText.value.trim(),
+          company_scale: zhilianCompanyScaleText.value.trim(),
+          job_type: zhilianJobTypeText.value.trim(),
+          publish_date: zhilianPublishDateText.value.trim(),
+          sort_by: zhilianSortByText.value.trim(),
+          raw_params: zhilianRawParamsText.value.trim(),
           keywords: zhilianKeywords.value,
           profile: filterProfileState.filterProfile.value,
         },
@@ -447,6 +482,13 @@ function createCrawlPageState() {
     return out;
   }
 
+  function splitZhilianCityList(text: string): string[] {
+    return text
+      .split(/[\n,，、]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
   function uniqueList(items: readonly string[]): string[] {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -577,6 +619,16 @@ function createCrawlPageState() {
       linuxdoMaxJobs: optionalNumber(linuxdoMaxJobs.value),
       zhilianKeywordsText: zhilianKeywordsText.value,
       zhilianCityText: zhilianCityText.value,
+      zhilianSalaryText: zhilianSalaryText.value,
+      zhilianExperienceText: zhilianExperienceText.value,
+      zhilianDegreeText: zhilianDegreeText.value,
+      zhilianIndustryText: zhilianIndustryText.value,
+      zhilianCompanyTypeText: zhilianCompanyTypeText.value,
+      zhilianCompanyScaleText: zhilianCompanyScaleText.value,
+      zhilianJobTypeText: zhilianJobTypeText.value,
+      zhilianPublishDateText: zhilianPublishDateText.value,
+      zhilianSortByText: zhilianSortByText.value,
+      zhilianRawParamsText: zhilianRawParamsText.value,
       zhilianMaxPages: optionalNumber(zhilianMaxPages.value) ?? DEFAULT_ZHILIAN_MAX_PAGES,
       zhilianMaxJobs: optionalNumber(zhilianMaxJobs.value),
       bossKeywordsText: bossKeywordsText.value,
@@ -630,6 +682,16 @@ function createCrawlPageState() {
     linuxdoMaxJobs.value = optionalNumber(config.linuxdoMaxJobs) ?? 20;
     zhilianKeywordsText.value = textValue(config.zhilianKeywordsText);
     zhilianCityText.value = textValue(config.zhilianCityText);
+    zhilianSalaryText.value = textValue(config.zhilianSalaryText);
+    zhilianExperienceText.value = textValue(config.zhilianExperienceText);
+    zhilianDegreeText.value = textValue(config.zhilianDegreeText);
+    zhilianIndustryText.value = textValue(config.zhilianIndustryText);
+    zhilianCompanyTypeText.value = textValue(config.zhilianCompanyTypeText);
+    zhilianCompanyScaleText.value = textValue(config.zhilianCompanyScaleText);
+    zhilianJobTypeText.value = textValue(config.zhilianJobTypeText);
+    zhilianPublishDateText.value = textValue(config.zhilianPublishDateText);
+    zhilianSortByText.value = textValue(config.zhilianSortByText);
+    zhilianRawParamsText.value = textValue(config.zhilianRawParamsText);
     zhilianMaxPages.value = optionalNumber(config.zhilianMaxPages) ?? DEFAULT_ZHILIAN_MAX_PAGES;
     zhilianMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "zhilianMaxJobs")
       ? optionalNumber(config.zhilianMaxJobs)
@@ -931,6 +993,7 @@ function createCrawlPageState() {
       await filterProfileState.saveDefaultFilterProfile();
       let completedSources = 0;
       let skippedSources = 0;
+      const insertedJobIds = new Set<string>();
       for (const source of selectedSources) {
         if (stopRequested.value) break;
         const label = collectionSourceLabel(source);
@@ -946,8 +1009,10 @@ function createCrawlPageState() {
           runtime.sidecarTask.running = true;
           runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
           appendRuntimeLog("info", `准备启动 ${label} 自动采集。`);
-          await invoke<void>("crawl_auto_start", { task: buildTaskForSource(source) });
+          const runId = await invoke<string>("crawl_auto_start", { task: buildTaskForSource(source) });
           await waitForFinishedCounterToAdvance(beforeFinished);
+          const runInsertedJobIds = await loadCollectionRunInsertedJobIds(runId);
+          for (const jobId of runInsertedJobIds) insertedJobIds.add(jobId);
           if (runtime.errorCounter > beforeError) {
             skippedSources += 1;
             appendRuntimeLog("warn", `${label} 自动采集失败，已跳过该平台。`);
@@ -974,11 +1039,13 @@ function createCrawlPageState() {
       } else if (skippedSources > 0) {
         appendRuntimeLog("info", `自动采集已结束：完成 ${completedSources} 个平台，跳过 ${skippedSources} 个平台。`);
       }
-      if (!stopRequested.value && completedSources > 0) {
-        const aiResult = await recomputeAiPostCollectionJudgementForAllJobs();
+      if (!stopRequested.value && insertedJobIds.size > 0) {
+        const aiResult = await recomputeAiPostCollectionJudgementForJobIds([...insertedJobIds]);
         appendRuntimeLog("info", formatAiPostCollectionJudgeSummary(aiResult));
+      } else if (!stopRequested.value && completedSources > 0) {
+        appendRuntimeLog("info", "本次采集没有新入库岗位，跳过 AI 采后判断和 Telegram 推送。");
       }
-      return completedSources > 0;
+      return completedSources > 0 || insertedJobIds.size > 0;
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
       if (runtime.sidecarTask.type === CRAWL_TASK_TYPE_AUTO) {
@@ -988,6 +1055,15 @@ function createCrawlPageState() {
       return false;
     } finally {
       actionBusy.value = false;
+    }
+  }
+
+  async function loadCollectionRunInsertedJobIds(runId: string): Promise<string[]> {
+    try {
+      return await invoke<string[]>("list_collection_run_inserted_job_ids", { runId });
+    } catch (cause) {
+      appendRuntimeLog("warn", `读取本轮新增岗位失败：${cause instanceof Error ? cause.message : String(cause)}`);
+      return [];
     }
   }
 
@@ -1116,6 +1192,16 @@ function createCrawlPageState() {
     zhilianSettingsOpen,
     zhilianKeywordsText,
     zhilianCityText,
+    zhilianSalaryText,
+    zhilianExperienceText,
+    zhilianDegreeText,
+    zhilianIndustryText,
+    zhilianCompanyTypeText,
+    zhilianCompanyScaleText,
+    zhilianJobTypeText,
+    zhilianPublishDateText,
+    zhilianSortByText,
+    zhilianRawParamsText,
     zhilianMaxPages,
     zhilianMaxJobs,
     zhilianKeywords,

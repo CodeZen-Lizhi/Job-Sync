@@ -48,6 +48,12 @@ export async function recomputeAiPostCollectionJudgementForAllJobs(): Promise<Ai
   if (!isTauri()) return null;
 
   const jobIds = await loadAllJobCandidateIds();
+  return recomputeAiPostCollectionJudgementForJobIds(jobIds);
+}
+
+export async function recomputeAiPostCollectionJudgementForJobIds(jobIds: readonly string[]): Promise<AiPostCollectionJudgeResult | null> {
+  if (!isTauri()) return null;
+
   if (jobIds.length === 0) return null;
 
   return invoke<AiPostCollectionJudgeResult>("recompute_ai_post_collection_judgement", {

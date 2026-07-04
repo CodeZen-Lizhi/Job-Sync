@@ -45,6 +45,7 @@ pub fn run() {
             commands::crawl::crawl_stop,
             commands::crawl::get_boss_meta,
             commands::crawl::list_collection_failures,
+            commands::crawl::list_collection_run_inserted_job_ids,
             commands::crawl::list_collection_runs,
             commands::crawl::refresh_pending_job_evidence,
             commands::crawl::sync_boss_meta,

@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS collection_run (
   all_jobs INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS collection_run_job (
+  run_id TEXT NOT NULL,
+  encrypt_job_id TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, encrypt_job_id, outcome)
+);
+
 CREATE TABLE IF NOT EXISTS collection_failure (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   run_id TEXT,

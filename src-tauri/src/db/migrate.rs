@@ -325,10 +325,28 @@ pub fn migrate(conn: &Connection) -> Result<()> {
 
     // Deduplicate job_source_link rows and add a unique index to prevent future duplicates.
     dedup_job_source_link(conn)?;
+    ensure_collection_run_job_table(conn)?;
     ensure_performance_indexes(conn)?;
 
     ensure_job_fts(conn)?;
 
+    Ok(())
+}
+
+fn ensure_collection_run_job_table(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+    CREATE TABLE IF NOT EXISTS collection_run_job (
+      run_id TEXT NOT NULL,
+      encrypt_job_id TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (run_id, encrypt_job_id, outcome)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collection_run_job_run_outcome
+      ON collection_run_job(run_id, outcome, encrypt_job_id);
+    "#,
+    )?;
     Ok(())
 }
 
