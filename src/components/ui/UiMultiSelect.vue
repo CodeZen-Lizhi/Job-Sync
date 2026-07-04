@@ -50,22 +50,22 @@ const buttonAttrs = computed(() => {
 const isFilter = computed(() => props.variant === "filter");
 const triggerClass = computed(() =>
   isFilter.value
-    ? "group relative flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-sm text-content-primary shadow-sm shadow-slate-200/60 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+    ? "group relative flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border/90 bg-white px-3 py-2 text-sm text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
     : "group relative flex min-h-9 w-full items-center justify-between gap-2 rounded-md border border-border/90 bg-white px-3 py-1.5 text-sm text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
 );
 const triggerOpenClass = computed(() =>
   isFilter.value
-    ? "border-cyan-300 bg-white ring-4 ring-cyan-100/70"
+    ? "border-border-glow bg-white ring-4 ring-border-glow/10"
     : "border-border-glow bg-white ring-4 ring-border-glow/10",
 );
 const triggerOverlayClass = computed(() =>
   isFilter.value
-    ? "pointer-events-none absolute inset-0 rounded-lg border border-transparent transition-colors group-hover:border-slate-200"
+    ? "pointer-events-none absolute inset-0 rounded-md border border-transparent transition-colors group-hover:border-border/20"
     : "pointer-events-none absolute inset-0 rounded-md border border-transparent transition-colors group-hover:border-border/20",
 );
 const triggerFocusRingClass = computed(() =>
   isFilter.value
-    ? "pointer-events-none absolute -inset-0.5 hidden rounded-[0.7rem] border-2 border-cyan-200/80 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100"
+    ? "pointer-events-none absolute -inset-0.5 hidden rounded-lg border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100"
     : "pointer-events-none absolute -inset-0.5 hidden rounded-lg border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100",
 );
 const countBadgeClass = computed(() =>
@@ -75,19 +75,19 @@ const countBadgeClass = computed(() =>
 );
 const menuClass = computed(() =>
   isFilter.value
-    ? "fixed z-[120] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-xl shadow-slate-200/80"
+    ? "fixed z-[120] overflow-hidden rounded-md border border-border/90 bg-white shadow-lg shadow-slate-200/70"
     : "fixed z-[120] overflow-hidden rounded-md border border-border/90 bg-white shadow-lg shadow-slate-200/70",
 );
 const optionClass = computed(() =>
   isFilter.value
-    ? "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors duration-150"
+    ? "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors duration-150"
     : "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm transition-colors duration-150",
 );
 const optionStateClass = computed(() => ({
   disabled: isFilter.value ? "cursor-not-allowed opacity-40" : "cursor-not-allowed opacity-50",
   hover: isFilter.value ? "hover:bg-slate-50" : "hover:bg-slate-50",
   selected: isFilter.value
-    ? "bg-cyan-50 text-cyan-900 ring-1 ring-inset ring-cyan-100"
+    ? "bg-border-glow/10 text-content-primary ring-1 ring-inset ring-border-glow/20"
     : "bg-border-glow/10 text-content-primary ring-1 ring-inset ring-border-glow/20",
   inactive: "text-content-secondary",
 }));

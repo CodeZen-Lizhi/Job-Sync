@@ -52,7 +52,7 @@ const runStats = computed(() => buildRunStats(props.run));
     </div>
     <div class="ui-crawl-stat p-4">
       <div class="text-xs font-medium text-content-muted">跳过</div>
-      <div class="mt-1 text-2xl font-semibold text-rose-400">{{ formatStat(runStats.skipped) }}</div>
+      <div class="mt-1 text-2xl font-semibold text-rose-700">{{ formatStat(runStats.skipped) }}</div>
       <div class="mt-2 text-xs text-content-muted">被规则跳过</div>
     </div>
     <div class="ui-crawl-stat p-4">

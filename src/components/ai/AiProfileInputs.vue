@@ -3,7 +3,7 @@ const resumeText = defineModel<string>("resumeText", { default: "" });
 </script>
 
 <template>
-  <div class="space-y-3 rounded-2xl bg-card-alt/55 p-4 ring-1 ring-border/10">
+  <div class="space-y-3 rounded-lg border border-border/90 bg-surface-secondary p-4">
     <div class="flex items-center gap-3">
       <div class="text-xs font-medium text-content-muted">简历输入</div>
       <div class="text-xs text-content-muted">直接粘贴文本</div>

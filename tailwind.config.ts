@@ -8,6 +8,7 @@ export default {
         base: "rgb(var(--color-base) / <alpha-value>)",
         surface: {
           DEFAULT: "rgb(var(--color-surface) / <alpha-value>)",
+          secondary: "rgb(var(--color-surface-secondary) / <alpha-value>)",
           alt: "rgb(var(--color-surface-alt) / <alpha-value>)",
           elevated: "rgb(var(--color-surface-elevated) / <alpha-value>)",
         },
@@ -33,11 +34,6 @@ export default {
           danger: "rgb(var(--color-accent-danger) / <alpha-value>)",
           warning: "rgb(var(--color-accent-warning) / <alpha-value>)",
         },
-      },
-      animation: {
-        "orb-1": "orb-drift-1 12s ease-in-out infinite",
-        "orb-2": "orb-drift-2 16s ease-in-out infinite",
-        "orb-3": "orb-drift-3 10s ease-in-out infinite",
       },
     },
   },

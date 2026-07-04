@@ -280,9 +280,9 @@ watch(
     <header class="space-y-2">
       <div class="ui-section-kicker">Job Library</div>
       <div class="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div class="min-w-0">
           <h1 class="text-xl font-semibold text-content-primary">职位库工作台</h1>
-          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary">
+          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary [overflow-wrap:anywhere]">
             自动采集先保留岗位事实，再由采后判断规则生成推荐、待确认和已过滤视图；默认只处理可行动结果。
           </p>
         </div>
@@ -353,7 +353,7 @@ watch(
         </div>
       </div>
 
-      <div class="border-t border-border/90 bg-surface-secondary/30 p-4">
+      <div class="border-t border-border/90 bg-surface-secondary p-4">
         <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label class="space-y-1.5 text-xs text-content-muted">
             <span class="font-semibold text-content-secondary">岗位状态</span>
@@ -510,7 +510,7 @@ watch(
                 <span>新简历标题</span>
                 <input v-model="optimizedResumeTitle" class="ui-input w-full" />
               </label>
-              <div class="rounded-lg border border-border/90 bg-surface-secondary/40">
+              <div class="rounded-lg border border-border/90 bg-surface-secondary">
                 <div class="border-b border-border/90 px-3 py-2 text-xs font-semibold text-content-muted">Markdown 预览</div>
                 <pre class="max-h-[52vh] overflow-auto whitespace-pre-wrap break-words p-3 font-sans text-sm leading-6 text-content-secondary">{{ optimizedResumePreview.optimized_resume_markdown }}</pre>
               </div>
@@ -542,7 +542,7 @@ watch(
               <section class="rounded-lg border border-border/90 bg-white p-3">
                 <h3 class="text-xs font-semibold text-content-primary">证据映射</h3>
                 <div class="mt-2 space-y-2 text-xs leading-5 text-content-secondary">
-                  <div v-for="item in optimizedResumePreview.evidence" :key="`${item.resume_fact}-${item.rewrite_location}`" class="rounded-md bg-surface-secondary/50 p-2">
+                  <div v-for="item in optimizedResumePreview.evidence" :key="`${item.resume_fact}-${item.rewrite_location}`" class="rounded-md border border-border/80 bg-surface-secondary p-2">
                     <div>简历事实：{{ item.resume_fact }}</div>
                     <div>岗位要求：{{ item.job_requirement }}</div>
                     <div>写入位置：{{ item.rewrite_location }}</div>

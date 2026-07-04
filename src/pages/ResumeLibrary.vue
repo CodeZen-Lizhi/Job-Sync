@@ -179,9 +179,9 @@ onMounted(async () => {
     <header class="space-y-2">
       <div class="ui-section-kicker">Resume Library</div>
       <div class="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div class="min-w-0">
           <h1 class="text-xl font-semibold text-content-primary">简历库</h1>
-          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary">
+          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary [overflow-wrap:anywhere]">
             维护 Markdown 简历、默认简历和岗位关联。
           </p>
         </div>

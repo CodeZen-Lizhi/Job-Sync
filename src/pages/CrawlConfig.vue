@@ -183,9 +183,9 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
   <section class="space-y-4">
     <header class="space-y-3">
       <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="space-y-1">
+        <div class="min-w-0 space-y-1">
           <h1 class="text-xl font-semibold text-content-primary">采集配置</h1>
-          <p class="max-w-2xl text-sm leading-6 text-content-secondary">
+          <p class="max-w-2xl text-sm leading-6 text-content-secondary [overflow-wrap:anywhere]">
             配置采集范围、来源和采后规则。
           </p>
         </div>
@@ -378,7 +378,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
 
         <div v-if="bossSettingsOpen" class="space-y-3 p-4">
           <label class="flex items-start gap-3 rounded-lg border border-border/90 bg-white px-3 py-3">
-            <input v-model="bossLowRiskMode" type="checkbox" class="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary" />
+            <input v-model="bossLowRiskMode" type="checkbox" class="mt-1 h-4 w-4 accent-slate-900 focus:outline-none focus:ring-4 focus:ring-border-glow/10" />
             <span class="space-y-1">
               <span class="block text-xs font-medium text-content-primary">低风控模式</span>
               <span class="block text-[11px] leading-5 text-content-muted">

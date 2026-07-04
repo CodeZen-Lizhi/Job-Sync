@@ -58,13 +58,13 @@ void useCrawlPage({ initialize: "schedule" });
 </script>
 
 <template>
-  <div class="flex h-screen flex-col bg-base">
+  <div class="flex h-screen flex-col bg-surface-secondary">
     <div class="relative flex-1 overflow-hidden">
       <!-- Content -->
-      <div class="relative z-10 flex h-full flex-col gap-0 lg:flex-row">
+      <div class="relative z-10 flex h-full w-full max-w-full flex-col gap-0 lg:flex-row">
         <!-- Sidebar -->
         <aside
-          class="flex shrink-0 flex-col border-b border-border/90 bg-white lg:w-64 lg:border-b-0 lg:border-r"
+          class="flex w-full max-w-full shrink-0 flex-col border-b border-border/90 bg-white lg:w-64 lg:border-b-0 lg:border-r"
         >
           <header class="px-4 pb-3 pt-4 lg:pb-4 lg:pt-5">
             <div class="ui-panel-muted flex items-center gap-3 px-3 py-3">
@@ -83,7 +83,7 @@ void useCrawlPage({ initialize: "schedule" });
             </div>
           </header>
 
-          <nav class="grid grid-cols-3 gap-2 px-3 pb-4 lg:flex lg:flex-1 lg:flex-col lg:gap-5 lg:overflow-y-auto lg:pb-5" aria-label="导航">
+          <nav class="grid grid-cols-1 gap-2 px-3 pb-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:flex lg:flex-1 lg:flex-col lg:gap-5 lg:overflow-y-auto lg:pb-5" aria-label="导航">
             <section v-for="g in navGroups" :key="g.label" class="min-w-0 space-y-2">
               <div class="px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">
                 {{ g.label }}
@@ -105,8 +105,8 @@ void useCrawlPage({ initialize: "schedule" });
         </aside>
 
         <!-- Main content -->
-        <main class="min-w-0 flex-1 overflow-y-auto bg-white px-3 py-4 sm:px-6 sm:py-6">
-          <div :class="['ui-panel mx-auto w-full p-4 sm:p-6', contentMaxWidthClass]">
+        <main class="w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto bg-surface-secondary px-3 py-4 sm:px-5 sm:py-5">
+          <div :class="['mx-auto w-full', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
               <component :is="Component" />
             </RouterView>

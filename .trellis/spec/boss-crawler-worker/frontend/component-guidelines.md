@@ -141,3 +141,4 @@ export function useCrawlPage(): CrawlPageState {
 <!-- Component-related mistakes your team has made -->
 
 - Keeping mobile navigation as horizontally scrolling fixed-width groups. This can push labels such as `设置` outside the viewport even when the main content is responsive.
+- Treating a Chrome headless `--window-size=390,...` screenshot as proof that the CSS viewport is 390px. Chrome may use a larger minimum layout viewport and crop the screenshot, which can make wrapped text look clipped or hide the real overflow source. For mobile shell checks, verify `document.documentElement.scrollWidth <= document.documentElement.clientWidth` with browser/device emulation and only use screenshots as visual confirmation.

@@ -24,9 +24,9 @@ const {
   <section class="flex min-h-[calc(100vh-5.25rem)] flex-col gap-4">
     <header class="shrink-0 space-y-2">
       <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="space-y-1">
+        <div class="min-w-0 space-y-1">
           <h1 class="text-xl font-semibold text-content-primary">岗位采集</h1>
-          <p class="text-xs text-content-muted">只写入职位库，后续判断另算。</p>
+          <p class="text-xs text-content-muted [overflow-wrap:anywhere]">只写入职位库，后续判断另算。</p>
         </div>
         <RouterLink class="ui-btn-secondary px-3 py-1.5 text-xs" to="/crawl-config">采集配置</RouterLink>
       </div>

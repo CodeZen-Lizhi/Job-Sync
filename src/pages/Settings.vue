@@ -562,9 +562,9 @@ function clampTemperature(value: number): number {
 }
 
 function diagnosticBadgeClass(status?: string): string {
-  if (status === "ok") return "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20";
-  if (status === "error") return "bg-rose-400/10 text-rose-300 ring-rose-400/20";
-  return "bg-amber-400/10 text-amber-300 ring-amber-400/20";
+  if (status === "ok") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (status === "error") return "bg-red-50 text-red-700 ring-red-200";
+  return "bg-amber-50 text-amber-800 ring-amber-200";
 }
 
 function diagnosticStatusLabel(status?: string): string {
@@ -958,7 +958,7 @@ watch(
         </div>
 
         <div v-if="diagnostics" class="mt-4 grid gap-3 lg:grid-cols-3">
-          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
+          <div class="rounded-md border border-border/80 bg-surface-secondary p-3">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-medium text-content-primary">Boss 登录复用</div>
               <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.boss_session.status)">
@@ -976,7 +976,7 @@ watch(
             </div>
           </div>
 
-          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
+          <div class="rounded-md border border-border/80 bg-surface-secondary p-3">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-medium text-content-primary">模型服务</div>
               <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.model_service.status)">
@@ -994,7 +994,7 @@ watch(
             </div>
           </div>
 
-          <div class="rounded-md border border-border/10 bg-surface-secondary/50 p-3">
+          <div class="rounded-md border border-border/80 bg-surface-secondary p-3">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-medium text-content-primary">Telegram 通知</div>
               <span class="ui-badge" :class="diagnosticBadgeClass(diagnostics.telegram.status)">
@@ -1020,7 +1020,7 @@ watch(
           </div>
         </div>
 
-        <div v-else class="mt-4 rounded-md border border-border/10 bg-surface-secondary/50 px-3 py-4 text-sm text-content-muted">
+        <div v-else class="mt-4 rounded-md border border-border/80 bg-surface-secondary px-3 py-4 text-sm text-content-muted">
           尚未运行诊断。
         </div>
       </div>
@@ -1035,7 +1035,7 @@ watch(
       >
         {{ saving ? "保存中…" : "保存设置" }}
       </button>
-      <span v-if="success" class="ui-badge bg-emerald-400/10 text-emerald-300 ring-emerald-400/20">保存成功</span>
+      <span v-if="success" class="ui-badge bg-emerald-50 text-emerald-700 ring-emerald-200">保存成功</span>
     </div>
 
     <div
