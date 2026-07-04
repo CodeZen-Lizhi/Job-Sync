@@ -973,3 +973,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 30: 优化智联采集与采后 AI 范围
+
+**Date**: 2026-07-04
+**Task**: 优化智联采集与采后 AI 范围
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+扩展智联筛选与多城市采集；为采集批次记录新入库岗位；自动采集后仅对本轮新增岗位执行 AI 审核和 Telegram 推送，重复或更新岗位不再重复审核；保留手动保存并重算普通+AI的全量重算路径。验证通过 worker 测试、review-workflow、Rust 测试、前端构建和 diff check。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dbadfd1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
