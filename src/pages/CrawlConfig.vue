@@ -71,6 +71,7 @@ const {
   zhilianMaxJobs,
   zhilianKeywords,
   bossKeywordsText,
+  bossLowRiskMode,
   bossMaxPages,
   bossMaxJobs,
   cityText,
@@ -348,6 +349,16 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
         </button>
 
         <div v-if="bossSettingsOpen" class="space-y-3 p-4">
+          <label class="flex items-start gap-3 rounded-lg border border-border/90 bg-white px-3 py-3">
+            <input v-model="bossLowRiskMode" type="checkbox" class="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary" />
+            <span class="space-y-1">
+              <span class="block text-xs font-medium text-content-primary">低风控模式</span>
+              <span class="block text-[11px] leading-5 text-content-muted">
+                默认开启：Boss 会限制为小批次、长随机间隔、不开详情抓取；能降低触发验证概率，但不能保证完全不风控。
+              </span>
+            </span>
+          </label>
+
           <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/90 bg-white px-3 py-3">
             <div class="text-xs text-content-muted">
               Boss 字典：
@@ -374,12 +385,12 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">Boss 页数上限</div>
               <input v-model.number="bossMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
-              <div class="text-[11px] text-content-muted">按每个关键词和城市组合计算。</div>
+              <div class="text-[11px] text-content-muted">按每个关键词和城市组合计算；低风控模式最多 2 页。</div>
             </label>
             <label class="space-y-1">
               <div class="text-xs font-medium text-content-muted">Boss 岗位上限</div>
               <input v-model.number="bossMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
-              <div class="text-[11px] text-content-muted">按本轮成功入库岗位计算。</div>
+              <div class="text-[11px] text-content-muted">按本轮成功入库岗位计算；低风控模式最多 50 个。</div>
             </label>
           </div>
 

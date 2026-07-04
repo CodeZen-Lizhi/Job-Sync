@@ -5,6 +5,12 @@ import { describe, it } from "node:test";
 import type { Browser, HTTPResponse } from "puppeteer";
 
 import {
+  getBossLowRiskCooldownRemainingMs,
+  resetBossLowRiskCooldownForTests,
+  resolveBossAutoLimits,
+  setBossLowRiskCooldownUntilForTests,
+} from "../src/modes/auto/run.js";
+import {
   buildJobListBody,
   closeBrowserRespectingHumanVerification,
   createHumanVerificationTracker,
@@ -161,13 +167,52 @@ describe("Boss auto collection contract", () => {
     assert.match(sharedSource, /export async function requestBossJsonWithRiskRecovery/);
     assert.match(sharedSource, /export async function waitUntilBossLoginReady/);
     assert.match(sharedSource, /waitUntilApiOk/);
-    assert.match(sharedSource, /const initialStatus = emitBossRiskStatus\(ctx, label, res, null\)/);
-    assert.match(sharedSource, /waitUntilApiOk\([\s\S]*initialStatus\)/);
+    assert.match(sharedSource, /const initialRisk = emitBossRiskStatus\(ctx, label, res, null\)/);
+    assert.match(sharedSource, /waitUntilApiOk\([\s\S]*initialRisk\.status\)/);
     assert.match(sharedSource, /waitUntilNoRiskUrl/);
     assert.match(sharedSource, /status:\s*"invalid"/);
     assert.match(sharedSource, /登录状态已失效/);
     assert.doesNotMatch(runSource, /Boss 风控已触发，已退出本次采集/);
     assert.doesNotMatch(runSource, /stopForBossRiskControl/);
+  });
+
+  it("applies conservative Boss low-risk limits by default", () => {
+    assert.deepEqual(
+      resolveBossAutoLimits({ maxPages: 10, maxJobs: 200, delayMs: 800, jitterMs: 1000, bossDetailFetchLimit: 5 }),
+      {
+        lowRiskMode: true,
+        maxPages: 2,
+        maxJobs: 50,
+        detailFetchLimit: 0,
+        delayMs: 8000,
+        jitterMs: 12000,
+        pageSize: 15,
+      },
+    );
+
+    assert.deepEqual(
+      resolveBossAutoLimits({ lowRiskMode: false, maxPages: 10, maxJobs: 200, delayMs: 800, jitterMs: 1000, bossDetailFetchLimit: 5 }),
+      {
+        lowRiskMode: false,
+        maxPages: 10,
+        maxJobs: 200,
+        detailFetchLimit: 5,
+        delayMs: 800,
+        jitterMs: 1000,
+        pageSize: 15,
+      },
+    );
+  });
+
+  it("keeps Boss low-risk cooldown state explicit and testable", () => {
+    resetBossLowRiskCooldownForTests();
+    assert.equal(getBossLowRiskCooldownRemainingMs(1_000), 0);
+
+    setBossLowRiskCooldownUntilForTests(61_000);
+    assert.equal(getBossLowRiskCooldownRemainingMs(1_000), 60_000);
+
+    resetBossLowRiskCooldownForTests();
+    assert.equal(getBossLowRiskCooldownRemainingMs(1_000), 0);
   });
 
   it("preserves natural Boss HTML responses so login and security pages are recoverable", async () => {
@@ -384,6 +429,6 @@ describe("Boss auto collection contract", () => {
     assert.match(sharedSource, /请在打开的浏览器窗口完成 Boss 登录/);
     assert.match(sharedSource, /type:\s*"COOKIE_COLLECTED"/);
     assert.match(runSource, /import \{[\s\S]*waitUntilBossLoginReady[\s\S]*\} from "\.\/shared\.js"/);
-    assert.match(runSource, /if \(!await waitUntilBossLoginReady\(page, ctx\)\) return/);
+    assert.match(runSource, /waitUntilBossLoginReady\(page, ctx, "Boss 登录态已就绪，开始采集。", bossRiskRecoveryOptions\)/);
   });
 });
