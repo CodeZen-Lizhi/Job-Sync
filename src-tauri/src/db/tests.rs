@@ -175,6 +175,7 @@ fn init_db_creates_library_performance_indexes() {
 
     for index_name in [
         "idx_job_last_seen_id",
+        "idx_job_brand_name_id",
         "idx_job_source_link_keyword_job",
         "idx_ai_report_latest_resume",
         "idx_job_detail_projection_hash",
@@ -215,6 +216,45 @@ fn init_db_creates_library_performance_indexes() {
             .expect("query projection table");
         assert!(exists, "{table_name} should exist");
     }
+}
+
+#[test]
+fn brand_name_history_query_uses_company_index() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+
+    conn.execute_batch(
+        r#"
+        INSERT INTO job (encrypt_job_id, brand_name, last_seen_at)
+        VALUES
+          ('job-a', 'Acme', '2026-07-05T10:00:00Z'),
+          ('job-b', 'Acme', '2026-07-05T11:00:00Z'),
+          ('job-c', 'Other', '2026-07-05T12:00:00Z');
+        "#,
+    )
+    .expect("seed jobs");
+
+    let mut stmt = conn
+        .prepare(
+            "EXPLAIN QUERY PLAN
+             SELECT encrypt_job_id
+             FROM job
+             WHERE brand_name = ?1
+             ORDER BY encrypt_job_id ASC",
+        )
+        .expect("prepare explain");
+    let plan = stmt
+        .query_map(["Acme"], |row| row.get::<_, String>(3))
+        .expect("explain rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect explain")
+        .join("\n");
+
+    assert!(
+        plan.contains("idx_job_brand_name_id"),
+        "brand_name history query should use idx_job_brand_name_id, got plan:\n{plan}"
+    );
 }
 
 #[test]

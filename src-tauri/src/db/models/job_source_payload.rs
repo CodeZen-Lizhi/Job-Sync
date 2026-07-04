@@ -1,4 +1,6 @@
-use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(test)]
+use rusqlite::OptionalExtension;
+use rusqlite::{params, Connection};
 
 use crate::db::Result;
 
@@ -32,6 +34,7 @@ pub(crate) fn upsert_job_source_payload(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn get_job_source_payload(
     conn: &Connection,
     encrypt_job_id: &str,

@@ -402,13 +402,6 @@ pub(crate) fn telegram_message_is_valid(token: &str, chat_id: &str) -> bool {
     token_ok && chat_id_ok
 }
 
-pub(crate) fn send_telegram_message_from_settings(
-    settings: &settings::AppSettings,
-    content: &str,
-) -> Result<(), String> {
-    send_telegram_message_from_settings_with_format(settings, content, None)
-}
-
 pub(crate) fn send_telegram_message_from_settings_with_format(
     settings: &settings::AppSettings,
     content: &str,

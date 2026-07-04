@@ -6,6 +6,8 @@ import type { Page } from "puppeteer";
 
 import { launchBrowser } from "../browser/launch.js";
 import { blockNavigation } from "../browser/navigationLock.js";
+import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { normalizePositiveInteger } from "../feed/numbers.js";
 import type { EventOut } from "../protocol.js";
 import { delayWithJitter } from "../utils/delay.js";
 import type { CrawlAutoStartPayload, ModeContext } from "../modes/auto/types.js";
@@ -70,17 +72,7 @@ function decodeEntities(text: string): string {
 }
 
 function htmlToText(html: string): string {
-  return decodeEntities(html)
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6]|tr|section|article)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return sharedHtmlToText(html, { stripScriptStyle: true, sectionBreaks: true });
 }
 
 function asString(value: unknown): string | undefined {
@@ -373,14 +365,6 @@ export function parseZhilianDetailPage(html: string, fallback: ZhilianJobEntry):
     detailStatus: description ? "ok" : "missing",
     detailError: description ? undefined : "详情正文缺失",
   };
-}
-
-function normalizePositiveInteger(fallback: number, ...values: unknown[]): number {
-  for (const value of values) {
-    const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
-    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
-  }
-  return fallback;
 }
 
 function filterString(filters: ZhilianSearchFilters, ...keys: string[]): string | undefined {

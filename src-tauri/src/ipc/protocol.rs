@@ -276,6 +276,14 @@ pub struct CookieCollectedPayload {
     pub local_storage: Value,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BossJobListCaptureSource {
+    Natural,
+    DomFallback,
+    ApiFallback,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobListCapturedPayload {
     #[serde(default)]
@@ -284,7 +292,7 @@ pub struct JobListCapturedPayload {
     pub filters: Option<Value>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub capture_source: Option<String>,
+    pub capture_source: Option<BossJobListCaptureSource>,
     pub raw: Value,
 }
 
@@ -418,4 +426,51 @@ pub enum EventOut {
     Finished,
     #[serde(rename = "ERROR")]
     Error(ErrorPayload),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BossJobListCaptureSource, EventOut};
+
+    #[test]
+    fn job_list_capture_source_deserializes_known_values() {
+        let event: EventOut = serde_json::from_str(
+            r#"{
+              "type": "JOB_LIST_CAPTURED",
+              "payload": {
+                "capture_source": "dom_fallback",
+                "raw": { "zpData": { "jobList": [] } }
+              }
+            }"#,
+        )
+        .expect("deserialize known capture_source");
+
+        let EventOut::JobListCaptured(payload) = event else {
+            panic!("expected job-list event");
+        };
+        assert_eq!(
+            payload.capture_source,
+            Some(BossJobListCaptureSource::DomFallback)
+        );
+        assert_eq!(
+            serde_json::to_value(payload.capture_source.expect("capture source"))
+                .expect("serialize capture source"),
+            serde_json::json!("dom_fallback")
+        );
+    }
+
+    #[test]
+    fn job_list_capture_source_rejects_unknown_values() {
+        let result = serde_json::from_str::<EventOut>(
+            r#"{
+              "type": "JOB_LIST_CAPTURED",
+              "payload": {
+                "capture_source": "stale_dom",
+                "raw": { "zpData": { "jobList": [] } }
+              }
+            }"#,
+        );
+
+        assert!(result.is_err(), "unknown capture_source must be rejected");
+    }
 }

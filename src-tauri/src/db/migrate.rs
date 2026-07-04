@@ -455,6 +455,9 @@ fn ensure_performance_indexes(conn: &Connection) -> Result<()> {
     CREATE INDEX IF NOT EXISTS idx_job_last_seen_id
       ON job(last_seen_at DESC, encrypt_job_id ASC);
 
+    CREATE INDEX IF NOT EXISTS idx_job_brand_name_id
+      ON job(brand_name, encrypt_job_id);
+
     CREATE INDEX IF NOT EXISTS idx_job_source_link_keyword_job
       ON job_source_link(keyword, encrypt_job_id);
 

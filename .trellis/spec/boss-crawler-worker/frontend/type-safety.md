@@ -30,9 +30,16 @@ Questions to answer:
 
 ## Validation
 
-<!-- Runtime validation patterns (Zod, Yup, io-ts, etc.) -->
-
-(To be filled by the team)
+- Worker event schemas are owned by `packages/boss-crawler-worker/src/protocol.ts`.
+  Stable cross-layer fields must be represented with the same finite value set
+  in the frontend type layer and Rust IPC layer. For example,
+  `JOB_LIST_CAPTURED.payload.capture_source` is:
+  - worker Zod enum: `natural | dom_fallback | api_fallback`;
+  - frontend union: `"natural" | "dom_fallback" | "api_fallback"`;
+  - Rust serde enum: `BossJobListCaptureSource`.
+- Rust IPC must reject unknown stable enum values at deserialization time. Do
+  not protect `Option<String>` with contract tests when the field has a known
+  finite set.
 
 ---
 
@@ -46,6 +53,6 @@ Questions to answer:
 
 ## Forbidden Patterns
 
-<!-- any, type assertions, etc. -->
-
-(To be filled by the team)
+- Do not add new stringly typed Rust IPC fields for stable worker/frontend
+  enums. Add a serde enum and a unit test that accepts known wire values and
+  rejects unknown values.

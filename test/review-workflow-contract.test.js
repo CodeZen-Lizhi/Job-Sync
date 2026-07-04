@@ -23,6 +23,7 @@ describe("review workflow contract", () => {
     const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
     const jobsTypes = readProjectFile("src/lib/jobs.ts");
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const jobsSummaries = readProjectFile("src/lib/jobsPageSummaries.ts");
     const jobsQueries = readProjectFile("src-tauri/src/commands/jobs/queries.rs");
     const jobsModels = readProjectFile("src-tauri/src/commands/jobs/models.rs");
     const jobsCommand = readProjectFile("src-tauri/src/commands/jobs.rs");
@@ -68,7 +69,8 @@ describe("review workflow contract", () => {
     const jobsMountedSource = jobsLogic.match(/onMounted\(\(\) => \{[\s\S]*?\n  \}\);/)?.[0] ?? "";
     assert.doesNotMatch(jobsMountedSource, /loadJobCandidates/);
     assert.match(jobsPage, /route\.path, route\.query\.jobId/);
-    assert.match(jobsLogic, /function isProcessedJob/);
+    assert.match(jobsLogic, /isProcessedJob/);
+    assert.match(jobsSummaries, /export function isProcessedJob/);
     assert.match(jobsLogic, /processed: jobCandidateProcessedFilter/);
     assert.match(jobsLogic, /statusFilters: selectedJobStatusFilters/);
     assert.match(jobsLogic, /aiAuditFilters: selectedAiAuditFilters/);
@@ -376,6 +378,7 @@ describe("review workflow contract", () => {
   it("keeps job library rows free of raw filter evidence on the frontend hot path", () => {
     const jobsTypes = readProjectFile("src/lib/jobs.ts");
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const jobsSummaries = readProjectFile("src/lib/jobsPageSummaries.ts");
     const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
     const jobsModels = readProjectFile("src-tauri/src/commands/jobs/models.rs");
     const qualityGuide = readProjectFile(".trellis/spec/boss-crawler-worker/frontend/quality-guidelines.md");
@@ -386,7 +389,8 @@ describe("review workflow contract", () => {
     assert.match(jobsModels, /pub filter_summary: String/);
     assert.match(jobsModels, /struct SummaryProjection/);
     assert.match(jobsModels, /unwrap_or_else\(\|\| summarize_filter_reason/);
-    assert.match(jobsLogic, /job\.filter_summary\?\.trim\(\)/);
+    assert.match(jobsSummaries, /job\.filter_summary\?\.trim\(\)/);
+    assert.match(jobsLogic, /buildFilteredJobsSummary/);
     assert.doesNotMatch(jobsLogic, /parseFilterReasonJson\(job\.filter_reason_json\)/);
     assert.doesNotMatch(jobItem, /parseFilterReasonJson/);
     assert.doesNotMatch(jobItem, /filter_reason_json/);
@@ -426,6 +430,7 @@ describe("review workflow contract", () => {
 
     for (const indexName of [
       "idx_job_last_seen_id",
+      "idx_job_brand_name_id",
       "idx_job_source_link_keyword_job",
       "idx_ai_report_latest_resume",
       "idx_job_detail_projection_hash",
@@ -464,6 +469,7 @@ describe("review workflow contract", () => {
     assert.match(dbTests, /job_source_payload_backfill_and_upsert_keep_raw_payload_cold/);
     assert.match(dbTests, /job_search_projection_backfill_feeds_fts_without_raw_json/);
     assert.match(jobsQueries, /fn build_job_candidate_from_sql/);
+    assert.match(jobsQueries, /JOB_COMPANY_NEGATIVE_COMMUNICATION_COLUMNS_SQL/);
     assert.match(jobsQueries, /LEFT JOIN job_search_projection sp ON sp\.encrypt_job_id = j\.encrypt_job_id/);
     assert.match(jobsQueries, /LEFT JOIN job_list_summary_projection lsp ON lsp\.encrypt_job_id = j\.encrypt_job_id/);
     assert.match(jobsQueries, /OR sp\.search_text LIKE \?/);
@@ -644,10 +650,10 @@ describe("review workflow contract", () => {
     const runtimeInitializer =
       crawlLogic.match(/async function initializeRuntime\(\): Promise<void> \{[\s\S]*?\n  }\n/)?.[0] ?? "";
 
-    assert.match(router, /import Crawl from "\.\/pages\/Crawl\.vue"/);
-    assert.match(router, /import CrawlConfig from "\.\/pages\/CrawlConfig\.vue"/);
-    assert.match(router, /path: "\/crawl", component: Crawl/);
-    assert.match(router, /path: "\/crawl-config", component: CrawlConfig/);
+    assert.doesNotMatch(router, /import Crawl from "\.\/pages\/Crawl\.vue"/);
+    assert.doesNotMatch(router, /import CrawlConfig from "\.\/pages\/CrawlConfig\.vue"/);
+    assert.match(router, /path: "\/crawl", component: \(\) => import\("\.\/pages\/Crawl\.vue"\)/);
+    assert.match(router, /path: "\/crawl-config", component: \(\) => import\("\.\/pages\/CrawlConfig\.vue"\)/);
     assert.doesNotMatch(appShell, /import\("\.\/pages\/CrawlConfig\.vue"\)/);
     assert.match(crawlConfigPage, /defineAsyncComponent\(async \(\) => \(await import\("@vue-js-cron\/light"\)\)\.CronLight\)/);
     assert.match(crawlConfigPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,80}cronEditorReady\.value = true/);
@@ -1337,7 +1343,10 @@ describe("review workflow contract", () => {
     assert.match(workerRun, /capture_source:\s*"dom_fallback"/);
     assert.match(workerRun, /capture_source:\s*"api_fallback"/);
     assert.match(workerProtocol, /capture_source:\s*z\.enum\(\["natural", "dom_fallback", "api_fallback"\]\)\.optional\(\)/);
-    assert.match(rustProtocol, /pub capture_source: Option<String>/);
+    assert.match(rustProtocol, /pub enum BossJobListCaptureSource/);
+    assert.match(rustProtocol, /pub capture_source: Option<BossJobListCaptureSource>/);
+    assert.doesNotMatch(rustProtocol, /pub capture_source: Option<String>/);
+    assert.match(rustProtocol, /job_list_capture_source_rejects_unknown_values/);
     assert.match(frontendProtocol, /capture_source\?: "natural" \| "dom_fallback" \| "api_fallback"/);
     assert.match(canaryScript, /const source = event\.payload\?\.capture_source \?\? "unknown"/);
     assert.match(canaryScript, /source=\$\{source\}/);
@@ -1524,32 +1533,33 @@ describe("review workflow contract", () => {
 
   it("removes local application-packet copy controls while keeping manual review flow", () => {
     const jobsLogic = readProjectFile("src/lib/useJobsPage.ts");
+    const jobsSummaries = readProjectFile("src/lib/jobsPageSummaries.ts");
     const jobsPage = readProjectFile("src/pages/Jobs.vue");
     const jobItem = readProjectFile("src/components/jobs/JobsJobItem.vue");
 
-    assert.match(jobsLogic, /function buildApplicationChecklist/);
-    assert.match(jobsLogic, /function buildApplicationReadinessGaps/);
-    assert.match(jobsLogic, /function formatApplicationReadinessPreflight/);
-    assert.match(jobsLogic, /function buildGreetingEvidenceTrace/);
-    assert.match(jobsLogic, /function formatApplicationFilterTrace/);
-    assert.match(jobsLogic, /function buildResumeMatchEvidenceTrace/);
-    assert.match(jobsLogic, /function buildReadyToApplyConfirmationMessage/);
-    assert.match(jobsLogic, /buildApplicationChecklist\(job, greetingDraft\)/);
-    assert.match(jobsLogic, /formatApplicationReadinessPreflight\(job, greetingDraft\)/);
-    assert.match(jobsLogic, /待分析，建议先生成简历匹配报告/);
-    assert.match(jobsLogic, /投递准备预检：\\n\$\{readinessPreflight\}/);
-    assert.match(jobsLogic, /投递准备清单：\\n\$\{checklist\}/);
-    assert.match(jobsLogic, /该操作只记录本地准备投递状态，不会自动发送或投递。/);
-    assert.match(jobsLogic, /function formatCommunicationTrace/);
-    assert.match(jobsLogic, /const statusLabel = communicationStatusLabel\(job\.communication_status\);/);
-    assert.match(jobsLogic, /沟通追踪：\$\{formatCommunicationTrace\(job\)\}/);
-    assert.match(jobsLogic, /上次打招呼 \$\{formatDate\(job\.last_greeted_at\)\}/);
-    assert.match(jobsLogic, /备注 \$\{notes\}/);
-    assert.match(jobsLogic, /function formatSourceTrace/);
-    assert.match(jobsLogic, /来源追踪：\$\{formatSourceTrace\(job\)\}/);
-    assert.match(jobsLogic, /去重 \$\{dedupKey\}/);
-    assert.match(jobsLogic, /采集 \$\{formatDate\(job\.last_seen_at\)\}/);
-    assert.match(jobsLogic, /不会自动发送或投递/);
+    assert.match(jobsSummaries, /function buildApplicationChecklist/);
+    assert.match(jobsSummaries, /function buildApplicationReadinessGaps/);
+    assert.match(jobsSummaries, /function formatApplicationReadinessPreflight/);
+    assert.match(jobsSummaries, /function buildGreetingEvidenceTrace/);
+    assert.match(jobsSummaries, /function formatApplicationFilterTrace/);
+    assert.match(jobsSummaries, /function buildResumeMatchEvidenceTrace/);
+    assert.match(jobsSummaries, /export function buildReadyToApplyConfirmationMessage/);
+    assert.match(jobsSummaries, /buildApplicationChecklist\(job, greetingDraft\)/);
+    assert.match(jobsSummaries, /formatApplicationReadinessPreflight\(job, greetingDraft\)/);
+    assert.match(jobsSummaries, /待分析，建议先生成简历匹配报告/);
+    assert.match(jobsSummaries, /投递准备预检：\\n\$\{readinessPreflight\}/);
+    assert.match(jobsSummaries, /投递准备清单：\\n\$\{checklist\}/);
+    assert.match(jobsSummaries, /该操作只记录本地准备投递状态，不会自动发送或投递。/);
+    assert.match(jobsSummaries, /function formatCommunicationTrace/);
+    assert.match(jobsSummaries, /const statusLabel = communicationStatusLabel\(job\.communication_status\);/);
+    assert.match(jobsSummaries, /沟通追踪：\$\{formatCommunicationTrace\(job\)\}/);
+    assert.match(jobsSummaries, /上次打招呼 \$\{formatDate\(job\.last_greeted_at\)\}/);
+    assert.match(jobsSummaries, /备注 \$\{notes\}/);
+    assert.match(jobsSummaries, /function formatSourceTrace/);
+    assert.match(jobsSummaries, /来源追踪：\$\{formatSourceTrace\(job\)\}/);
+    assert.match(jobsSummaries, /去重 \$\{dedupKey\}/);
+    assert.match(jobsSummaries, /采集 \$\{formatDate\(job\.last_seen_at\)\}/);
+    assert.match(jobsSummaries, /不会自动发送或投递/);
     assert.doesNotMatch(jobsLogic, /function buildApplicationPacket/);
     assert.doesNotMatch(jobsLogic, /async function copyApplicationPacket/);
     assert.doesNotMatch(jobsLogic, /投递材料包|复制投递材料包|【JobPilot 投递材料包】/);

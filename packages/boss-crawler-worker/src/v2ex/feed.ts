@@ -3,12 +3,9 @@ import * as https from "node:https";
 
 import { ProxyAgent } from "proxy-agent";
 
-import type { EventOut } from "../protocol.js";
-
-type ModeContext = {
-  emit: (event: EventOut) => void;
-  signal: AbortSignal;
-};
+import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { normalizePositiveInteger } from "../feed/numbers.js";
+import type { ModeContext } from "../modes/auto/types.js";
 
 export type V2exFeedEntry = {
   title: string;
@@ -115,15 +112,7 @@ function attrValue(html: string, attr: string): string {
 }
 
 export function htmlToText(html: string): string {
-  return decodeEntities(stripCdata(html))
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return sharedHtmlToText(html, { stripCdata: true });
 }
 
 function normalizeTopicUrl(url: string, topicId: string): string {
@@ -332,14 +321,6 @@ function normalizeRecentDays(...values: unknown[]): number | null {
     return Math.floor(parsed);
   }
   return null;
-}
-
-function normalizePositiveInteger(fallback: number, ...values: unknown[]): number {
-  for (const value of values) {
-    const parsed = pickNumber(value);
-    if (parsed !== null && parsed > 0) return Math.floor(parsed);
-  }
-  return fallback;
 }
 
 function normalizeSortBy(value: unknown): V2exFeedSortBy {

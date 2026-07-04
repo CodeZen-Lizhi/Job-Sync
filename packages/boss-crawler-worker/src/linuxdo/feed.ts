@@ -6,6 +6,8 @@ import type { Browser, Page } from "puppeteer";
 
 import { launchBrowser } from "../browser/launch.js";
 import { blockNavigation } from "../browser/navigationLock.js";
+import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { normalizePositiveInteger } from "../feed/numbers.js";
 import type { EventOut } from "../protocol.js";
 import { delayWithJitter } from "../utils/delay.js";
 import type { CrawlAutoStartPayload, ModeContext } from "../modes/auto/types.js";
@@ -112,15 +114,7 @@ function decodeEntities(text: string): string {
 }
 
 export function linuxDoHtmlToText(html: string): string {
-  return decodeEntities(html)
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return sharedHtmlToText(html, { extraBlockTags: ["blockquote"] });
 }
 
 function attrValue(html: string, attr: string): string {
@@ -344,14 +338,6 @@ function pickNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function normalizePositiveInteger(fallback: number, ...values: unknown[]): number {
-  for (const value of values) {
-    const parsed = pickNumber(value);
-    if (parsed !== null && parsed > 0) return Math.floor(parsed);
-  }
-  return fallback;
 }
 
 function normalizeOptionalPositiveInteger(...values: unknown[]): number | null {

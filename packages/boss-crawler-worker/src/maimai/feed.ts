@@ -5,11 +5,9 @@ import * as https from "node:https";
 import { ProxyAgent } from "proxy-agent";
 
 import type { EventOut } from "../protocol.js";
-
-type ModeContext = {
-  emit: (event: EventOut) => void;
-  signal: AbortSignal;
-};
+import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { normalizePositiveInteger } from "../feed/numbers.js";
+import type { ModeContext } from "../modes/auto/types.js";
 
 export type MaimaiArticle = {
   articleId: string;
@@ -91,17 +89,7 @@ function decodeEntities(text: string): string {
 }
 
 export function htmlToText(html: string): string {
-  return decodeEntities(html)
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|li|h[1-6]|tr|section|article)>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\u00a0/g, " ")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return sharedHtmlToText(html, { stripScriptStyle: true, sectionBreaks: true });
 }
 
 function attrValue(html: string, attr: string): string {
@@ -337,14 +325,6 @@ function pickNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function normalizePositiveInteger(fallback: number, ...values: unknown[]): number {
-  for (const value of values) {
-    const parsed = pickNumber(value);
-    if (parsed !== null && parsed > 0) return Math.floor(parsed);
-  }
-  return fallback;
 }
 
 function normalizeRecentDays(...values: unknown[]): number | null {

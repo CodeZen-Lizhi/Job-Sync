@@ -214,6 +214,9 @@ CREATE INDEX IF NOT EXISTS idx_ai_report_latest_resume
 CREATE INDEX IF NOT EXISTS idx_job_last_seen_id
   ON job(last_seen_at DESC, encrypt_job_id ASC);
 
+CREATE INDEX IF NOT EXISTS idx_job_brand_name_id
+  ON job(brand_name, encrypt_job_id);
+
 CREATE INDEX IF NOT EXISTS idx_job_source_link_encrypt_job_id
   ON job_source_link(encrypt_job_id);
 

@@ -434,6 +434,7 @@ fn persist_collection_finished(conn: &rusqlite::Connection, active_run: &ActiveC
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ipc::protocol::BossJobListCaptureSource;
     use crate::ipc::protocol::{CrawlAutoStartPayload, SearchTaskPayload, SessionStatePayload};
     use serde_json::json;
     use std::io::BufWriter;
@@ -521,7 +522,7 @@ mod tests {
         let payload = JobListCapturedPayload {
             keyword: Some("Go 远程".to_string()),
             filters: Some(json!({ "city": "101020100" })),
-            capture_source: Some("natural".to_string()),
+            capture_source: Some(BossJobListCaptureSource::Natural),
             raw: json!({
               "zpData": {
                 "query": "Go 远程",
@@ -1092,7 +1093,7 @@ mod tests {
         let payload = JobListCapturedPayload {
             keyword: Some("Go 远程".to_string()),
             filters: None,
-            capture_source: Some("natural".to_string()),
+            capture_source: Some(BossJobListCaptureSource::Natural),
             raw: json!({
               "zpData": {
                 "jobList": [{

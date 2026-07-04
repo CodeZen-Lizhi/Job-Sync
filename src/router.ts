@@ -1,20 +1,14 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 
-import CrawlConfig from "./pages/CrawlConfig.vue";
-import Crawl from "./pages/Crawl.vue";
-import Jobs from "./pages/Jobs.vue";
-import ResumeLibrary from "./pages/ResumeLibrary.vue";
-import Settings from "./pages/Settings.vue";
-
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: "/", redirect: "/crawl" },
-    { path: "/crawl", component: Crawl },
-    { path: "/crawl-config", component: CrawlConfig },
-    { path: "/jobs", component: Jobs },
-    { path: "/resume-library", component: ResumeLibrary },
+    { path: "/crawl", component: () => import("./pages/Crawl.vue") },
+    { path: "/crawl-config", component: () => import("./pages/CrawlConfig.vue") },
+    { path: "/jobs", component: () => import("./pages/Jobs.vue") },
+    { path: "/resume-library", component: () => import("./pages/ResumeLibrary.vue") },
     { path: "/export", redirect: "/jobs" },
-    { path: "/settings", component: Settings },
+    { path: "/settings", component: () => import("./pages/Settings.vue") },
   ],
 });

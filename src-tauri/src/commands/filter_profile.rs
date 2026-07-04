@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::{json, Value};
-use time::{Date, Month, OffsetDateTime};
+use time::OffsetDateTime;
 
 use crate::{db, paths};
 
@@ -13,6 +13,7 @@ pub struct RecomputeFilterProfileResult {
     pub counts: db::models::BucketCounts,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct NormalizedFilterProfile {
     must_keywords: Vec<String>,
@@ -675,52 +676,6 @@ fn has_raw_payload_evidence(job: &Value) -> bool {
         .is_some_and(|value| !value.is_empty() && value != "{}" && value != "null")
 }
 
-fn rule_type_of(blocked: &Value) -> Option<&str> {
-    blocked.get("rule_type").and_then(Value::as_str)
-}
-
-fn has_any(items: &[String], rules: &[String]) -> bool {
-    rules
-        .iter()
-        .any(|rule| items.iter().any(|item| item == rule))
-}
-
-fn matching_rules<'a>(items: &[String], rules: &'a [String]) -> Vec<&'a str> {
-    rules
-        .iter()
-        .filter(|rule| items.iter().any(|item| item == *rule))
-        .map(String::as_str)
-        .collect()
-}
-
-fn text_matches_rule(value: &str, rule: &str) -> bool {
-    let value = value.trim().to_lowercase();
-    let rule = rule.trim().to_lowercase();
-    !value.is_empty()
-        && !rule.is_empty()
-        && (value == rule || value.contains(&rule) || rule.contains(&value))
-}
-
-fn text_matches_any(value: &str, rules: &[String]) -> bool {
-    rules.iter().any(|rule| text_matches_rule(value, rule))
-}
-
-fn keyword_hits<'a>(search_text: &str, rules: &'a [String]) -> Vec<&'a str> {
-    rules
-        .iter()
-        .filter(|rule| includes_keyword(search_text, rule))
-        .map(String::as_str)
-        .collect()
-}
-
-fn missing_keywords<'a>(search_text: &str, rules: &'a [String]) -> Vec<&'a str> {
-    rules
-        .iter()
-        .filter(|rule| !includes_keyword(search_text, rule))
-        .map(String::as_str)
-        .collect()
-}
-
 fn append_keyword_preferences(
     matched_preferences: &mut Vec<String>,
     missing_preferences: &mut Vec<String>,
@@ -869,22 +824,6 @@ fn parse_experience_range(experience_name: &str) -> ExperienceRange {
         max_years,
         unknown: min_years.is_none(),
     }
-}
-
-fn date_from_prefix(value: &str) -> Option<Date> {
-    let prefix = value.get(0..10)?;
-    let mut parts = prefix.split('-');
-    let year = parts.next()?.parse::<i32>().ok()?;
-    let month = parts.next()?.parse::<u8>().ok()?;
-    let day = parts.next()?.parse::<u8>().ok()?;
-    let month = Month::try_from(month).ok()?;
-    Date::from_calendar_date(year, month, day).ok()
-}
-
-fn days_since_date(value: &str) -> Option<i64> {
-    let date = date_from_prefix(value)?;
-    let today = OffsetDateTime::now_utc().date();
-    Some((today - date).whole_days())
 }
 
 #[cfg(test)]

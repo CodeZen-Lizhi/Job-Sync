@@ -43,6 +43,9 @@ Questions to answer:
   should keep their route shell cheap; move expensive editors/widgets into
   async components instead of making the user wait on them during the route
   click. Heavier non-primary pages may still use Vue Router dynamic imports.
+- Use route-level dynamic imports for page components in `src/router.ts` when a
+  page owns substantial state or dependencies. Preserve existing route paths
+  and redirects while letting Vite split pages into separate chunks.
 - Route components with timers or polling must clean them up on unmount. If a
   page also supports `<KeepAlive>`, clean up in both `onDeactivated` and
   `onUnmounted`.

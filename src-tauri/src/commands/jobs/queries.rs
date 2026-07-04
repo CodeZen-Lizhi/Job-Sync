@@ -424,11 +424,7 @@ const JOB_CANDIDATE_BASE_SQL_MID: &str = r#"
         substr(COALESCE(j.jd_text, ''), 1, 2000) || ' ' ||
 "#;
 
-const JOB_CANDIDATE_BASE_SQL_SUFFIX: &str = r#"
-        COALESCE(lsp.company_score, cs.company_score),
-        NULL,
-        NULL,
-        NULL,
+const JOB_COMPANY_NEGATIVE_COMMUNICATION_COLUMNS_SQL: &str = r#"
         (
           SELECT COUNT(*)
           FROM job company_job
@@ -463,8 +459,20 @@ const JOB_CANDIDATE_BASE_SQL_SUFFIX: &str = r#"
           ORDER BY company_rs.updated_at DESC, company_job.encrypt_job_id ASC
           LIMIT 1
         ),
-        j.boss_active_status,
 "#;
+
+fn job_candidate_base_sql_suffix() -> String {
+    format!(
+        r#"
+        COALESCE(lsp.company_score, cs.company_score),
+        NULL,
+        NULL,
+        NULL,
+{JOB_COMPANY_NEGATIVE_COMMUNICATION_COLUMNS_SQL}
+        j.boss_active_status,
+"#
+    )
+}
 
 const JOB_CANDIDATE_BASE_FROM_SQL: &str = r#"
       FROM job j
@@ -863,6 +871,7 @@ pub(super) fn list_job_candidates_on_conn(
     row_params.push(SqlValue::Integer(offset as i64));
     let row_from_sql = build_job_candidate_from_sql(needs_projection, true);
     let keyword_blacklist_columns = keyword_blacklist_columns_sql(has_keyword_blacklist);
+    let job_candidate_base_sql_suffix = job_candidate_base_sql_suffix();
     let detail_score_source_sql = if needs_projection {
         "substr(COALESCE(sp.search_text, ''), 1, 2000)"
     } else {
@@ -873,7 +882,7 @@ pub(super) fn list_job_candidates_on_conn(
         {keyword_blacklist_columns}
         {JOB_CANDIDATE_BASE_SQL_MID}
         {detail_score_source_sql},
-        {JOB_CANDIDATE_BASE_SQL_SUFFIX}
+        {job_candidate_base_sql_suffix}
         {JOB_COLLECTION_METHOD_SQL},
         lsp.ai_audit_status,
         lsp.ai_audit_summary,

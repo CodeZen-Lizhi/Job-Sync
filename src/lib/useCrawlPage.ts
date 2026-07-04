@@ -54,6 +54,12 @@ import {
   recomputeAiPostCollectionJudgementForAllJobs,
   recomputeAiPostCollectionJudgementForJobIds,
 } from "./aiRecompute";
+import {
+  buildCrawlTaskForSource,
+  optionalNumber,
+  uniqueList,
+  validateCollectionSourceConfig,
+} from "./crawlTaskPayloads";
 import { runAfterInitialPaint } from "./defer";
 import { useFilterProfile } from "./filterProfile";
 import { appendRuntimeLog, clearLogs, resetCrawlProgress, runtime } from "./runtime";
@@ -397,131 +403,77 @@ function createCrawlPageState() {
   const liepinSelected = computed(() => selectedCollectionSourceSet.value.has(LIEPIN_SOURCE_PLATFORM));
   const zhilianSelected = computed(() => selectedCollectionSourceSet.value.has(ZHILIAN_SOURCE_PLATFORM));
   function buildTaskForSource(sourcePlatform: JobSourcePlatform) {
-    if (sourcePlatform === LIEPIN_SOURCE_PLATFORM) {
-      return {
-        keywords: liepinKeywords.value,
-        source_platform: LIEPIN_SOURCE_PLATFORM,
-        filters: {
-          city: liepinCities.value,
-          salary: liepinSalaryText.value.trim(),
-          experience: liepinExperienceText.value.trim(),
-          degree: liepinDegreeText.value.trim(),
-          industry: liepinIndustryText.value.trim(),
-          company_type: liepinCompanyTypeText.value.trim(),
-          company_scale: liepinCompanyScaleText.value.trim(),
-          job_type: liepinJobTypeText.value.trim(),
-          publish_date: liepinPublishDateText.value.trim(),
-          sort_by: liepinSortByText.value.trim(),
-          raw_params: liepinRawParamsText.value.trim(),
-          keywords: liepinKeywords.value,
-          profile: filterProfileState.filterProfile.value,
-        },
-        limits: {
-          delayMs: delayMs.value,
-          maxPages: optionalNumber(liepinMaxPages.value) ?? DEFAULT_LIEPIN_MAX_PAGES,
-          maxJobs: optionalNumber(liepinMaxJobs.value),
-        },
-        mode: "auto",
-      };
-    }
-    if (sourcePlatform === ZHILIAN_SOURCE_PLATFORM) {
-      return {
-        keywords: zhilianKeywords.value,
-        source_platform: ZHILIAN_SOURCE_PLATFORM,
-        filters: {
-          city: zhilianCities.value,
-          salary: zhilianSalaryText.value.trim(),
-          experience: zhilianExperienceText.value.trim(),
-          degree: zhilianDegreeText.value.trim(),
-          industry: zhilianIndustryText.value.trim(),
-          company_type: zhilianCompanyTypeText.value.trim(),
-          company_scale: zhilianCompanyScaleText.value.trim(),
-          job_type: zhilianJobTypeText.value.trim(),
-          publish_date: zhilianPublishDateText.value.trim(),
-          sort_by: zhilianSortByText.value.trim(),
-          raw_params: zhilianRawParamsText.value.trim(),
-          keywords: zhilianKeywords.value,
-          profile: filterProfileState.filterProfile.value,
-        },
-        limits: {
-          delayMs: delayMs.value,
-          maxPages: optionalNumber(zhilianMaxPages.value) ?? DEFAULT_ZHILIAN_MAX_PAGES,
-          maxJobs: optionalNumber(zhilianMaxJobs.value),
-        },
-        mode: "auto",
-      };
-    }
-    if (sourcePlatform === LINUXDO_SOURCE_PLATFORM) {
-      return {
-        keywords: linuxdoTaskKeywords.value,
-        source_platform: LINUXDO_SOURCE_PLATFORM,
-        filters: {
-          category_url: linuxdoCategoryUrl.value.trim() || DEFAULT_LINUXDO_CATEGORY_URL,
-          sort_by: linuxdoSortBy.value,
-          recent_days: optionalNumber(linuxdoRecentDays.value),
-          keywords: linuxdoKeywords.value,
-          profile: filterProfileState.filterProfile.value,
-        },
-        limits: {
-          delayMs: delayMs.value,
-          maxPages: optionalNumber(linuxdoMaxPages.value) ?? DEFAULT_LINUXDO_MAX_PAGES,
-          maxJobs: optionalNumber(linuxdoMaxJobs.value),
-        },
-        mode: "auto",
-      };
-    }
-    if (sourcePlatform === MAIMAI_SOURCE_PLATFORM) {
-      const feedUrls = splitUrlList(maimaiFeedUrl.value);
-      return {
-        keywords: maimaiTaskKeywords.value,
-        source_platform: MAIMAI_SOURCE_PLATFORM,
-        filters: {
-          feed_urls: feedUrls,
-          sort_by: maimaiFeedSortBy.value,
-          recent_days: optionalNumber(maimaiRecentDays.value),
-          keywords: maimaiKeywords.value,
-          profile: filterProfileState.filterProfile.value,
-        },
-        limits: {
-          delayMs: delayMs.value,
-          maxPages: optionalNumber(maimaiMaxPages.value) ?? DEFAULT_MAIMAI_MAX_PAGES,
-          maxJobs: optionalNumber(maimaiMaxJobs.value),
-        },
-        mode: "auto",
-      };
-    }
-    if (sourcePlatform === V2EX_SOURCE_PLATFORM) {
-      const feedUrls = splitUrlList(v2exFeedUrl.value);
-      return {
-        keywords: v2exTaskKeywords.value,
-        source_platform: V2EX_SOURCE_PLATFORM,
-        filters: {
-          feed_urls: feedUrls,
-          sort_by: v2exFeedSortBy.value,
-          recent_days: optionalNumber(v2exRecentDays.value),
-          profile: filterProfileState.filterProfile.value,
-        },
-        limits: {
-          delayMs: delayMs.value,
-          maxPages: optionalNumber(v2exMaxPages.value) ?? DEFAULT_V2EX_MAX_PAGES,
-        },
-        mode: "auto",
-      };
-    }
-    return {
-      keywords: bossKeywords.value,
-      source_platform: BOSS_SOURCE_PLATFORM,
-      filters: filters.value,
-      limits: {
-        delayMs: effectiveBossDelayMs(),
-        jitterMs: bossLowRiskMode.value ? DEFAULT_BOSS_LOW_RISK_JITTER_MS : undefined,
+    return buildCrawlTaskForSource(sourcePlatform, {
+      profile: filterProfileState.filterProfile.value,
+      delayMs: delayMs.value,
+      boss: {
+        keywords: bossKeywords.value,
+        filters: filters.value,
         lowRiskMode: bossLowRiskMode.value,
+        jitterMs: DEFAULT_BOSS_LOW_RISK_JITTER_MS,
         maxPages: effectiveBossMaxPages(),
         maxJobs: effectiveBossMaxJobs(),
-        bossDetailFetchLimit: 0,
+        effectiveDelayMs: effectiveBossDelayMs(),
       },
-      mode: "auto",
-    };
+      v2ex: {
+        keywords: v2exKeywords.value,
+        taskKeywords: v2exTaskKeywords.value,
+        feedUrl: v2exFeedUrl.value,
+        sortBy: v2exFeedSortBy.value,
+        recentDays: optionalNumber(v2exRecentDays.value),
+        maxPages: optionalNumber(v2exMaxPages.value),
+      },
+      maimai: {
+        keywords: maimaiKeywords.value,
+        taskKeywords: maimaiTaskKeywords.value,
+        feedUrl: maimaiFeedUrl.value,
+        sortBy: maimaiFeedSortBy.value,
+        recentDays: optionalNumber(maimaiRecentDays.value),
+        maxPages: optionalNumber(maimaiMaxPages.value),
+        maxJobs: optionalNumber(maimaiMaxJobs.value),
+      },
+      linuxdo: {
+        keywords: linuxdoKeywords.value,
+        taskKeywords: linuxdoTaskKeywords.value,
+        categoryUrl: linuxdoCategoryUrl.value,
+        sortBy: linuxdoSortBy.value,
+        recentDays: optionalNumber(linuxdoRecentDays.value),
+        maxPages: optionalNumber(linuxdoMaxPages.value),
+        maxJobs: optionalNumber(linuxdoMaxJobs.value),
+      },
+      liepin: {
+        keywords: liepinKeywords.value,
+        cities: liepinCities.value,
+        salary: liepinSalaryText.value,
+        experience: liepinExperienceText.value,
+        degree: liepinDegreeText.value,
+        industry: liepinIndustryText.value,
+        companyType: liepinCompanyTypeText.value,
+        companyScale: liepinCompanyScaleText.value,
+        jobType: liepinJobTypeText.value,
+        publishDate: liepinPublishDateText.value,
+        sortBy: liepinSortByText.value,
+        rawParams: liepinRawParamsText.value,
+        maxPages: optionalNumber(liepinMaxPages.value),
+        maxJobs: optionalNumber(liepinMaxJobs.value),
+      },
+      zhilian: {
+        keywords: zhilianKeywords.value,
+        cities: zhilianCities.value,
+        salary: zhilianSalaryText.value,
+        experience: zhilianExperienceText.value,
+        degree: zhilianDegreeText.value,
+        industry: zhilianIndustryText.value,
+        companyType: zhilianCompanyTypeText.value,
+        companyScale: zhilianCompanyScaleText.value,
+        jobType: zhilianJobTypeText.value,
+        publishDate: zhilianPublishDateText.value,
+        sortBy: zhilianSortByText.value,
+        rawParams: zhilianRawParamsText.value,
+        maxPages: optionalNumber(zhilianMaxPages.value),
+        maxJobs: optionalNumber(zhilianMaxJobs.value),
+      },
+    });
   }
   const sidecarRunning = computed(() => runtime.sidecarTask.running);
 
@@ -530,104 +482,24 @@ function createCrawlPageState() {
   }
 
   function validateCollectionSource(source: JobSourcePlatform): string | null {
-    if (!(COLLECTABLE_SOURCE_PLATFORMS as readonly string[]).includes(source)) {
-      return `${collectionSourceLabel(source)} 当前只作为职位来源和采后筛选来源，暂未接入自动采集适配器。`;
-    }
-    if (source === BOSS_SOURCE_PLATFORM && bossKeywords.value.length === 0) {
-      return "Boss 搜索关键词为空。请在 Boss 配置中输入至少 1 个关键词。";
-    }
-    if (source === BOSS_SOURCE_PLATFORM) {
-      if ((optionalNumber(bossMaxPages.value) ?? 0) <= 0) {
-        return "Boss 页数上限必须大于 0。";
-      }
-      const maxJobs = optionalNumber(bossMaxJobs.value);
-      if (maxJobs !== null && maxJobs <= 0) {
-        return "Boss 岗位上限必须大于 0，或留空不限。";
-      }
-    }
-    if (source === V2EX_SOURCE_PLATFORM && splitUrlList(v2exFeedUrl.value).length === 0) {
-      return "V2EX URL 为空。请填写至少 1 个 feed 或节点 URL。";
-    }
-    if (source === MAIMAI_SOURCE_PLATFORM) {
-      const urls = splitUrlList(maimaiFeedUrl.value);
-      if (urls.length === 0) {
-        return "脉脉 URL 为空。请填写至少 1 个公开文章或搜索页 URL。";
-      }
-      for (const url of urls) {
-        try {
-          const parsed = new URL(url);
-          if (parsed.hostname !== "maimai.cn" && !parsed.hostname.endsWith(".maimai.cn")) {
-            return "脉脉 URL 必须是 maimai.cn 域名。";
-          }
-        } catch {
-          return "脉脉 URL 格式不正确。";
-        }
-      }
-      if ((optionalNumber(maimaiMaxPages.value) ?? 0) <= 0) {
-        return "脉脉页数上限必须大于 0。";
-      }
-      const maxJobs = optionalNumber(maimaiMaxJobs.value);
-      if (maxJobs !== null && maxJobs <= 0) {
-        return "脉脉入库上限必须大于 0，或留空不限。";
-      }
-    }
-    if (source === LINUXDO_SOURCE_PLATFORM) {
-      const url = linuxdoCategoryUrl.value.trim();
-      if (!url) return "LinuxDo 分类 URL 为空。";
-      try {
-        const parsed = new URL(url);
-        if (parsed.hostname !== "linux.do" && !parsed.hostname.endsWith(".linux.do")) {
-          return "LinuxDo 分类 URL 必须是 linux.do 域名。";
-        }
-      } catch {
-        return "LinuxDo 分类 URL 格式不正确。";
-      }
-      if ((optionalNumber(linuxdoMaxPages.value) ?? 0) <= 0) {
-        return "LinuxDo 页数上限必须大于 0。";
-      }
-    }
-    if (source === LIEPIN_SOURCE_PLATFORM) {
-      if (liepinKeywords.value.length === 0) {
-        return "猎聘搜索关键词为空。请在猎聘配置中输入至少 1 个关键词。";
-      }
-      if ((optionalNumber(liepinMaxPages.value) ?? 0) <= 0) {
-        return "猎聘页数上限必须大于 0。";
-      }
-      const maxJobs = optionalNumber(liepinMaxJobs.value);
-      if (maxJobs !== null && maxJobs <= 0) {
-        return "猎聘岗位上限必须大于 0，或留空不限。";
-      }
-    }
-    if (source === ZHILIAN_SOURCE_PLATFORM) {
-      if (zhilianKeywords.value.length === 0) {
-        return "智联搜索关键词为空。请在智联配置中输入至少 1 个关键词。";
-      }
-      if ((optionalNumber(zhilianMaxPages.value) ?? 0) <= 0) {
-        return "智联页数上限必须大于 0。";
-      }
-      const maxJobs = optionalNumber(zhilianMaxJobs.value);
-      if (maxJobs !== null && maxJobs <= 0) {
-        return "智联岗位上限必须大于 0，或留空不限。";
-      }
-    }
-    return null;
-  }
-
-  function normalizeToken(value: string): string {
-    return value.trim().toLowerCase();
-  }
-
-  function splitUrlList(text: string): string[] {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const part of text.split(/[\n,，、]+/g)) {
-      const trimmed = part.trim();
-      if (!trimmed) continue;
-      if (seen.has(trimmed)) continue;
-      seen.add(trimmed);
-      out.push(trimmed);
-    }
-    return out;
+    return validateCollectionSourceConfig(source, {
+      sourceLabel: collectionSourceLabel,
+      bossKeywords: bossKeywords.value,
+      bossMaxPages: optionalNumber(bossMaxPages.value),
+      bossMaxJobs: optionalNumber(bossMaxJobs.value),
+      v2exFeedUrl: v2exFeedUrl.value,
+      maimaiFeedUrl: maimaiFeedUrl.value,
+      maimaiMaxPages: optionalNumber(maimaiMaxPages.value),
+      maimaiMaxJobs: optionalNumber(maimaiMaxJobs.value),
+      linuxdoCategoryUrl: linuxdoCategoryUrl.value,
+      linuxdoMaxPages: optionalNumber(linuxdoMaxPages.value),
+      liepinKeywords: liepinKeywords.value,
+      liepinMaxPages: optionalNumber(liepinMaxPages.value),
+      liepinMaxJobs: optionalNumber(liepinMaxJobs.value),
+      zhilianKeywords: zhilianKeywords.value,
+      zhilianMaxPages: optionalNumber(zhilianMaxPages.value),
+      zhilianMaxJobs: optionalNumber(zhilianMaxJobs.value),
+    });
   }
 
   function splitZhilianCityList(text: string): string[] {
@@ -654,26 +526,6 @@ function createCrawlPageState() {
     const configured = optionalNumber(delayMs.value) ?? DEFAULT_DELAY_MS;
     const normalized = Math.max(0, Math.floor(configured));
     return bossLowRiskMode.value ? Math.max(normalized, DEFAULT_BOSS_LOW_RISK_DELAY_MS) : normalized;
-  }
-
-  function uniqueList(items: readonly string[]): string[] {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const item of items) {
-      const trimmed = item.trim();
-      if (!trimmed) continue;
-      const key = normalizeToken(trimmed);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(trimmed);
-    }
-    return out;
-  }
-
-  function optionalNumber(value: unknown): number | null {
-    if (value === null || value === undefined || value === "") return null;
-    const parsed = typeof value === "number" ? value : Number(value);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
   }
 
   function textValue(value: unknown): string {
