@@ -131,6 +131,9 @@
   - Zhilian adapter kind is `zhilian`
   - other non-Boss platforms remain `manual_import` until their automatic adapter exists
   - enabled `manual_import` platforms may be shown in the collection source selector so users can save intended source scope, but automatic collection must skip them with a clear runtime log until an adapter exists
+- Scheduled collection:
+  - the app-open schedule initializer must load the collection source registry before scheduling or running `start()`, so default Boss-only configurations are not filtered out as unavailable when the user has not opened the crawl page
+  - the app-open schedule initializer must load the default post-collection filter profile before scheduled `start()` can save or use it, so scheduled runs do not overwrite persisted filter settings with frontend defaults
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`
@@ -247,6 +250,7 @@
   - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, `jd_text`, and `job_detail_raw.zp_data_json` with `jobInfo.postDescription`.
   - default filter profile includes V2EX/LinuxDo/Zhilian and legacy Boss-only default profile upgrades to all current automatic collection sources.
 - Frontend/browser smoke:
+  - scheduled collection initialization loads collection sources and the default filter profile before loading collection config and arranging the timer.
   - collection config source selector can select Boss and V2EX together.
   - Boss city selector supports multiple selected dictionary cities and explains that collection runs city variants sequentially.
   - V2EX pagination section appears when V2EX is selected among selected sources.

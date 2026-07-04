@@ -703,6 +703,7 @@ describe("review workflow contract", () => {
     assert.match(crawlLogic, /mode: "5-part"/);
     assert.match(crawlLogic, /cronstrue/);
     assert.match(crawlLogic, /initializeSchedule/);
+    assert.match(crawlLogic, /async function initializeSchedule\(\): Promise<void> \{[\s\S]*await Promise\.all\(\[[\s\S]*loadCollectionSources\(\),[\s\S]*loadDefaultFilterProfile\(\),[\s\S]*\]\);[\s\S]*await loadCollectionConfig\(\);[\s\S]*\}/);
     assert.match(crawlLogic, /rescheduleCrawlTimer/);
     assert.match(crawlLogic, /runScheduledCrawl/);
     assert.match(crawlLogic, /await start\(\)/);

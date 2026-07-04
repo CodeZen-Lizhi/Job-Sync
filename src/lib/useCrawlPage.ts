@@ -1041,6 +1041,10 @@ function createCrawlPageState() {
   async function initializeSchedule(): Promise<void> {
     if (scheduleInitialized.value) return;
     scheduleInitialized.value = true;
+    await Promise.all([
+      loadCollectionSources(),
+      loadDefaultFilterProfile(),
+    ]);
     await loadCollectionConfig();
   }
 
