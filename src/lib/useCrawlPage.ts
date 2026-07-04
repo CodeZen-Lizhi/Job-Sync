@@ -18,12 +18,15 @@ import {
   DEFAULT_DELAY_MS,
   DEFAULT_LINUXDO_CATEGORY_URL,
   DEFAULT_LINUXDO_MAX_PAGES,
+  DEFAULT_LIEPIN_MAX_JOBS,
+  DEFAULT_LIEPIN_MAX_PAGES,
   DEFAULT_V2EX_MAX_PAGES,
   DEFAULT_V2EX_FEED_URL,
   DEFAULT_ZHILIAN_MAX_JOBS,
   DEFAULT_ZHILIAN_MAX_PAGES,
   filterBossOptions,
   JOB_SOURCE_PLATFORM_OPTIONS,
+  LIEPIN_SOURCE_PLATFORM,
   LINUXDO_SOURCE_PLATFORM,
   MANUAL_IMPORT_SOURCE_PLATFORMS,
   parseList,
@@ -74,6 +77,20 @@ type CollectionConfigPayload = {
   linuxdoRecentDays?: number | null;
   linuxdoMaxPages?: number | null;
   linuxdoMaxJobs?: number | null;
+  liepinKeywordsText?: string;
+  liepinCityText?: string;
+  liepinSalaryText?: string;
+  liepinExperienceText?: string;
+  liepinDegreeText?: string;
+  liepinIndustryText?: string;
+  liepinCompanyTypeText?: string;
+  liepinCompanyScaleText?: string;
+  liepinJobTypeText?: string;
+  liepinPublishDateText?: string;
+  liepinSortByText?: string;
+  liepinRawParamsText?: string;
+  liepinMaxPages?: number | null;
+  liepinMaxJobs?: number | null;
   zhilianKeywordsText?: string;
   zhilianCityText?: string;
   zhilianSalaryText?: string;
@@ -118,6 +135,7 @@ const DEFAULT_CRAWL_SCHEDULE_PERIOD = "day";
 const CRAWL_SCHEDULE_UPCOMING_RUN_COUNT = 3;
 const PREVIEW_COLLECTION_SOURCES: CollectionSourceRegistryEntry[] = [
   { platform: BOSS_SOURCE_PLATFORM, adapter_kind: "boss", enabled: true },
+  { platform: LIEPIN_SOURCE_PLATFORM, adapter_kind: "liepin", enabled: true },
   { platform: V2EX_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
   { platform: LINUXDO_SOURCE_PLATFORM, adapter_kind: "feed", enabled: true },
   { platform: ZHILIAN_SOURCE_PLATFORM, adapter_kind: "zhilian", enabled: true },
@@ -175,6 +193,21 @@ function createCrawlPageState() {
   const linuxdoRecentDays = ref<number | null>(null);
   const linuxdoMaxPages = ref(DEFAULT_LINUXDO_MAX_PAGES);
   const linuxdoMaxJobs = ref<number | null>(20);
+  const liepinSettingsOpen = ref(false);
+  const liepinKeywordsText = ref("");
+  const liepinCityText = ref("");
+  const liepinSalaryText = ref("");
+  const liepinExperienceText = ref("");
+  const liepinDegreeText = ref("");
+  const liepinIndustryText = ref("");
+  const liepinCompanyTypeText = ref("");
+  const liepinCompanyScaleText = ref("");
+  const liepinJobTypeText = ref("");
+  const liepinPublishDateText = ref("");
+  const liepinSortByText = ref("");
+  const liepinRawParamsText = ref("");
+  const liepinMaxPages = ref(DEFAULT_LIEPIN_MAX_PAGES);
+  const liepinMaxJobs = ref<number | null>(DEFAULT_LIEPIN_MAX_JOBS);
   const zhilianSettingsOpen = ref(false);
   const zhilianKeywordsText = ref("");
   const zhilianCityText = ref("");
@@ -325,14 +358,44 @@ function createCrawlPageState() {
   const v2exTaskKeywords = computed(() => v2exKeywords.value.length > 0 ? v2exKeywords.value : ["V2EX"]);
   const linuxdoKeywords = computed(() => uniqueList(parseList(linuxdoKeywordsText.value)));
   const linuxdoTaskKeywords = computed(() => linuxdoKeywords.value.length > 0 ? linuxdoKeywords.value : ["LinuxDo"]);
+  const liepinKeywords = computed(() => uniqueList(parseList(liepinKeywordsText.value)));
+  const liepinCities = computed(() => uniqueList(splitZhilianCityList(liepinCityText.value)));
   const zhilianKeywords = computed(() => uniqueList(parseList(zhilianKeywordsText.value)));
   const zhilianCities = computed(() => uniqueList(splitZhilianCityList(zhilianCityText.value)));
   const selectedCollectionSourceSet = computed(() => new Set(selectedCollectionSources.value));
   const bossSelected = computed(() => selectedCollectionSourceSet.value.has(BOSS_SOURCE_PLATFORM));
   const v2exSelected = computed(() => selectedCollectionSourceSet.value.has(V2EX_SOURCE_PLATFORM));
   const linuxdoSelected = computed(() => selectedCollectionSourceSet.value.has(LINUXDO_SOURCE_PLATFORM));
+  const liepinSelected = computed(() => selectedCollectionSourceSet.value.has(LIEPIN_SOURCE_PLATFORM));
   const zhilianSelected = computed(() => selectedCollectionSourceSet.value.has(ZHILIAN_SOURCE_PLATFORM));
   function buildTaskForSource(sourcePlatform: JobSourcePlatform) {
+    if (sourcePlatform === LIEPIN_SOURCE_PLATFORM) {
+      return {
+        keywords: liepinKeywords.value,
+        source_platform: LIEPIN_SOURCE_PLATFORM,
+        filters: {
+          city: liepinCities.value,
+          salary: liepinSalaryText.value.trim(),
+          experience: liepinExperienceText.value.trim(),
+          degree: liepinDegreeText.value.trim(),
+          industry: liepinIndustryText.value.trim(),
+          company_type: liepinCompanyTypeText.value.trim(),
+          company_scale: liepinCompanyScaleText.value.trim(),
+          job_type: liepinJobTypeText.value.trim(),
+          publish_date: liepinPublishDateText.value.trim(),
+          sort_by: liepinSortByText.value.trim(),
+          raw_params: liepinRawParamsText.value.trim(),
+          keywords: liepinKeywords.value,
+          profile: filterProfileState.filterProfile.value,
+        },
+        limits: {
+          delayMs: delayMs.value,
+          maxPages: optionalNumber(liepinMaxPages.value) ?? DEFAULT_LIEPIN_MAX_PAGES,
+          maxJobs: optionalNumber(liepinMaxJobs.value),
+        },
+        mode: "auto",
+      };
+    }
     if (sourcePlatform === ZHILIAN_SOURCE_PLATFORM) {
       return {
         keywords: zhilianKeywords.value,
@@ -448,6 +511,18 @@ function createCrawlPageState() {
       }
       if ((optionalNumber(linuxdoMaxPages.value) ?? 0) <= 0) {
         return "LinuxDo 页数上限必须大于 0。";
+      }
+    }
+    if (source === LIEPIN_SOURCE_PLATFORM) {
+      if (liepinKeywords.value.length === 0) {
+        return "猎聘搜索关键词为空。请在猎聘配置中输入至少 1 个关键词。";
+      }
+      if ((optionalNumber(liepinMaxPages.value) ?? 0) <= 0) {
+        return "猎聘页数上限必须大于 0。";
+      }
+      const maxJobs = optionalNumber(liepinMaxJobs.value);
+      if (maxJobs !== null && maxJobs <= 0) {
+        return "猎聘岗位上限必须大于 0，或留空不限。";
       }
     }
     if (source === ZHILIAN_SOURCE_PLATFORM) {
@@ -617,6 +692,20 @@ function createCrawlPageState() {
       linuxdoRecentDays: optionalNumber(linuxdoRecentDays.value),
       linuxdoMaxPages: optionalNumber(linuxdoMaxPages.value) ?? DEFAULT_LINUXDO_MAX_PAGES,
       linuxdoMaxJobs: optionalNumber(linuxdoMaxJobs.value),
+      liepinKeywordsText: liepinKeywordsText.value,
+      liepinCityText: liepinCityText.value,
+      liepinSalaryText: liepinSalaryText.value,
+      liepinExperienceText: liepinExperienceText.value,
+      liepinDegreeText: liepinDegreeText.value,
+      liepinIndustryText: liepinIndustryText.value,
+      liepinCompanyTypeText: liepinCompanyTypeText.value,
+      liepinCompanyScaleText: liepinCompanyScaleText.value,
+      liepinJobTypeText: liepinJobTypeText.value,
+      liepinPublishDateText: liepinPublishDateText.value,
+      liepinSortByText: liepinSortByText.value,
+      liepinRawParamsText: liepinRawParamsText.value,
+      liepinMaxPages: optionalNumber(liepinMaxPages.value) ?? DEFAULT_LIEPIN_MAX_PAGES,
+      liepinMaxJobs: optionalNumber(liepinMaxJobs.value),
       zhilianKeywordsText: zhilianKeywordsText.value,
       zhilianCityText: zhilianCityText.value,
       zhilianSalaryText: zhilianSalaryText.value,
@@ -680,6 +769,22 @@ function createCrawlPageState() {
     linuxdoRecentDays.value = optionalNumber(config.linuxdoRecentDays);
     linuxdoMaxPages.value = optionalNumber(config.linuxdoMaxPages) ?? DEFAULT_LINUXDO_MAX_PAGES;
     linuxdoMaxJobs.value = optionalNumber(config.linuxdoMaxJobs) ?? 20;
+    liepinKeywordsText.value = textValue(config.liepinKeywordsText);
+    liepinCityText.value = textValue(config.liepinCityText);
+    liepinSalaryText.value = textValue(config.liepinSalaryText);
+    liepinExperienceText.value = textValue(config.liepinExperienceText);
+    liepinDegreeText.value = textValue(config.liepinDegreeText);
+    liepinIndustryText.value = textValue(config.liepinIndustryText);
+    liepinCompanyTypeText.value = textValue(config.liepinCompanyTypeText);
+    liepinCompanyScaleText.value = textValue(config.liepinCompanyScaleText);
+    liepinJobTypeText.value = textValue(config.liepinJobTypeText);
+    liepinPublishDateText.value = textValue(config.liepinPublishDateText);
+    liepinSortByText.value = textValue(config.liepinSortByText);
+    liepinRawParamsText.value = textValue(config.liepinRawParamsText);
+    liepinMaxPages.value = optionalNumber(config.liepinMaxPages) ?? DEFAULT_LIEPIN_MAX_PAGES;
+    liepinMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "liepinMaxJobs")
+      ? optionalNumber(config.liepinMaxJobs)
+      : DEFAULT_LIEPIN_MAX_JOBS;
     zhilianKeywordsText.value = textValue(config.zhilianKeywordsText);
     zhilianCityText.value = textValue(config.zhilianCityText);
     zhilianSalaryText.value = textValue(config.zhilianSalaryText);
@@ -726,6 +831,7 @@ function createCrawlPageState() {
 
   function openSelectedSourceSettings(): void {
     bossSettingsOpen.value = bossSelected.value;
+    liepinSettingsOpen.value = liepinSelected.value;
     v2exFeedSettingsOpen.value = v2exSelected.value;
     linuxdoSettingsOpen.value = linuxdoSelected.value;
     zhilianSettingsOpen.value = zhilianSelected.value;
@@ -1169,6 +1275,7 @@ function createCrawlPageState() {
     latestCollectionRun,
     selectedCollectionSourceLabel,
     bossSelected,
+    liepinSelected,
     v2exSelected,
     linuxdoSelected,
     zhilianSelected,
@@ -1189,6 +1296,22 @@ function createCrawlPageState() {
     linuxdoMaxPages,
     linuxdoMaxJobs,
     linuxdoKeywords,
+    liepinSettingsOpen,
+    liepinKeywordsText,
+    liepinCityText,
+    liepinSalaryText,
+    liepinExperienceText,
+    liepinDegreeText,
+    liepinIndustryText,
+    liepinCompanyTypeText,
+    liepinCompanyScaleText,
+    liepinJobTypeText,
+    liepinPublishDateText,
+    liepinSortByText,
+    liepinRawParamsText,
+    liepinMaxPages,
+    liepinMaxJobs,
+    liepinKeywords,
     zhilianSettingsOpen,
     zhilianKeywordsText,
     zhilianCityText,

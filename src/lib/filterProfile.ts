@@ -184,7 +184,7 @@ export function useFilterProfile() {
   });
   const sourcePlatformModeHint = computed(() => {
     const selected = normalizedSourcePlatforms.value;
-    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "允许 Boss、V2EX、LinuxDo、智联等已支持自动采集来源进入筛选和 Top 20；保存并重算后对已有岗位生效。";
+    if (sameSet(selected, DEFAULT_SOURCE_PLATFORMS)) return "允许 Boss、猎聘、V2EX、LinuxDo、智联等已支持自动采集来源进入筛选和 Top 20；保存并重算后对已有岗位生效。";
     if (sameSet(selected, BOSS_ONLY_SOURCE_PLATFORMS)) return "只允许 Boss 岗位进入筛选和 Top 20；保存并重算后对已有岗位生效。";
     if (sameSet(selected, MANUAL_IMPORT_SOURCE_PLATFORMS)) return "只允许非 Boss 保留来源岗位进入筛选和 Top 20；保存并重算后对已有岗位生效。";
     if (sameSet(selected, JOB_SOURCE_PLATFORM_OPTIONS.map((option) => option.value))) return "允许所有来源岗位进入筛选和 Top 20；保存并重算后生效。";

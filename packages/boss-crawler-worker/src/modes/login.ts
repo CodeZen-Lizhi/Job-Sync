@@ -309,6 +309,59 @@ async function runZhilianLoginMode(
   }
 }
 
+async function runLiepinLoginMode(
+  payload: LoginStartPayload,
+  ctx: ModeContext,
+): Promise<void> {
+  const loginUrl = "https://www.liepin.com/zhaopin/?key=Java&currentPage=0";
+  if (!payload.user_data_dir) {
+    throw new Error("猎聘登录需要可复用的浏览器资料目录。");
+  }
+
+  const { browser, page } = await launchBrowser({
+    headless: false,
+    executable_path: payload.executable_path,
+    user_data_dir: payload.user_data_dir,
+    stealth: false,
+    preserve_on_disconnect: true,
+  });
+
+  try {
+    await blockNavigation(page, { allow_domain_suffixes: ["liepin.com", "liepin.cn"] });
+    await page.goto(loginUrl, { waitUntil: "domcontentloaded" }).catch(() => undefined);
+    ctx.emit({
+      type: "LOGIN_STATUS",
+      payload: {
+        status: "captcha",
+        message: "已打开猎聘搜索页。请完成登录或安全验证，直到页面能看到岗位列表；完成后保持窗口打开，应用会保存浏览器资料用于后续采集。",
+      },
+    });
+    await delay(8000, ctx.signal).catch(() => undefined);
+    const cookies = await page.cookies().catch(() => []);
+    const local_storage = await readLocalStorage(page).catch(() => ({}));
+    const pageText = await page.evaluate(() => `${document.title}\n${document.body?.innerText ?? ""}\n${document.documentElement.innerHTML}`.slice(0, 8000)).catch(() => "");
+    const ready = /\/job\/|职位|Java|薪资|经验/u.test(pageText)
+      && !/安全验证|人机验证|滑块验证|访问过于频繁|请完成验证|captcha|acw_sc__v2/i.test(pageText);
+    if (ready) {
+      ctx.emit({
+        type: "COOKIE_COLLECTED",
+        payload: { source_platform: "liepin", cookies, local_storage },
+      });
+    }
+    ctx.emit({
+      type: "LOGIN_STATUS",
+      payload: {
+        status: ready ? "valid" : "captcha",
+        message: ready
+          ? "已保存猎聘浏览器资料，搜索页可读取岗位列表。后续采集会复用这个 profile。"
+          : "猎聘搜索页仍未就绪。请在打开的窗口内完成验证，直到能看到岗位列表后再刷新状态或重新打开。",
+      },
+    });
+  } finally {
+    await browser.disconnect().catch(() => undefined);
+  }
+}
+
 export async function runLoginMode(payload: LoginStartPayload, baseCtx: ModeContext): Promise<void> {
   const sourcePlatform = payload.source_platform?.trim().toLowerCase() || "boss";
   const verificationTracker = createHumanVerificationTracker(baseCtx);
@@ -319,6 +372,8 @@ export async function runLoginMode(payload: LoginStartPayload, baseCtx: ModeCont
       level: "info",
       message: sourcePlatform === "linuxdo"
         ? "启动浏览器，等待用户完成 LinuxDo 登录。后续采集会复用同一浏览器资料。"
+        : sourcePlatform === "liepin"
+          ? "启动浏览器，等待用户完成猎聘登录或安全验证。后续采集会复用同一浏览器资料。"
         : sourcePlatform === "zhilian"
           ? "启动浏览器，等待用户完成智联登录或安全验证。后续采集会复用同一浏览器资料。"
         : "启动浏览器，等待用户登录 Boss。",
@@ -337,6 +392,15 @@ export async function runLoginMode(payload: LoginStartPayload, baseCtx: ModeCont
   if (sourcePlatform === "zhilian") {
     try {
       await runZhilianLoginMode(payload, ctx);
+    } finally {
+      ctx.emit({ type: "FINISHED" });
+    }
+    return;
+  }
+
+  if (sourcePlatform === "liepin") {
+    try {
+      await runLiepinLoginMode(payload, ctx);
     } finally {
       ctx.emit({ type: "FINISHED" });
     }

@@ -75,3 +75,15 @@ pub fn zhilian_local_storage_path(app_data_dir: &Path) -> PathBuf {
 pub fn zhilian_browser_profile_path(app_data_dir: &Path) -> PathBuf {
     storage_dir(app_data_dir).join("zhilian-browser-profile")
 }
+
+pub fn liepin_cookies_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("liepin-cookies.json")
+}
+
+pub fn liepin_local_storage_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("liepin-local-storage.json")
+}
+
+pub fn liepin_browser_profile_path(app_data_dir: &Path) -> PathBuf {
+    storage_dir(app_data_dir).join("liepin-browser-profile")
+}

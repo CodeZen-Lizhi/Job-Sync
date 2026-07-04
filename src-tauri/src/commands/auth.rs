@@ -31,6 +31,20 @@ fn has_zhilian_session(app_data_dir: &std::path::Path) -> bool {
         && storage::zhilian_local_storage_path(app_data_dir).is_file()
 }
 
+fn has_liepin_session(app_data_dir: &std::path::Path) -> bool {
+    if !storage::liepin_browser_profile_path(app_data_dir).is_dir() {
+        return false;
+    }
+    let Ok(Some(cookies)) = storage::read_json(&storage::liepin_cookies_path(app_data_dir)) else {
+        return false;
+    };
+    cookies
+        .as_array()
+        .map(|items| !items.is_empty())
+        .unwrap_or(false)
+        && storage::liepin_local_storage_path(app_data_dir).is_file()
+}
+
 fn normalize_login_platform(source_platform: Option<&str>) -> Result<&'static str, String> {
     match source_platform
         .map(str::trim)
@@ -40,6 +54,7 @@ fn normalize_login_platform(source_platform: Option<&str>) -> Result<&'static st
         .as_str()
     {
         "boss" => Ok("boss"),
+        "liepin" => Ok("liepin"),
         "linuxdo" => Ok("linuxdo"),
         "zhilian" => Ok("zhilian"),
         other => Err(format!("当前平台暂不支持登录：{other}")),
@@ -54,6 +69,7 @@ pub fn get_login_status(
     let platform = normalize_login_platform(source_platform.as_deref())?;
     Ok(match platform {
         "boss" => has_boss_session(sidecar.app_data_dir()),
+        "liepin" => has_liepin_session(sidecar.app_data_dir()),
         "linuxdo" => has_linuxdo_session(sidecar.app_data_dir()),
         "zhilian" => has_zhilian_session(sidecar.app_data_dir()),
         _ => false,
@@ -63,6 +79,7 @@ pub fn get_login_status(
 fn build_login_payload(app_data_dir: &std::path::Path, platform: &str) -> LoginStartPayload {
     let user_data_dir = match platform {
         "boss" => Some(storage::boss_browser_profile_path(app_data_dir)),
+        "liepin" => Some(storage::liepin_browser_profile_path(app_data_dir)),
         "linuxdo" => Some(storage::linuxdo_browser_profile_path(app_data_dir)),
         "zhilian" => Some(storage::zhilian_browser_profile_path(app_data_dir)),
         _ => None,
@@ -151,6 +168,32 @@ mod tests {
     }
 
     #[test]
+    fn liepin_login_status_requires_profile_and_non_empty_cookies() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+
+        storage::write_json(&storage::liepin_cookies_path(app_data_dir), &json!([]))
+            .expect("write empty cookies");
+        storage::write_json(
+            &storage::liepin_local_storage_path(app_data_dir),
+            &json!({}),
+        )
+        .expect("write local storage");
+        assert!(!has_liepin_session(app_data_dir));
+
+        std::fs::create_dir_all(storage::liepin_browser_profile_path(app_data_dir))
+            .expect("create profile");
+        assert!(!has_liepin_session(app_data_dir));
+
+        storage::write_json(
+            &storage::liepin_cookies_path(app_data_dir),
+            &json!([{ "name": "XSRF-TOKEN", "value": "token" }]),
+        )
+        .expect("write cookies");
+        assert!(has_liepin_session(app_data_dir));
+    }
+
+    #[test]
     fn login_platform_defaults_to_boss_and_rejects_unknown() {
         assert_eq!(normalize_login_platform(None).expect("default"), "boss");
         assert_eq!(
@@ -161,7 +204,11 @@ mod tests {
             normalize_login_platform(Some("zhilian")).expect("zhilian"),
             "zhilian"
         );
-        assert!(normalize_login_platform(Some("liepin")).is_err());
+        assert_eq!(
+            normalize_login_platform(Some("liepin")).expect("liepin"),
+            "liepin"
+        );
+        assert!(normalize_login_platform(Some("maimai")).is_err());
     }
 
     #[test]
@@ -206,6 +253,22 @@ mod tests {
             .to_string_lossy()
             .to_string();
         assert_eq!(payload.source_platform.as_deref(), Some("zhilian"));
+        assert_eq!(
+            payload.user_data_dir.as_deref(),
+            Some(expected_user_data_dir.as_str())
+        );
+    }
+
+    #[test]
+    fn liepin_login_payload_uses_liepin_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+
+        let payload = build_login_payload(app_data_dir, "liepin");
+        let expected_user_data_dir = storage::liepin_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(payload.source_platform.as_deref(), Some("liepin"));
         assert_eq!(
             payload.user_data_dir.as_deref(),
             Some(expected_user_data_dir.as_str())

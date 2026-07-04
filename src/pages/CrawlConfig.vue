@@ -3,7 +3,7 @@ import { defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
 
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
-import { BOSS_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
+import { BOSS_SOURCE_PLATFORM, LIEPIN_SOURCE_PLATFORM, LINUXDO_SOURCE_PLATFORM, V2EX_SOURCE_PLATFORM, ZHILIAN_SOURCE_PLATFORM, type JobSourcePlatform } from "../lib/crawl";
 import { runAfterInitialPaint } from "../lib/defer";
 import { useCrawlPage } from "../lib/useCrawlPage";
 
@@ -34,6 +34,7 @@ const {
   selectedCollectionSources,
   selectedCollectionSourceLabel,
   bossSelected,
+  liepinSelected,
   v2exSelected,
   linuxdoSelected,
   zhilianSelected,
@@ -54,6 +55,22 @@ const {
   linuxdoMaxPages,
   linuxdoMaxJobs,
   linuxdoKeywords,
+  liepinSettingsOpen,
+  liepinKeywordsText,
+  liepinCityText,
+  liepinSalaryText,
+  liepinExperienceText,
+  liepinDegreeText,
+  liepinIndustryText,
+  liepinCompanyTypeText,
+  liepinCompanyScaleText,
+  liepinJobTypeText,
+  liepinPublishDateText,
+  liepinSortByText,
+  liepinRawParamsText,
+  liepinMaxPages,
+  liepinMaxJobs,
+  liepinKeywords,
   zhilianSettingsOpen,
   zhilianKeywordsText,
   zhilianCityText,
@@ -144,6 +161,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
   }
   selectedCollectionSources.value = [...selectedCollectionSources.value, value];
   if (value === BOSS_SOURCE_PLATFORM) bossSettingsOpen.value = true;
+  if (value === LIEPIN_SOURCE_PLATFORM) liepinSettingsOpen.value = true;
   if (value === V2EX_SOURCE_PLATFORM) v2exFeedSettingsOpen.value = true;
   if (value === LINUXDO_SOURCE_PLATFORM) linuxdoSettingsOpen.value = true;
   if (value === ZHILIAN_SOURCE_PLATFORM) zhilianSettingsOpen.value = true;
@@ -545,6 +563,84 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             <input v-model.number="linuxdoMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
           </label>
           <div class="md:col-span-2 text-xs text-content-muted">关键词：{{ linuxdoKeywords.length > 0 ? linuxdoKeywords.join("、") : "仅用招聘信号识别" }}</div>
+        </div>
+      </section>
+
+      <section v-if="liepinSelected" class="ui-panel overflow-hidden">
+        <button
+          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+          :class="liepinSettingsOpen ? 'border-b border-border/90' : ''"
+          type="button"
+          @click="liepinSettingsOpen = !liepinSettingsOpen"
+        >
+          <span class="space-y-1">
+            <span class="block text-sm font-semibold text-content-primary">猎聘</span>
+            <span class="block text-xs text-content-muted">连接一次 / 后台复用 profile</span>
+          </span>
+          <span class="text-xs text-content-muted">{{ liepinSettingsOpen ? "收起" : "展开" }}</span>
+        </button>
+
+        <div v-if="liepinSettingsOpen" class="grid gap-3 p-4 md:grid-cols-3">
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">关键词</div>
+            <textarea v-model="liepinKeywordsText" class="ui-textarea h-20 w-full" placeholder="Go 远程&#10;SRE&#10;Kubernetes" />
+            <div class="text-[11px] leading-5 text-content-muted">一行一个关键词；采集会后台复用设置页连接过的猎聘 profile 读取搜索页。</div>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">城市 / 地区</div>
+            <input v-model="liepinCityText" class="ui-input w-full" placeholder="可留空；如 北京、上海、深圳 或 010、020" />
+            <div class="text-[11px] leading-5 text-content-muted">支持多个城市或猎聘城市编码，用换行、逗号或顿号分隔；留空则使用平台默认范围。</div>
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">薪资</div>
+            <input v-model="liepinSalaryText" class="ui-input w-full" placeholder="猎聘薪资编码或文本" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">经验</div>
+            <input v-model="liepinExperienceText" class="ui-input w-full" placeholder="如 3-5年 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">学历</div>
+            <input v-model="liepinDegreeText" class="ui-input w-full" placeholder="如 本科 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">行业</div>
+            <input v-model="liepinIndustryText" class="ui-input w-full" placeholder="公司行业编码或文本" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">公司性质</div>
+            <input v-model="liepinCompanyTypeText" class="ui-input w-full" placeholder="民营 / 外企 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">公司规模</div>
+            <input v-model="liepinCompanyScaleText" class="ui-input w-full" placeholder="100-299人 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">职位类型</div>
+            <input v-model="liepinJobTypeText" class="ui-input w-full" placeholder="职位类别编码或文本" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">发布时间</div>
+            <input v-model="liepinPublishDateText" class="ui-input w-full" placeholder="如 7 / 编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">排序</div>
+            <input v-model="liepinSortByText" class="ui-input w-full" placeholder="默认相关度；可填排序编码" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">页数上限</div>
+            <input v-model.number="liepinMaxPages" type="number" min="1" step="1" class="ui-input w-full" />
+          </label>
+          <label class="space-y-1">
+            <div class="text-xs font-medium text-content-muted">入库上限</div>
+            <input v-model.number="liepinMaxJobs" type="number" min="1" step="1" class="ui-input w-full" placeholder="不限" />
+          </label>
+          <label class="space-y-1 md:col-span-3">
+            <div class="text-xs font-medium text-content-muted">高级 URL 参数</div>
+            <textarea v-model="liepinRawParamsText" class="ui-textarea h-16 w-full" placeholder="可粘完整搜索 URL，或一行一个参数，例如 salary=30$50&workYear=3$5" />
+            <div class="text-[11px] leading-5 text-content-muted">用于猎聘参数变化或复制搜索页查询串；同名参数会覆盖上面的快捷字段。</div>
+          </label>
+          <div class="md:col-span-3 text-xs text-content-muted">关键词：{{ liepinKeywords.length > 0 ? liepinKeywords.join("、") : "尚未配置" }}</div>
         </div>
       </section>
 

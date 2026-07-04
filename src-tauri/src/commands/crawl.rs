@@ -16,6 +16,10 @@ fn session_storage_paths(
     source_platform: &str,
 ) -> (std::path::PathBuf, std::path::PathBuf) {
     match normalize_collection_platform(Some(source_platform)).as_str() {
+        "liepin" => (
+            storage::liepin_cookies_path(app_data_dir),
+            storage::liepin_local_storage_path(app_data_dir),
+        ),
         "linuxdo" => (
             storage::linuxdo_cookies_path(app_data_dir),
             storage::linuxdo_local_storage_path(app_data_dir),
@@ -91,6 +95,7 @@ fn collection_browser_profile_path(
     let normalized_platform = normalize_collection_platform(Some(source_platform));
     match normalized_platform.as_str() {
         "boss" => Some(storage::boss_browser_profile_path(app_data_dir)),
+        "liepin" => Some(storage::liepin_browser_profile_path(app_data_dir)),
         "linuxdo" => Some(storage::linuxdo_browser_profile_path(app_data_dir)),
         "zhilian" => Some(storage::zhilian_browser_profile_path(app_data_dir)),
         _ => None,
@@ -101,7 +106,7 @@ fn collection_browser_profile_path(
 fn collection_uses_optional_session(source_platform: &str) -> bool {
     matches!(
         normalize_collection_platform(Some(source_platform)).as_str(),
-        "boss" | "v2ex" | "linuxdo" | "zhilian"
+        "boss" | "v2ex" | "linuxdo" | "zhilian" | "liepin"
     )
 }
 
@@ -272,16 +277,31 @@ mod tests {
     }
 
     #[test]
+    fn liepin_collection_uses_liepin_browser_profile() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        let expected = storage::liepin_browser_profile_path(app_data_dir)
+            .to_string_lossy()
+            .to_string();
+
+        assert_eq!(
+            collection_browser_profile_path(app_data_dir, "liepin").as_deref(),
+            Some(expected.as_str())
+        );
+    }
+
+    #[test]
     fn boss_collection_can_start_with_optional_session() {
         assert!(collection_uses_optional_session("boss"));
         assert!(collection_uses_optional_session(" Boss "));
         assert!(collection_uses_optional_session("v2ex"));
         assert!(collection_uses_optional_session(" V2EX "));
         assert!(collection_uses_optional_session("linuxdo"));
+        assert!(collection_uses_optional_session("liepin"));
         assert!(collection_uses_optional_session(" LinuxDo "));
         assert!(collection_uses_optional_session("zhilian"));
         assert!(collection_uses_optional_session(" ZhiLian "));
-        assert!(!collection_uses_optional_session("liepin"));
+        assert!(!collection_uses_optional_session("maimai"));
     }
 
     #[test]
@@ -327,6 +347,29 @@ mod tests {
         assert_eq!(
             session.cookies,
             serde_json::json!([{ "name": "ZP_TOKEN", "value": "zhilian-token", "domain": ".zhaopin.com" }])
+        );
+    }
+
+    #[test]
+    fn liepin_optional_session_reads_liepin_cookie_snapshot() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let app_data_dir = tmp.path();
+        storage::write_json(
+            &storage::boss_cookies_path(app_data_dir),
+            &serde_json::json!([{ "name": "boss", "value": "wrong" }]),
+        )
+        .expect("write boss cookies");
+        storage::write_json(
+            &storage::liepin_cookies_path(app_data_dir),
+            &serde_json::json!([{ "name": "XSRF-TOKEN", "value": "liepin-token", "domain": ".liepin.com" }]),
+        )
+        .expect("write liepin cookies");
+
+        let session = load_session_optional(app_data_dir, "liepin");
+
+        assert_eq!(
+            session.cookies,
+            serde_json::json!([{ "name": "XSRF-TOKEN", "value": "liepin-token", "domain": ".liepin.com" }])
         );
     }
 }

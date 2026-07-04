@@ -107,6 +107,7 @@ const sourcesLoading = ref(false);
 const sourceUpdatingPlatform = ref<string | null>(null);
 const loginStatusByPlatform = ref<Record<string, boolean | null>>({
   boss: null,
+  liepin: null,
   linuxdo: null,
   zhilian: null,
 });
@@ -135,8 +136,8 @@ const previewJobSources = JOB_SOURCE_PLATFORM_OPTIONS.map((source) => ({
   updated_at: "预览",
 }));
 const visibleJobSources = computed(() => (jobSources.value.length > 0 ? jobSources.value : previewJobSources));
-const loginCapablePlatforms = new Set(["boss", "linuxdo", "zhilian"]);
-const automatedLoginPlatforms = new Set(["boss", "linuxdo", "zhilian"]);
+const loginCapablePlatforms = new Set(["boss", "liepin", "linuxdo", "zhilian"]);
+const automatedLoginPlatforms = new Set(["boss", "liepin", "linuxdo", "zhilian"]);
 
 const PROVIDER_PRESETS = {
   openai_compatible: {
@@ -238,6 +239,7 @@ function clearSavedTelegramConfig(): void {
 function automaticCollectionLabel(source: JobSourceEntry): string {
   if (source.adapter_kind === "boss") return "支持自动采集";
   if (source.adapter_kind === "feed") return "支持自动采集";
+  if (source.adapter_kind === "liepin") return "支持自动采集";
   if (source.adapter_kind === "zhilian") return "支持自动采集";
   return "自动采集预留";
 }
@@ -249,7 +251,7 @@ function sourceEnabledBadgeClass(source: JobSourceEntry): string {
 }
 
 function automaticCollectionBadgeClass(source: JobSourceEntry): string {
-  return source.adapter_kind === "boss" || source.adapter_kind === "feed" || source.adapter_kind === "zhilian"
+  return source.adapter_kind === "boss" || source.adapter_kind === "feed" || source.adapter_kind === "liepin" || source.adapter_kind === "zhilian"
     ? "bg-cyan-50 text-cyan-700 ring-cyan-200"
     : "bg-amber-50 text-amber-700 ring-amber-200";
 }
@@ -257,6 +259,9 @@ function automaticCollectionBadgeClass(source: JobSourceEntry): string {
 function platformCapabilityHint(source: JobSourceEntry): string {
   if (source.adapter_kind === "boss") {
     return "启用后可在采集配置中作为本次自动采集来源；登录态在本页按平台管理。";
+  }
+  if (source.platform === "liepin") {
+    return "猎聘搜索页会复用独立浏览器 profile；请点“打开”完成一次登录或安全验证，后续采集后台复用同一 profile。";
   }
   if (source.platform === "linuxdo") {
     return "LinuxDo 受 Cloudflare 保护；请点“打开”在应用内浏览器里完成登录，采集会复用同一 profile。";
@@ -277,6 +282,12 @@ function platformLoginLabel(source: JobSourceEntry): string {
     if (status === false) return "LinuxDo 未就绪";
     return "浏览器登录";
   }
+  if (source.platform === "liepin") {
+    const status = loginStatusByPlatform.value[source.platform] ?? null;
+    if (status === true) return "猎聘已可采集";
+    if (status === false) return "猎聘未就绪";
+    return "浏览器验证";
+  }
   if (source.platform === "zhilian") {
     const status = loginStatusByPlatform.value[source.platform] ?? null;
     if (status === true) return "智联已可采集";
@@ -294,6 +305,12 @@ function platformLoginLabel(source: JobSourceEntry): string {
 
 function platformLoginBadgeClass(source: JobSourceEntry): string {
   if (source.platform === "linuxdo") {
+    const status = loginStatusByPlatform.value[source.platform] ?? null;
+    if (status === true) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    if (status === false) return "bg-rose-50 text-rose-700 ring-rose-200";
+    return "bg-cyan-50 text-cyan-700 ring-cyan-200";
+  }
+  if (source.platform === "liepin") {
     const status = loginStatusByPlatform.value[source.platform] ?? null;
     if (status === true) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
     if (status === false) return "bg-rose-50 text-rose-700 ring-rose-200";
@@ -323,7 +340,7 @@ function liveLoginMessageClass(): string {
 function loginPlatformName(platform: string): string {
   const normalized = platform.trim().toLowerCase();
   return visibleJobSources.value.find((source) => source.platform === normalized)?.display_name
-    || (normalized === "boss" ? "Boss 直聘" : normalized === "linuxdo" ? "LinuxDo" : normalized === "zhilian" ? "智联招聘" : normalized);
+    || (normalized === "boss" ? "Boss 直聘" : normalized === "liepin" ? "猎聘" : normalized === "linuxdo" ? "LinuxDo" : normalized === "zhilian" ? "智联招聘" : normalized);
 }
 
 async function loadModels(): Promise<void> {
@@ -388,7 +405,7 @@ async function refreshPlatformLogin(sourcePlatform = "boss", showMessage = false
     const status = await invoke<boolean>("get_login_status", { sourcePlatform: platform });
     loginStatusByPlatform.value = { ...loginStatusByPlatform.value, [platform]: status };
     if (showMessage) {
-      const statusLabel = platform === "linuxdo" || platform === "zhilian"
+      const statusLabel = platform === "linuxdo" || platform === "zhilian" || platform === "liepin"
         ? status ? "已可采集" : "未就绪"
         : status ? "已登录" : "未登录";
       loginMessage.value = `${loginPlatformName(platform)} 登录状态已刷新：${statusLabel}`;

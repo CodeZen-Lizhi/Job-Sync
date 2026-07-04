@@ -47,6 +47,9 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
         .any(|item| item.as_str() == Some("boss")));
     assert!(source_platforms
         .iter()
+        .any(|item| item.as_str() == Some("liepin")));
+    assert!(source_platforms
+        .iter()
         .any(|item| item.as_str() == Some("v2ex")));
     assert!(source_platforms
         .iter()
@@ -269,7 +272,7 @@ fn existing_default_filter_profile_with_missing_or_empty_preferences_is_upgraded
 }
 
 #[test]
-fn existing_default_filter_profile_with_legacy_boss_only_source_adds_v2ex() {
+fn existing_default_filter_profile_with_legacy_boss_only_source_upgrades_automatic_sources() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");
     let conn = init_db(&app_data_dir).expect("init db");
@@ -298,6 +301,7 @@ fn existing_default_filter_profile_with_legacy_boss_only_source_adds_v2ex() {
         json_string_list(&profile.profile_json, "sourcePlatforms"),
         vec![
             "boss".to_string(),
+            "liepin".to_string(),
             "v2ex".to_string(),
             "linuxdo".to_string(),
             "zhilian".to_string()
@@ -1857,7 +1861,7 @@ fn init_db_does_not_recompute_existing_company_score_cache() {
 }
 
 #[test]
-fn init_db_seeds_job_source_registry_with_manual_import_adapters() {
+fn init_db_seeds_job_source_registry_with_platform_adapters() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");
     let conn = init_db(&app_data_dir).expect("init db");
@@ -1889,13 +1893,18 @@ fn init_db_seeds_job_source_registry_with_manual_import_adapters() {
                 && adapter_kind == "boss"
                 && *enabled == 1
         }));
-    for platform in ["liepin", "maimai"] {
+    for platform in ["maimai"] {
         assert!(sources
             .iter()
             .any(|(source_platform, _, adapter_kind, enabled)| {
                 source_platform == platform && adapter_kind == "manual_import" && *enabled == 1
             }));
     }
+    assert!(sources
+        .iter()
+        .any(|(source_platform, _, adapter_kind, enabled)| {
+            source_platform == "liepin" && adapter_kind == "liepin" && *enabled == 1
+        }));
     assert!(sources
         .iter()
         .any(|(source_platform, _, adapter_kind, enabled)| {
@@ -1956,7 +1965,7 @@ fn init_db_exposes_supported_job_source_adapter_spec() {
     assert_eq!(spec.adapter_kind, "boss");
     assert!(spec.enabled_by_default);
     assert!(specs.iter().any(|spec| spec.platform == "liepin"
-        && spec.adapter_kind == "manual_import"
+        && spec.adapter_kind == "liepin"
         && spec.enabled_by_default));
     assert!(specs.iter().any(|spec| spec.platform == "zhilian"
         && spec.adapter_kind == "zhilian"

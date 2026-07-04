@@ -22,6 +22,7 @@
     - V2EX: `feed_urls?: string[]`, `sort_by?: "published_desc" | "updated_desc"`, `recent_days?: number | null`
     - LinuxDo: `category_url?: string`, `sort_by?: "latest" | "created"`, `recent_days?: number | null`, `keywords?: string[]`
     - Zhilian: `city?: string | string[]`, `keywords?: string[]`, optional pass-through search filters `salary`, `experience`, `degree`, `industry`, `company_type`, `company_scale`, `job_type`, `publish_date`, `sort_by`, and `raw_params`
+    - Liepin: `city?: string | string[]`, `keywords?: string[]`, optional pass-through search filters `salary`, `experience`, `degree`, `industry`, `company_type`, `company_scale`, `job_type`, `publish_date`, `sort_by`, and `raw_params`
   - `limits: object`
   - `mode: "auto"`
 - Tauri command:
@@ -114,12 +115,28 @@
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains detail text when available, or list-level evidence plus `详情暂未抓取，需打开原岗位确认。`
   - only applies hard validity checks before writing to `job`, such as requiring a stable Zhilian job id and title; user preferences, exclusions, and AI judgement run after ingestion
   - post-collection profile and AI judgement own soft exclusion decisions after Zhilian entries are written
+- Liepin:
+  - `source_platform = "liepin"`
+  - uses an isolated persistent browser profile (`liepin-browser-profile`) plus separate `liepin-cookies.json` and `liepin-local-storage.json`; Liepin collection must not carry Boss, LinuxDo, or Zhilian cookies
+  - Liepin settings/login should open a real search page and mark the profile valid only after the page can expose job-list evidence; opening a generic home page is not enough
+  - Liepin collection must not pause inside a crawl for manual login/captcha verification. Missing, expired, or verification-blocked profiles are terminal crawl errors that tell the user to reconnect Liepin from Settings
+  - collection is DOM/profile-first; public HTTP probes are optional because Liepin search results can be frontend-rendered behind `acw_tc` / `XSRF-TOKEN` cookies
+  - supports `filters.city` as a pass-through city/region text/id or list; multiple cities are split by newline, comma, Chinese comma, or Chinese enumeration comma and collected sequentially per keyword
+  - supports optional pass-through search filters for salary, experience, degree, industry, company type/scale, job type, publish date, and sort order; `raw_params` may carry copied Liepin URL query parameters and must override same-name shortcut fields when present
+  - supports `limits.maxPages` as a positive page cap per keyword/city variant and `limits.maxJobs` as inserted job cap enforced by the sidecar run tracker; duplicate/update normalized events must not consume the inserted-job cap
+  - recognizes security verification, login pages, 401/403, and browser verification timeout as explicit blocked states; a Liepin run with no parsed stable jobs must emit `ERROR` instead of `FINISHED` alone
+  - emits `JOB_NORMALIZED_CAPTURED`
+  - stores `encrypt_job_id = "liepin:<stableId>"`
+  - stores `dedup_key = <stableId>`
+  - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains detail text when available, or list-level evidence plus `详情暂未抓取，需打开原岗位确认。`
+  - only applies hard validity checks before writing to `job`, such as requiring a stable Liepin job id and title; user preferences, exclusions, and AI judgement run after ingestion
+  - post-collection profile and AI judgement own soft exclusion decisions after Liepin entries are written
 - Collection limits:
   - For normalized feed adapters, `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates.
   - For the Boss adapter, `limits.maxJobs` follows the same inserted-job meaning and must not force detail endpoint requests. The sidecar stops the worker once inserted rows reach the cap.
   - the sidecar may stop a worker after counting an inserted job, and duplicate or updated rows must not consume the limit
 - Post-collection AI judgement:
-  - after Boss, V2EX, LinuxDo, or Zhilian automatic collection finishes, the frontend must run `recompute_ai_post_collection_judgement` only for job ids newly inserted by the just-finished collection runs; duplicate and updated jobs from the run must not be re-AI-judged or included in the Telegram notification
+  - after Boss, V2EX, LinuxDo, Liepin, or Zhilian automatic collection finishes, the frontend must run `recompute_ai_post_collection_judgement` only for job ids newly inserted by the just-finished collection runs; duplicate and updated jobs from the run must not be re-AI-judged or included in the Telegram notification
   - manual "save and recompute normal+AI" remains the full-library path because profile rules may have changed
   - persisted `reason_json.ai_judgement.status` is the UI status source when present: `passed`, `rejected`, `pending_confirmation`, or `failed`
   - missing `reason_json.ai_judgement` means the UI status is `pending_review`; in-flight frontend recompute may temporarily show `processing`
@@ -130,6 +147,7 @@
   - Boss adapter kind is `boss`
   - V2EX adapter kind is `feed`
   - LinuxDo adapter kind is `feed`
+  - Liepin adapter kind is `liepin`
   - Zhilian adapter kind is `zhilian`
   - other non-Boss platforms remain `manual_import` until their automatic adapter exists
   - enabled `manual_import` platforms may be shown in the collection source selector so users can save intended source scope, but automatic collection must skip them with a clear runtime log until an adapter exists
@@ -139,7 +157,7 @@
 - Filter profile:
   - `sourcePlatforms` means allowed candidate sources after jobs are already in the library
   - it must not decide whether raw collectable jobs enter `job`
-  - the default filter profile must include currently supported automatic collection sources (`boss`, `v2ex`, `linuxdo`, `zhilian`) so a platform that can be collected is not hidden by source gating immediately after ingestion
+  - the default filter profile must include currently supported automatic collection sources (`boss`, `liepin`, `v2ex`, `linuxdo`, `zhilian`) so a platform that can be collected is not hidden by source gating immediately after ingestion
   - Boss-only filtering remains an explicit user-selected narrowing mode, not the default
 - Multi-source run:
   - UI stores all selected collectable sources, not a single `selectedCollectionSource`
@@ -172,6 +190,11 @@
 - Zhilian selected with empty keywords -> frontend blocks start with a clear keyword-required message.
 - Zhilian public search or detail returns EdgeOne/security verification/login/401/403 -> worker retries through the Zhilian browser profile when available; if the profile is missing or still blocked, it emits an explicit reconnect error instead of reporting success or waiting inside the crawl.
 - Zhilian detail blocked but list job id, title, and URL are stable -> worker may write a list-level normalized job with missing-detail evidence.
+- Liepin selected without stored Boss session -> command still starts with an empty session payload and a Liepin browser profile path.
+- Liepin selected with empty keywords -> frontend blocks start with a clear keyword-required message.
+- Liepin selected with missing `liepin-browser-profile` -> worker emits an explicit reconnect error and emits no normalized fake job.
+- Liepin search or detail returns security verification/login/401/403 -> worker uses the Liepin browser profile when available; if the profile is missing or still blocked before any stable job is parsed, it emits an explicit reconnect error instead of reporting success or waiting inside the crawl.
+- Liepin detail blocked but list job id, title, and URL are stable -> worker may write a list-level normalized job with missing-detail evidence.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
@@ -201,6 +224,9 @@
 - Good: Zhilian public requests hit security verification, the worker opens the reusable Zhilian browser profile in the background and emits normalized jobs once the PC search page exposes `jobdetail` cards.
 - Good: a readable Zhilian search page shows header login/register links while also showing filters or job cards, and the worker treats it as a readable search page rather than a login block.
 - Good: repeated Zhilian normalized jobs update or duplicate existing rows without consuming the inserted-job `maxJobs` cap.
+- Good: user selects Liepin, enters keywords and an optional city, worker reuses `liepin-browser-profile`, emits normalized `liepin:<stableId>` jobs, and the sidecar inserts them into the unified library using the normalized path.
+- Good: Liepin detail is blocked after list parse, and the job is still inserted with a clear missing-detail marker for AI/pending confirmation.
+- Good: repeated Liepin normalized jobs update or duplicate existing rows without consuming the inserted-job `maxJobs` cap.
 - Base: user selects Boss, existing Boss payload and browser-session collection keep working.
 - Base: user leaves Boss limits at defaults, the task sends `limits.maxPages = 3`, `limits.maxJobs = 100`, `limits.bossDetailFetchLimit = 0`, and the worker still keeps `pageSize = 15`.
 - Good: user lowers Boss page cap to 1 or clears the job cap, and the payload changes only `limits` without adding unverified Boss sort/filter parameters.
@@ -212,6 +238,7 @@
 - Bad: default filter profile allows only Boss while V2EX is an enabled automatic source; users see collected V2EX jobs blocked by "source not allowed".
 - Bad: Zhilian remains registered as `manual_import` after the automatic worker adapter exists, or collected Zhilian jobs are hidden by default source filters.
 - Bad: Zhilian worker stops after emitting `maxJobs` raw normalized events even when those events are duplicates or updates.
+- Bad: Liepin remains registered as `manual_import`, reuses another platform's cookies/profile, or reports `FINISHED` without `JOB_NORMALIZED_CAPTURED` or `ERROR`.
 - Bad: V2EX collection runs `https://www.v2ex.com/go/jobs` when the URL input is empty.
 - Bad: a V2EX feed URL is rewritten into a paginated node URL.
 
@@ -243,21 +270,28 @@
   - Zhilian PC search parser keeps adjacent job cards isolated and removes list-action noise such as app download, chat, and favorite controls from fallback text.
   - Zhilian detail parser extracts readable JD text and detects security/login verification pages.
   - Zhilian normalized payload stores `source_platform = "zhilian"`, `encrypt_job_id = "zhilian:<stableId>"`, and stable `dedup_key`.
+  - Liepin parser extracts stable ids from detail URLs and common query fields.
+  - Liepin search HTML parser normalizes title, company, city, salary, experience, degree, URL fields, and list-level fallback text.
+  - Liepin detail parser extracts readable JD text and detects security/login verification pages.
+  - Liepin normalized payload stores `source_platform = "liepin"`, `encrypt_job_id = "liepin:<stableId>"`, and stable `dedup_key`.
+  - Liepin mode with no browser profile emits an `ERROR` telling the user to reconnect from Settings and emits no `JOB_NORMALIZED_CAPTURED`.
   - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
   - Boss natural job-list capture exposes `capture_source = "natural"`; DOM fallback exposes `"dom_fallback"`; page-context API fallback exposes `"api_fallback"`.
   - Boss HTML login/security-check responses are treated as recoverable risk/login states.
   - Boss empty-list / missing-stable-id runs emit `ERROR` before `FINISHED`.
 - Rust tests:
-  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo as `feed`, Zhilian as `zhilian`, and reserved platforms as `manual_import`.
+  - `job_sources` seeds Boss as `boss`, V2EX/LinuxDo as `feed`, Liepin as `liepin`, Zhilian as `zhilian`, and reserved platforms as `manual_import`.
   - normalized V2EX upsert writes `source_platform`, `source_url`, `dedup_key`, display fields, `jd_text`, and `job_detail_raw.zp_data_json` with `jobInfo.postDescription`.
-  - default filter profile includes V2EX/LinuxDo/Zhilian and legacy Boss-only default profile upgrades to all current automatic collection sources.
+  - collection start and login payloads use `liepin-browser-profile`, `liepin-cookies.json`, and `liepin-local-storage.json` for Liepin, never Boss or Zhilian paths.
+  - default filter profile includes Liepin/V2EX/LinuxDo/Zhilian and legacy Boss-only default profile upgrades to all current automatic collection sources.
 - Frontend/browser smoke:
   - scheduled collection initialization loads collection sources and the default filter profile before loading collection config and arranging the timer.
   - collection config source selector can select Boss and V2EX together.
+  - collection config shows the Liepin dedicated panel only when Liepin is selected and blocks empty Liepin keywords / non-positive limits.
   - Boss city selector supports multiple selected dictionary cities and explains that collection runs city variants sequentially.
   - V2EX pagination section appears when V2EX is selected among selected sources.
-  - execution page labels V2EX as the automatic source.
-  - settings page shows V2EX automatic collection and no-login capability.
+  - execution page labels V2EX and Liepin as automatic sources.
+  - settings page shows Liepin as automatic collection capable and login/profile managed.
 
 ### 7. Wrong vs Correct
 
@@ -292,10 +326,12 @@ let session = load_session(sidecar.app_data_dir())?;
 #### Correct
 
 ```rust
-let session = if task.source_platform.as_deref() == Some("v2ex") {
-    load_session_optional(sidecar.app_data_dir())
-} else {
-    load_session(sidecar.app_data_dir())?
+let session = match task.source_platform.as_deref() {
+    Some("v2ex" | "linuxdo" | "liepin" | "zhilian") => load_session_optional_for_platform(
+        sidecar.app_data_dir(),
+        task.source_platform.as_deref(),
+    ),
+    _ => load_session(sidecar.app_data_dir())?,
 };
 ```
 

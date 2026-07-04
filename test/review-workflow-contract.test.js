@@ -1681,12 +1681,12 @@ describe("review workflow contract", () => {
     assert.match(crawlLogic, /async function refreshCollectionSourceState\(\)/);
     assert.match(crawlLogic, /loadCollectionSources\(\)/);
     assert.match(crawlLogic, /loadCollectionSummary\(\)/);
-    assert.match(crawlPage, /Boss、智联、V2EX 或 LinuxDo/);
+    assert.match(crawlPage, /Boss、猎聘、智联、V2EX 或 LinuxDo/);
     assert.match(crawlConfigPage, /连接一次 \/ 后台复用 profile/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeHint/);
     assert.match(filterProfile, /sourcePlatformOptions: JOB_SOURCE_PLATFORM_OPTIONS/);
-    assert.match(filterProfile, /允许 Boss、V2EX、LinuxDo、智联等已支持自动采集来源进入筛选和 Top 20/);
+    assert.match(filterProfile, /允许 Boss、猎聘、V2EX、LinuxDo、智联等已支持自动采集来源进入筛选和 Top 20/);
     assert.match(crawlTypes, /JOB_SOURCE_PLATFORM_OPTIONS/);
     assert.match(crawlTypes, /MANUAL_IMPORT_SOURCE_PLATFORMS/);
     assert.match(crawlTypes, /manual_import/);
@@ -1709,10 +1709,11 @@ describe("review workflow contract", () => {
     assert.match(jobsMutations, /UPDATE job_sources/);
     assert.doesNotMatch(tauriLib, /commands::jobs::import_external_job/);
     assert.match(tauriLib, /commands::jobs::set_job_source_enabled/);
-    assert.match(dbTests, /init_db_seeds_job_source_registry_with_manual_import_adapters/);
+    assert.match(dbTests, /init_db_seeds_job_source_registry_with_platform_adapters/);
     assert.match(dbTests, /init_db_preserves_existing_job_source_enabled_choices/);
     assert.match(dbTests, /Boss 直聘/);
     assert.match(dbTests, /liepin/);
+    assert.match(dbTests, /adapter_kind == "liepin"/);
     assert.match(dbTests, /manual_import/);
     assert.match(dbTests, /enabled == 1/);
   });
