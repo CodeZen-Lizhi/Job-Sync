@@ -1006,3 +1006,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 31: 接入猎聘自动采集
+
+**Date**: 2026-07-04
+**Task**: 接入猎聘自动采集
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+将猎聘从手动来源预留升级为自动采集 adapter，补齐独立登录 profile、worker normalized 入库、前端配置和跨层测试验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cc7a4f25` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

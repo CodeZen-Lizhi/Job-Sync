@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 30
+- **Total Sessions**: 31
 - **Last Active**: 2026-07-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1008 | Active |
+| `journal-1.md` | ~1041 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 31 | 2026-07-04 | 接入猎聘自动采集 | `cc7a4f25` | `remote-job-intelligence` |
 | 30 | 2026-07-04 | 优化智联采集与采后 AI 范围 | `dbadfd1` | `remote-job-intelligence` |
 | 29 | 2026-07-04 | 修复定时采集初始化状态 | `358c025` | `remote-job-intelligence` |
 | 28 | 2026-07-01 | 优化采集入口性能 | `596b10d`, `7c90f09` | `remote-job-intelligence` |
