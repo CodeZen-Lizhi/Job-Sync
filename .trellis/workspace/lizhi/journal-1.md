@@ -1039,3 +1039,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 32: 接入脉脉招聘内容源
+
+**Date**: 2026-07-04
+**Task**: 接入脉脉招聘内容源
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+将脉脉从手动来源升级为公开文章/搜索页 feed 自动采集来源，补齐前端配置、worker adapter、Rust registry、默认筛选来源、契约文档和测试验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `adeacd5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
