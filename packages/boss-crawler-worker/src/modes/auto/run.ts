@@ -13,7 +13,7 @@ import { API_PATH, JOB_CARD_SELECTORS, URLS } from "../../boss/selectors.js";
 import { delayWithJitter } from "../../utils/delay.js";
 import { SageTime } from "../../utils/sage-time.js";
 
-import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, closeBrowserRespectingHumanVerification, createHumanVerificationTracker, extractJobList, fetchJsonFromPage, isAbnormalAccess, matchesExpectedJobListPayload, normalizeFilterVariants, readApiCode, readApiMessage, readHttpResponseAsPageFetchJsonResult, requestBossJsonWithRiskRecovery, safeError, setLocalStorage, waitUntilBossLoginReady, waitUntilNoRiskUrl } from "./shared.js";
+import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, closeBrowserRespectingHumanVerification, createHumanVerificationTracker, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, matchesExpectedJobListPayload, normalizeFilterVariants, readApiCode, readApiMessage, readHttpResponseAsPageFetchJsonResult, requestBossJsonWithRiskRecovery, safeError, setLocalStorage, waitUntilBossLoginReady, waitUntilNoRiskUrl } from "./shared.js";
 import type { ApiFilters, PageFetchJsonResult } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
 import { runV2exFeedMode } from "../../v2ex/feed.js";
@@ -21,9 +21,99 @@ import { runLinuxDoMode } from "../../linuxdo/feed.js";
 import { runZhilianMode } from "../../zhilian/feed.js";
 import { runLiepinMode } from "../../liepin/feed.js";
 import { runMaimaiMode } from "../../maimai/feed.js";
+import type { BossRiskRecoveryOptions } from "./shared.js";
 
 const NATURAL_JOB_LIST_TIMEOUT_MS = 20_000;
 const DEFAULT_DETAIL_FETCH_LIMIT = 0;
+const DEFAULT_BOSS_LOW_RISK_MODE = true;
+const BOSS_LOW_RISK_MAX_PAGES_CAP = 2;
+const BOSS_LOW_RISK_MAX_JOBS_CAP = 50;
+const BOSS_LOW_RISK_DEFAULT_MAX_JOBS = 30;
+const BOSS_LOW_RISK_MIN_DELAY_MS = 8_000;
+const BOSS_LOW_RISK_MIN_JITTER_MS = 12_000;
+const BOSS_LOW_RISK_COOLDOWN_MS = 30 * 60 * 1000;
+let bossLowRiskCooldownUntil = 0;
+
+export type BossEffectiveAutoLimits = {
+  lowRiskMode: boolean;
+  maxPages: number;
+  maxJobs: number | null;
+  detailFetchLimit: number;
+  delayMs: number;
+  jitterMs: number;
+  pageSize: number;
+};
+
+function positiveInteger(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+function optionalPositiveInteger(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
+}
+
+export function resolveBossAutoLimits(limits: Record<string, unknown> = {}): BossEffectiveAutoLimits {
+  const lowRiskMode = typeof limits.lowRiskMode === "boolean"
+    ? limits.lowRiskMode
+    : DEFAULT_BOSS_LOW_RISK_MODE;
+  const rawMaxPages = positiveInteger(limits.maxPages, 3);
+  const rawMaxJobs = optionalPositiveInteger(limits.maxJobs);
+  const rawDetailFetchLimit =
+    typeof limits.bossDetailFetchLimit === "number"
+      ? limits.bossDetailFetchLimit
+      : limits.detailFetchLimit;
+  const requestedDetailFetchLimit = optionalPositiveInteger(rawDetailFetchLimit) ?? DEFAULT_DETAIL_FETCH_LIMIT;
+  const rawDelayMs = positiveInteger(limits.delayMs, 800);
+  const rawJitterMs = positiveInteger(limits.jitterMs, 1000);
+
+  return {
+    lowRiskMode,
+    maxPages: lowRiskMode ? Math.min(rawMaxPages, BOSS_LOW_RISK_MAX_PAGES_CAP) : rawMaxPages,
+    maxJobs: lowRiskMode
+      ? Math.min(rawMaxJobs ?? BOSS_LOW_RISK_DEFAULT_MAX_JOBS, BOSS_LOW_RISK_MAX_JOBS_CAP)
+      : rawMaxJobs,
+    detailFetchLimit: lowRiskMode ? 0 : requestedDetailFetchLimit,
+    delayMs: lowRiskMode ? Math.max(rawDelayMs, BOSS_LOW_RISK_MIN_DELAY_MS) : rawDelayMs,
+    jitterMs: lowRiskMode ? Math.max(rawJitterMs, BOSS_LOW_RISK_MIN_JITTER_MS) : rawJitterMs,
+    pageSize: positiveInteger(limits.pageSize, 15),
+  };
+}
+
+export function getBossLowRiskCooldownRemainingMs(now = Date.now()): number {
+  return Math.max(0, bossLowRiskCooldownUntil - now);
+}
+
+export function resetBossLowRiskCooldownForTests(): void {
+  bossLowRiskCooldownUntil = 0;
+}
+
+export function setBossLowRiskCooldownUntilForTests(until: number): void {
+  bossLowRiskCooldownUntil = until;
+}
+
+function formatCooldownRemaining(remainingMs: number): string {
+  const minutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+  return `${minutes} 分钟`;
+}
+
+function setBossLowRiskCooldown(ctx: ModeContext, reason: string): void {
+  const alreadyCoolingDown = getBossLowRiskCooldownRemainingMs() > 0;
+  bossLowRiskCooldownUntil = Math.max(bossLowRiskCooldownUntil, Date.now() + BOSS_LOW_RISK_COOLDOWN_MS);
+  if (alreadyCoolingDown) return;
+  ctx.emit({
+    type: "LOG",
+    payload: {
+      level: "warn",
+      message: `Boss 低风控模式已进入 ${formatCooldownRemaining(BOSS_LOW_RISK_COOLDOWN_MS)} 冷却：${reason}`,
+    },
+  });
+}
+
 const FILTER_MATCH_KEYS: Array<keyof ApiFilters> = [
   "city",
   "multiSubway",
@@ -133,6 +223,7 @@ async function fetchJobListFromNaturalPage(
   pageSize: number,
   filters: ApiFilters,
   warn: (msg: string) => void,
+  riskRecoveryOptions: BossRiskRecoveryOptions = {},
 ): Promise<PageFetchJsonResult | null> {
   const searchUrl = buildBossSearchPageUrl(keyword, pageIndex, filters);
   const responsePromise = page
@@ -146,8 +237,18 @@ async function fetchJobListFromNaturalPage(
     .then(() => null)
     .catch((err) => String(err));
 
-  await waitUntilNoRiskUrl(page, ctx);
+  const pageClear = await waitUntilNoRiskUrl(page, ctx, riskRecoveryOptions);
   if (ctx.signal.aborted) return null;
+  if (!pageClear && riskRecoveryOptions.recover === false) {
+    return {
+      status: 403,
+      json: null,
+      response_url: page.url(),
+      content_type: "text/html",
+      text: detectRiskUrl(page.url()) ? "Boss low-risk mode detected risk page." : "Boss low-risk mode stopped on page risk.",
+      capture_source: "natural",
+    };
+  }
 
   const response = await responsePromise;
   if (response) {
@@ -394,9 +495,15 @@ async function requestJobList(
   pageSize: number,
   filters: ApiFilters,
   warn: (msg: string) => void,
-): Promise<PageFetchJsonResult> {
-  const natural = await fetchJobListFromNaturalPage(page, ctx, keyword, pageIndex, pageSize, filters, warn);
+  riskRecoveryOptions: BossRiskRecoveryOptions = {},
+  allowApiFallback = true,
+): Promise<PageFetchJsonResult | null> {
+  const natural = await fetchJobListFromNaturalPage(page, ctx, keyword, pageIndex, pageSize, filters, warn, riskRecoveryOptions);
   if (natural) return natural;
+  if (!allowApiFallback) {
+    warn("低风控模式未捕获搜索页自然 joblist 响应，已停止本页采集，不再回退到接口请求。");
+    return null;
+  }
 
   const jobListUrl = `https://www.zhipin.com${API_PATH.JOB_LIST}?_=${Date.now()}`;
   const jobListBody = buildJobListBody(keyword, pageIndex, pageSize, filters);
@@ -465,20 +572,20 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
   }
 
   const keywords = payload.task.keywords ?? [];
-  const limits = (payload.task.limits ?? {}) as any;
-  const maxPages: number = typeof limits.maxPages === "number" ? limits.maxPages : 3;
-  const rawDetailFetchLimit =
-    typeof limits.bossDetailFetchLimit === "number"
-      ? limits.bossDetailFetchLimit
-      : limits.detailFetchLimit;
-  const detailFetchLimit: number =
-    typeof rawDetailFetchLimit === "number" && Number.isFinite(rawDetailFetchLimit) && rawDetailFetchLimit > 0
-      ? Math.floor(rawDetailFetchLimit)
-      : DEFAULT_DETAIL_FETCH_LIMIT;
-  const delayMs: number = typeof limits.delayMs === "number" ? limits.delayMs : 800;
-  const jitterMs: number = typeof limits.jitterMs === "number" ? limits.jitterMs : 1000;
-  const pageSize: number = typeof limits.pageSize === "number" ? limits.pageSize : 15;
+  const limits = (payload.task.limits ?? {}) as Record<string, unknown>;
+  const bossLimits = resolveBossAutoLimits(limits);
+  const { lowRiskMode, maxPages, maxJobs, detailFetchLimit, delayMs, jitterMs, pageSize } = bossLimits;
   const syncBossMeta: boolean = limits.syncBossMeta === true;
+  if (lowRiskMode) {
+    const cooldownRemainingMs = getBossLowRiskCooldownRemainingMs();
+    if (cooldownRemainingMs > 0) {
+      const message = `Boss 处于低风控冷却中，预计 ${formatCooldownRemaining(cooldownRemainingMs)} 后再试。`;
+      baseCtx.emit({ type: "LOG", payload: { level: "warn", message } });
+      baseCtx.emit({ type: "ERROR", payload: { message } });
+      baseCtx.emit({ type: "FINISHED" });
+      return;
+    }
+  }
   const sageTime = new SageTime({
     enabled: typeof limits.sageTimeEnabled === "boolean" ? limits.sageTimeEnabled : true,
     maxOps: typeof limits.sageTimeMaxOps === "number" ? limits.sageTimeMaxOps : 100,
@@ -492,6 +599,19 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
   const warn = (msg: string): void => {
     ctx.emit({ type: "LOG", payload: { level: "warn", message: msg } });
   };
+  const stopForLowRisk = (message: string): void => {
+    setBossLowRiskCooldown(ctx, message);
+    ctx.emit({ type: "ERROR", payload: { message: `Boss 低风控模式检测到登录/风控状态，已停止本轮采集：${message}` } });
+  };
+  const bossRiskRecoveryOptions: BossRiskRecoveryOptions = lowRiskMode
+    ? {
+        recover: false,
+        onRisk: (_status: string, message: string) => setBossLowRiskCooldown(ctx, message),
+      }
+    : {};
+  if (lowRiskMode) {
+    log(`Boss 低风控模式已开启：最多 ${maxPages} 页，最多 ${maxJobs ?? "不限"} 个新岗位，延迟至少 ${Math.round(delayMs / 1000)} 秒，详情抓取关闭。`);
+  }
 
   const filterVariants = normalizeFilterVariants(payload.task.filters, warn);
   const profileFilter = normalizeBossProfileFilter(payload.task.filters);
@@ -526,12 +646,21 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
     }
 
     await page.goto(URLS.USER, { waitUntil: "domcontentloaded" });
-    if (!await waitUntilBossLoginReady(page, ctx)) return;
+    if (!await waitUntilBossLoginReady(page, ctx, "Boss 登录态已就绪，开始采集。", bossRiskRecoveryOptions)) {
+      if (lowRiskMode && !ctx.signal.aborted) {
+        stopForLowRisk("登录态不可用或页面处于安全验证状态，请在 Boss 官方页面处理后稍后重试。");
+      }
+      return;
+    }
 
     await page.goto(URLS.GEEK_JOBS, { waitUntil: "domcontentloaded" });
 
-    await waitUntilNoRiskUrl(page, ctx);
+    const searchPageReady = await waitUntilNoRiskUrl(page, ctx, bossRiskRecoveryOptions);
     if (ctx.signal.aborted) return;
+    if (!searchPageReady) {
+      if (lowRiskMode) stopForLowRisk("Boss 搜索页处于安全验证状态，请在浏览器窗口完成验证后稍后重试。");
+      return;
+    }
 
     if (syncBossMeta) {
       const meta = await collectBossMetaByListening(page, ctx.signal).catch(() => null);
@@ -558,8 +687,12 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
           if (ctx.signal.aborted) break;
           if (!hasMore) break;
 
-          await waitUntilNoRiskUrl(page, ctx);
+          const pageRiskClear = await waitUntilNoRiskUrl(page, ctx, bossRiskRecoveryOptions);
           if (ctx.signal.aborted) break;
+          if (!pageRiskClear) {
+            if (lowRiskMode) stopForLowRisk("Boss 搜索页进入安全验证状态。");
+            return;
+          }
 
           ctx.emit({
             type: "PROGRESS",
@@ -567,11 +700,19 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
           });
 
           await sageTime.checkpoint(ctx.signal, log);
-          let jobListRes = await requestBossJsonWithRiskRecovery(page, ctx, "joblist", () =>
-            requestJobList(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn),
+          let jobListRes = await requestBossJsonWithRiskRecovery(
+            page,
+            ctx,
+            "joblist",
+            () => requestJobList(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn, bossRiskRecoveryOptions, !lowRiskMode),
+            bossRiskRecoveryOptions,
           );
 
           if (ctx.signal.aborted) break;
+          if (!jobListRes && lowRiskMode) {
+            stopForLowRisk("未捕获搜索页自然 joblist 响应，低风控模式不再回退到接口请求。请确认浏览器中的 Boss 搜索页能正常显示岗位后稍后重试。");
+            return;
+          }
           if (!jobListRes) break;
 
           if (!jobListRes.json || typeof jobListRes.json !== "object") {
@@ -683,8 +824,12 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
 
             await sageTime.checkpoint(ctx.signal, log);
             const detailUrl = buildJobDetailUrl(securityId, lid);
-            let detailResGet = await requestBossJsonWithRiskRecovery(page, ctx, "job/detail", () =>
-              fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 }),
+            let detailResGet = await requestBossJsonWithRiskRecovery(
+              page,
+              ctx,
+              "job/detail",
+              () => fetchJsonFromPage(page, detailUrl, { method: "GET", timeoutMs: 60_000 }),
+              bossRiskRecoveryOptions,
             );
 
             if (ctx.signal.aborted) break;
@@ -699,12 +844,16 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
             }
             if (!detailRaw || typeof detailRaw !== "object" || detailRaw.code !== 0) {
               const detailBody = buildJobDetailBody(securityId, lid);
-              const detailResPost = await requestBossJsonWithRiskRecovery(page, ctx, "job/detail", () =>
-                fetchJsonFromPage(page, detailUrl, {
+              const detailResPost = await requestBossJsonWithRiskRecovery(
+                page,
+                ctx,
+                "job/detail",
+                () => fetchJsonFromPage(page, detailUrl, {
                   method: "POST",
                   body: detailBody,
                   timeoutMs: 60_000,
                 }),
+                bossRiskRecoveryOptions,
               );
 
               if (ctx.signal.aborted) break;

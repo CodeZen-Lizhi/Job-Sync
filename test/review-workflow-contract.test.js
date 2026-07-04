@@ -777,6 +777,32 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(crawlConfig, /最新排序/);
   });
 
+  it("keeps Boss low-risk collection mode wired across UI, payload, and worker policy", () => {
+    const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
+    const crawlTypes = readProjectFile("src/lib/crawl.ts");
+    const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+    const workerRun = readProjectFile("packages/boss-crawler-worker/src/modes/auto/run.ts");
+    const workerShared = readProjectFile("packages/boss-crawler-worker/src/modes/auto/shared.ts");
+    const sourceContract = readProjectFile(".trellis/spec/boss-crawler-worker/frontend/collection-source-contracts.md");
+
+    assert.match(crawlTypes, /DEFAULT_BOSS_LOW_RISK_MODE = true/);
+    assert.match(crawlTypes, /DEFAULT_BOSS_LOW_RISK_MAX_PAGES = 1/);
+    assert.match(crawlTypes, /DEFAULT_BOSS_LOW_RISK_MAX_JOBS = 30/);
+    assert.match(crawlConfig, /低风控模式/);
+    assert.match(crawlConfig, /不能保证完全不风控/);
+    assert.match(crawlLogic, /bossLowRiskMode = ref\(DEFAULT_BOSS_LOW_RISK_MODE\)/);
+    assert.match(crawlLogic, /lowRiskMode: bossLowRiskMode\.value/);
+    assert.match(crawlLogic, /effectiveBossMaxPages\(\)/);
+    assert.match(crawlLogic, /effectiveBossMaxJobs\(\)/);
+    assert.match(workerRun, /export function resolveBossAutoLimits/);
+    assert.match(workerRun, /BOSS_LOW_RISK_COOLDOWN_MS = 30 \* 60 \* 1000/);
+    assert.match(workerRun, /recover: false/);
+    assert.match(workerShared, /低风控模式已停止本轮 Boss 采集/);
+    assert.match(workerShared, /options\.recover !== false/);
+    assert.match(sourceContract, /Boss 低风控模式/);
+    assert.doesNotMatch(workerRun, /stealth:\s*true/);
+  });
+
   it("removes the generic collection intent layer from config UI and collection payloads", () => {
     const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
     const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");

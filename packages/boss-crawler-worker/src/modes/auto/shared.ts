@@ -44,6 +44,11 @@ export type PageFetchJsonResult = {
   capture_source?: BossJobListCaptureSource;
 };
 
+export type BossRiskRecoveryOptions = {
+  recover?: boolean;
+  onRisk?: (status: string, message: string) => void;
+};
+
 export type HumanVerificationTracker = {
   ctx: ModeContext;
   isWaitingForHuman: () => boolean;
@@ -81,7 +86,7 @@ export async function closeBrowserRespectingHumanVerification(
   tracker: HumanVerificationTracker,
   label = "Boss",
 ): Promise<void> {
-  if (ctx.signal.aborted && tracker.isWaitingForHuman()) {
+  if (tracker.isWaitingForHuman()) {
     ctx.emit({
       type: "LOG",
       payload: {
@@ -203,7 +208,7 @@ function emitBossRiskStatus(
   label: string,
   res: PageFetchJsonResult,
   lastStatus: string | null,
-): string {
+): { status: string; message: string } {
   const raw = res.json;
   const responseUrl = res.response_url ?? "";
   const urlRisk = detectRiskUrl(responseUrl);
@@ -239,28 +244,45 @@ function emitBossRiskStatus(
   if (lastStatus !== status) {
     ctx.emit({ type: "LOGIN_STATUS", payload: { status, message } });
   }
-  return status;
+  return { status, message };
 }
 
 export async function requestBossJsonWithRiskRecovery(
   page: Page,
   ctx: ModeContext,
   label: string,
-  request: () => Promise<PageFetchJsonResult>,
+  request: () => Promise<PageFetchJsonResult | null>,
+  options: BossRiskRecoveryOptions = {},
 ): Promise<PageFetchJsonResult | null> {
-  await waitUntilNoRiskUrl(page, ctx);
-  if (ctx.signal.aborted) return null;
+  const recover = options.recover !== false;
+  const pageClear = await waitUntilNoRiskUrl(page, ctx, {
+    recover,
+    onRisk: options.onRisk,
+  });
+  if (ctx.signal.aborted || !pageClear) return null;
 
   const res = await request();
   if (ctx.signal.aborted) return null;
+  if (!res) return null;
   if (!isBossRiskResponse(res)) return res;
 
-  const initialStatus = emitBossRiskStatus(ctx, label, res, null);
+  const initialRisk = emitBossRiskStatus(ctx, label, res, null);
+  options.onRisk?.(initialRisk.status, initialRisk.message);
+  if (!recover) {
+    ctx.emit({
+      type: "LOG",
+      payload: {
+        level: "warn",
+        message: `${label} 触发风控或登录验证，低风控模式已停止本轮 Boss 采集。`,
+      },
+    });
+    return null;
+  }
   return await waitUntilApiOk(page, ctx, label, async () => {
     await waitUntilNoRiskUrl(page, ctx);
     if (ctx.signal.aborted) return { status: 0, json: null, error: "aborted" };
-    return await request();
-  }, initialStatus);
+    return await request() ?? { status: 0, json: null, error: "request returned no result" };
+  }, initialRisk.status);
 }
 
 export async function setLocalStorage(page: Page, localStorage: Record<string, string>): Promise<void> {
@@ -561,11 +583,13 @@ export async function waitUntilBossLoginReady(
   page: Page,
   ctx: ModeContext,
   readyMessage = "Boss 登录态已就绪，开始采集。",
+  options: BossRiskRecoveryOptions = {},
 ): Promise<boolean> {
   let lastStatus: string | null = null;
   while (!ctx.signal.aborted) {
-    const res = await requestBossJsonWithRiskRecovery(page, ctx, "user/info", () => requestBossUserInfo(page));
+    const res = await requestBossJsonWithRiskRecovery(page, ctx, "user/info", () => requestBossUserInfo(page), options);
     if (ctx.signal.aborted) return false;
+    if (!res && options.recover === false) return false;
     const raw = res?.json;
     if (raw && typeof raw === "object" && readApiCode(raw) === 0) {
       ctx.emit({ type: "LOGIN_STATUS", payload: { status: "valid", message: readyMessage } });
@@ -627,7 +651,8 @@ export async function waitUntilApiOk(
     }
 
     if (isBossRiskResponse(res)) {
-      lastStatus = emitBossRiskStatus(ctx, label, res, lastStatus);
+      const risk = emitBossRiskStatus(ctx, label, res, lastStatus);
+      lastStatus = risk.status;
       continue;
     }
 
@@ -637,22 +662,31 @@ export async function waitUntilApiOk(
   return null;
 }
 
-export async function waitUntilNoRiskUrl(page: Page, ctx: ModeContext): Promise<void> {
+export async function waitUntilNoRiskUrl(
+  page: Page,
+  ctx: ModeContext,
+  options: BossRiskRecoveryOptions = {},
+): Promise<boolean> {
+  const recover = options.recover !== false;
   let lastRisk: string | null = null;
   while (!ctx.signal.aborted) {
     const url = page.url();
     const risk = detectRiskUrl(url);
     if (risk) {
       if (lastRisk !== risk) {
-        ctx.emit({ type: "LOGIN_STATUS", payload: { status: risk, message: `检测到风控页面：${url}` } });
+        const message = `检测到风控页面：${url}`;
+        ctx.emit({ type: "LOGIN_STATUS", payload: { status: risk, message } });
+        options.onRisk?.(risk, message);
         lastRisk = risk;
       }
+      if (!recover) return false;
       await delayWithJitter(1500, ctx.signal, 1000);
       continue;
     }
     if (lastRisk) ctx.emit({ type: "LOGIN_STATUS", payload: { status: "ok" } });
-    return;
+    return true;
   }
+  return false;
 }
 
 export function extractJobList(raw: any): { jobs: any[]; hasMore: boolean } {

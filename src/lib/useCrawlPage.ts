@@ -5,10 +5,15 @@ import "cronstrue/locales/zh_CN.js";
 
 import {
   asBossOptions,
+  BOSS_LOW_RISK_MAX_JOBS_CAP,
+  BOSS_LOW_RISK_MAX_PAGES_CAP,
   BOSS_META_SYNC_TIMEOUT_MS,
   buildBossCityGroups,
   buildBossFilterConditionGroups,
   buildBossIndustryGroups,
+  DEFAULT_BOSS_LOW_RISK_DELAY_MS,
+  DEFAULT_BOSS_LOW_RISK_JITTER_MS,
+  DEFAULT_BOSS_LOW_RISK_MODE,
   DEFAULT_BOSS_MAX_JOBS,
   DEFAULT_BOSS_MAX_PAGES,
   BOSS_SOURCE_PLATFORM,
@@ -116,6 +121,7 @@ type CollectionConfigPayload = {
   zhilianMaxPages?: number | null;
   zhilianMaxJobs?: number | null;
   bossKeywordsText?: string;
+  bossLowRiskMode?: boolean;
   bossMaxPages?: number | null;
   bossMaxJobs?: number | null;
   cityText?: string;
@@ -242,6 +248,7 @@ function createCrawlPageState() {
   const zhilianMaxPages = ref(DEFAULT_ZHILIAN_MAX_PAGES);
   const zhilianMaxJobs = ref<number | null>(DEFAULT_ZHILIAN_MAX_JOBS);
   const bossKeywordsText = ref("");
+  const bossLowRiskMode = ref(DEFAULT_BOSS_LOW_RISK_MODE);
   const bossMaxPages = ref(DEFAULT_BOSS_MAX_PAGES);
   const bossMaxJobs = ref<number | null>(DEFAULT_BOSS_MAX_JOBS);
   const cityText = ref("");
@@ -506,9 +513,11 @@ function createCrawlPageState() {
       source_platform: BOSS_SOURCE_PLATFORM,
       filters: filters.value,
       limits: {
-        delayMs: delayMs.value,
-        maxPages: optionalNumber(bossMaxPages.value) ?? DEFAULT_BOSS_MAX_PAGES,
-        maxJobs: optionalNumber(bossMaxJobs.value),
+        delayMs: effectiveBossDelayMs(),
+        jitterMs: bossLowRiskMode.value ? DEFAULT_BOSS_LOW_RISK_JITTER_MS : undefined,
+        lowRiskMode: bossLowRiskMode.value,
+        maxPages: effectiveBossMaxPages(),
+        maxJobs: effectiveBossMaxJobs(),
         bossDetailFetchLimit: 0,
       },
       mode: "auto",
@@ -626,6 +635,25 @@ function createCrawlPageState() {
       .split(/[\n,，、]+/g)
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  function effectiveBossMaxPages(): number {
+    const configured = optionalNumber(bossMaxPages.value) ?? DEFAULT_BOSS_MAX_PAGES;
+    const normalized = Math.max(1, Math.floor(configured));
+    return bossLowRiskMode.value ? Math.min(normalized, BOSS_LOW_RISK_MAX_PAGES_CAP) : normalized;
+  }
+
+  function effectiveBossMaxJobs(): number | null {
+    const configured = optionalNumber(bossMaxJobs.value);
+    if (configured === null) return bossLowRiskMode.value ? DEFAULT_BOSS_MAX_JOBS : null;
+    const normalized = Math.max(1, Math.floor(configured));
+    return bossLowRiskMode.value ? Math.min(normalized, BOSS_LOW_RISK_MAX_JOBS_CAP) : normalized;
+  }
+
+  function effectiveBossDelayMs(): number {
+    const configured = optionalNumber(delayMs.value) ?? DEFAULT_DELAY_MS;
+    const normalized = Math.max(0, Math.floor(configured));
+    return bossLowRiskMode.value ? Math.max(normalized, DEFAULT_BOSS_LOW_RISK_DELAY_MS) : normalized;
   }
 
   function uniqueList(items: readonly string[]): string[] {
@@ -791,6 +819,7 @@ function createCrawlPageState() {
       zhilianMaxPages: optionalNumber(zhilianMaxPages.value) ?? DEFAULT_ZHILIAN_MAX_PAGES,
       zhilianMaxJobs: optionalNumber(zhilianMaxJobs.value),
       bossKeywordsText: bossKeywordsText.value,
+      bossLowRiskMode: bossLowRiskMode.value,
       bossMaxPages: optionalNumber(bossMaxPages.value) ?? DEFAULT_BOSS_MAX_PAGES,
       bossMaxJobs: optionalNumber(bossMaxJobs.value),
       cityText: cityText.value,
@@ -880,6 +909,9 @@ function createCrawlPageState() {
       ? optionalNumber(config.zhilianMaxJobs)
       : DEFAULT_ZHILIAN_MAX_JOBS;
     bossKeywordsText.value = textValue(config.bossKeywordsText);
+    bossLowRiskMode.value = typeof config.bossLowRiskMode === "boolean"
+      ? config.bossLowRiskMode
+      : DEFAULT_BOSS_LOW_RISK_MODE;
     bossMaxPages.value = optionalNumber(config.bossMaxPages) ?? DEFAULT_BOSS_MAX_PAGES;
     bossMaxJobs.value = Object.prototype.hasOwnProperty.call(config, "bossMaxJobs")
       ? optionalNumber(config.bossMaxJobs)
@@ -1417,6 +1449,7 @@ function createCrawlPageState() {
     zhilianMaxJobs,
     zhilianKeywords,
     bossKeywordsText,
+    bossLowRiskMode,
     bossMaxPages,
     bossMaxJobs,
     cityText,

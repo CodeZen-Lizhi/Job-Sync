@@ -49,6 +49,7 @@
   - natural Boss HTTP response readers must preserve non-JSON response text and content type before risk classification; otherwise `200 text/html` login/security pages can be misreported as terminal JSON parse failures
   - if a Boss visible-browser mode is stopped while the latest login state is `invalid`, `captcha`, or `denied`, the worker should disconnect from the browser instead of closing it so the user can finish the in-progress verification and rerun with the same profile
   - job list collection should prefer the natural `/wapi/zpgeek/search/joblist.json` response produced by normal Boss search-page navigation and fall back to DOM recovery or page-context API fetch only when the natural response is missing
+  - in Boss 低风控模式, page-context `api_fallback` is disabled: if neither the natural search-page joblist response nor a verified matching DOM list can be collected, the worker stops the current Boss run, sets cooldown, and tells the user to retry after confirming the official search page is readable
   - natural job-list response matching must guard against wrong page/filter capture: if the response exposes `query`, `page`, or selected `city`, they must match the active request before the worker treats it as the current page's result
   - DOM job-list fallback must not parse a stale page after navigation failure or URL mismatch; only parse DOM when the current Boss search URL matches the active keyword/page/city request
   - `JOB_LIST_CAPTURED.payload.capture_source` is optional but, when present, must be one of `natural`, `dom_fallback`, or `api_fallback`; canary and diagnostics should prefer this structured field over parsing log text
@@ -57,6 +58,9 @@
   - `query` is built from Boss search keywords; each keyword line is one Boss search request, so remote intent should be expressed as one line such as `Go 远程` rather than a separate standalone `远程` keyword.
   - supports `limits.maxPages` as the positive page cap per keyword/filter variant and `limits.maxJobs` as the optional positive inserted-job cap enforced by the sidecar run tracker; missing `maxPages` falls back to the worker default of 3 pages.
   - Boss automatic collection should not require per-job `/wapi/zpgeek/job/detail.json` fetches for success. The default path stores natural joblist/list-item data first; detail fetches are an opt-in enhancement through `limits.bossDetailFetchLimit` / `limits.detailFetchLimit`, defaulting to `0`. When enabled, the detail limit counts attempted detail ids, not only successful detail captures.
+  - Boss 低风控模式 is the default collection posture: frontend sends `limits.lowRiskMode = true`, caps each keyword/filter variant to small pages and inserted-job volume, raises random delay, and keeps `bossDetailFetchLimit = 0`
+  - in Boss 低风控模式, the worker must treat login/security/risk responses as a stop signal for the current Boss run instead of automatically waiting and retrying in a tight loop; it records an in-process cooldown and emits an explicit runtime log/error telling the user when to retry
+  - Boss cooldown is advisory and process-local in the MVP; it reduces repeated hits during the same app session and does not require a schema migration
   - Boss pending-evidence refresh uses the same isolated persistent visible-browser profile (`boss-browser-profile`) as Boss login and auto collection; do not launch a fresh temporary profile for `REFRESH_JOB_EVIDENCE`.
   - platform-side filters must be limited to observed `joblist` parameters. Do not add visible controls for latest sorting or Boss active status unless a logged-in request proves stable API parameters.
   - Boss active status remains saved job evidence/display input and AI judgement evidence after collection, not an API pre-filter.
@@ -195,7 +199,10 @@
 - Boss selected without stored session -> `crawl_auto_start` still starts with the Boss persistent browser profile and the worker waits for login in the visible browser if needed.
 - Boss selected with missing or invalid `limits.maxPages` -> frontend should fall back to the default positive page cap or block non-positive page values before start.
 - Boss selected with non-positive `limits.maxJobs` -> frontend blocks start; empty `maxJobs` means no explicit inserted-job cap beyond page and dedup limits.
+- Boss selected with `limits.lowRiskMode = true` -> frontend caps Boss to conservative page/job limits, worker uses longer random delays, detail fetch remains disabled, and the worker logs the effective low-risk limits.
+- Boss selected with `limits.lowRiskMode = true` and the official search page does not produce a matching natural joblist response or readable DOM list -> worker must not issue a direct page-context joblist API fallback; it stops with an explicit cooldown message.
 - Boss joblist/detail returns login HTML, security-check HTML, 401, 403, code 7, code 36, or code 37 -> worker emits a waiting login/risk status and retries after user action; it must not close the browser as a plain parse/API failure.
+- Boss joblist/detail returns login HTML, security-check HTML, 401, 403, code 7, code 36, or code 37 while low-risk mode is active -> worker stops the current Boss run, sets cooldown, leaves a clear runtime message, and must not report a false successful collection.
 - Boss joblist natural response belongs to a different query, page, or selected city -> worker ignores it and waits for the matching response or fallback path.
 - Boss run completes with zero parsed job-list items or zero stable ids -> worker emits `ERROR` so UI/canary do not report a false success.
 - V2EX selected without stored Boss session -> command still starts with an empty session payload.
