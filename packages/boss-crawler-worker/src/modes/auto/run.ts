@@ -494,9 +494,14 @@ async function requestJobList(
   filters: ApiFilters,
   warn: (msg: string) => void,
   riskRecoveryOptions: BossRiskRecoveryOptions = {},
-): Promise<PageFetchJsonResult> {
+  allowApiFallback = true,
+): Promise<PageFetchJsonResult | null> {
   const natural = await fetchJobListFromNaturalPage(page, ctx, keyword, pageIndex, pageSize, filters, warn, riskRecoveryOptions);
   if (natural) return natural;
+  if (!allowApiFallback) {
+    warn("低风控模式未捕获搜索页自然 joblist 响应，已停止本页采集，不再回退到接口请求。");
+    return null;
+  }
 
   const jobListUrl = `https://www.zhipin.com${API_PATH.JOB_LIST}?_=${Date.now()}`;
   const jobListBody = buildJobListBody(keyword, pageIndex, pageSize, filters);
@@ -675,13 +680,13 @@ export async function runAutoMode(payload: CrawlAutoStartPayload, baseCtx: ModeC
             page,
             ctx,
             "joblist",
-            () => requestJobList(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn, bossRiskRecoveryOptions),
+            () => requestJobList(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn, bossRiskRecoveryOptions, !lowRiskMode),
             bossRiskRecoveryOptions,
           );
 
           if (ctx.signal.aborted) break;
           if (!jobListRes && lowRiskMode) {
-            stopForLowRisk("joblist 请求触发登录/风控状态。");
+            stopForLowRisk("未捕获搜索页自然 joblist 响应，低风控模式不再回退到接口请求。请确认浏览器中的 Boss 搜索页能正常显示岗位后稍后重试。");
             return;
           }
           if (!jobListRes) break;

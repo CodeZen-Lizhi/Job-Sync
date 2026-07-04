@@ -251,7 +251,7 @@ export async function requestBossJsonWithRiskRecovery(
   page: Page,
   ctx: ModeContext,
   label: string,
-  request: () => Promise<PageFetchJsonResult>,
+  request: () => Promise<PageFetchJsonResult | null>,
   options: BossRiskRecoveryOptions = {},
 ): Promise<PageFetchJsonResult | null> {
   const recover = options.recover !== false;
@@ -263,6 +263,7 @@ export async function requestBossJsonWithRiskRecovery(
 
   const res = await request();
   if (ctx.signal.aborted) return null;
+  if (!res) return null;
   if (!isBossRiskResponse(res)) return res;
 
   const initialRisk = emitBossRiskStatus(ctx, label, res, null);
@@ -280,7 +281,7 @@ export async function requestBossJsonWithRiskRecovery(
   return await waitUntilApiOk(page, ctx, label, async () => {
     await waitUntilNoRiskUrl(page, ctx);
     if (ctx.signal.aborted) return { status: 0, json: null, error: "aborted" };
-    return await request();
+    return await request() ?? { status: 0, json: null, error: "request returned no result" };
   }, initialRisk.status);
 }
 

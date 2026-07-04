@@ -382,6 +382,10 @@ describe("Boss auto collection contract", () => {
     assert.match(runSource, /已从搜索页 DOM 列表恢复/);
     assert.match(runSource, /回退到接口请求/);
     assert.match(runSource, /capture_source:\s*"api_fallback"/);
+    assert.match(runSource, /allowApiFallback = true/);
+    assert.match(runSource, /requestJobList\(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn, bossRiskRecoveryOptions, !lowRiskMode\)/);
+    assert.match(runSource, /低风控模式未捕获搜索页自然 joblist 响应，已停止本页采集，不再回退到接口请求/);
+    assert.match(runSource, /低风控模式不再回退到接口请求/);
   });
 
   it("keeps Boss metadata sync out of the default auto-collection request path", () => {
