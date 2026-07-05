@@ -151,7 +151,7 @@
   - stores `dedup_key = "article:<stableId>"`
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains title, article body, visible hiring evidence, and missing standard-field notes
   - only uses positive hiring/referral signals before writing to `job`; configured keywords may add matches but must not alone turn an article into a job
-  - if no stable article is parsed because the page requires login, verification, or exposes no detail links, the worker emits an explicit `ERROR` instead of reporting success
+  - if no stable article is parsed because the page requires login, verification, redirects to `/platform/login`, returns WAF/rate-limit statuses such as 418 or 429, or exposes no detail links, the worker emits an explicit `ERROR` instead of reporting success
   - post-collection profile and AI judgement own soft exclusion decisions after Maimai entries are written
 - Collection limits:
   - For normalized feed adapters, `limits.maxJobs` means the number of jobs that have been successfully inserted into the local job library, not raw captured entries and not merely classified candidates.
@@ -224,7 +224,7 @@
 - Maimai selected without stored Boss session -> command still starts with an empty session payload and no browser profile path.
 - Maimai selected with an empty URL input -> frontend blocks start with a clear URL-required message; if an empty payload reaches the worker, the worker logs that no URL was provided and skips collection.
 - Maimai selected with a non-`maimai.cn` URL -> frontend blocks start with a clear domain message; worker also ignores non-Maimai URLs.
-- Maimai article/list page returns login, verification, 403, or 429 and no stable article is parsed -> worker emits an explicit error instead of reporting success.
+- Maimai article/list page returns login, verification, 302 to `/platform/login`, 403, WAF 418, or 429 and no stable article is parsed -> worker emits an explicit error instead of reporting success.
 - Maimai article lacks positive hiring/referral signals -> emit `JOB_FILTERED` with `缺少招聘或内推信号词`; do not insert `job`.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.

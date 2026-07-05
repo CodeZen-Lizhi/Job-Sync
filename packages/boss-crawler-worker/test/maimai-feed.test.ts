@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import * as http from "node:http";
 import { describe, it } from "node:test";
 
 import {
   buildMaimaiNormalizedPayload,
   classifyMaimaiArticle,
   extractMaimaiArticleId,
+  fetchMaimaiPage,
   parseMaimaiArticleLinks,
   parseMaimaiArticlePage,
   runMaimaiMode,
@@ -52,6 +54,37 @@ describe("Maimai feed collector", () => {
     assert.equal(links.length, 2);
     assert.equal(links[0], "https://maimai.cn/article/detail?fid=100&efid=aaa");
     assert.equal(links[1], "https://maimai.cn/article/detail?efid=bbb");
+  });
+
+  it("follows maimai login redirects before blocked-page classification", async () => {
+    const server = http.createServer((req, res) => {
+      if (req.url?.startsWith("/search")) {
+        res.writeHead(302, { location: "/platform/login?to=%2Fsearch" });
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<html><body>请登录后查看</body></html>");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      assert.ok(address && typeof address === "object");
+      const response = await fetchMaimaiPage(
+        `http://127.0.0.1:${address.port}/search`,
+        new AbortController().signal,
+        "脉脉测试页",
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(response.redirected, true);
+      assert.match(response.finalUrl, /\/platform\/login/);
+      assert.match(response.body, /请登录后查看/);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
   });
 
   it("parses readable article pages and rejects blocked pages", () => {

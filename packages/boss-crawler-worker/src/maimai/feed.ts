@@ -41,10 +41,13 @@ type MaimaiFeedSortBy = "published_desc" | "updated_desc";
 type FeedHttpResponse = {
   status: number;
   body: string;
+  finalUrl: string;
+  redirected: boolean;
 };
 
 const DEFAULT_MAX_PAGES = 3;
 const FEED_REQUEST_TIMEOUT_MS = 30_000;
+const MAX_FEED_REDIRECTS = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STRONG_HIRING_TERMS = [
   "招聘",
@@ -75,6 +78,7 @@ const SUPPORTING_HIRING_TERMS = [
   "offer",
 ];
 const feedProxyAgent = new ProxyAgent();
+const MAIMAI_FEED_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36 Job-Sync/0.1";
 
 function decodeEntities(text: string): string {
   return text
@@ -284,6 +288,24 @@ function isBlockedPage(html: string): boolean {
   ].some((term) => text.includes(term.toLowerCase()));
 }
 
+function isBlockedStatus(status: number): boolean {
+  return status === 401 || status === 403 || status === 418 || status === 429;
+}
+
+function isBlockedUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    const path = url.pathname.toLowerCase();
+    return path.includes("/platform/login") || path.includes("/login") || path.includes("/verify") || path.includes("/captcha");
+  } catch {
+    return false;
+  }
+}
+
+function isBlockedResponse(response: FeedHttpResponse): boolean {
+  return isBlockedStatus(response.status) || isBlockedUrl(response.finalUrl) || isBlockedPage(response.body);
+}
+
 export function parseMaimaiArticlePage(html: string, pageUrl: string): MaimaiArticle | null {
   const normalizedUrl = normalizeMaimaiUrl(pageUrl);
   const articleId = extractMaimaiArticleId(normalizedUrl);
@@ -457,7 +479,25 @@ function formatFeedRequestError(err: unknown, label = "脉脉页面"): Error {
   return new Error(`${label} 请求失败：${String(err)}`);
 }
 
-async function fetchMaimaiPage(pageUrl: string, signal: AbortSignal, label = "脉脉页面"): Promise<FeedHttpResponse> {
+function resolveRedirectUrl(currentUrl: URL, location: string | string[] | undefined): URL | null {
+  const rawLocation = Array.isArray(location) ? location[0] : location;
+  if (!rawLocation?.trim()) return null;
+  try {
+    const nextUrl = new URL(rawLocation, currentUrl);
+    if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") return null;
+    if (isMaimaiHost(currentUrl.hostname) && !isMaimaiHost(nextUrl.hostname)) return null;
+    if (!isMaimaiHost(currentUrl.hostname) && currentUrl.hostname !== nextUrl.hostname) return null;
+    return nextUrl;
+  } catch {
+    return null;
+  }
+}
+
+function isRedirectStatus(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
+
+export async function fetchMaimaiPage(pageUrl: string, signal: AbortSignal, label = "脉脉页面", redirectCount = 0): Promise<FeedHttpResponse> {
   const url = new URL(pageUrl);
   const client = url.protocol === "https:" ? https : http;
   return await new Promise((resolve, reject) => {
@@ -472,7 +512,7 @@ async function fetchMaimaiPage(pageUrl: string, signal: AbortSignal, label = "�
         headers: {
           accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-          "user-agent": "Job-Sync/0.1 Maimai public feed collector",
+          "user-agent": MAIMAI_FEED_USER_AGENT,
         },
         timeout: FEED_REQUEST_TIMEOUT_MS,
       },
@@ -484,7 +524,13 @@ async function fetchMaimaiPage(pageUrl: string, signal: AbortSignal, label = "�
         });
         res.on("end", () => {
           cleanup();
-          resolve({ status: res.statusCode ?? 0, body });
+          const status = res.statusCode ?? 0;
+          const redirectUrl = resolveRedirectUrl(url, res.headers.location);
+          if (isRedirectStatus(status) && redirectUrl && redirectCount < MAX_FEED_REDIRECTS) {
+            fetchMaimaiPage(redirectUrl.toString(), signal, label, redirectCount + 1).then(resolve, reject);
+            return;
+          }
+          resolve({ status, body, finalUrl: url.toString(), redirected: redirectCount > 0 });
         });
       },
     );
@@ -531,12 +577,12 @@ async function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 async function fetchArticle(articleUrl: string, sourceInputUrl: string, sourcePage: number | undefined, ctx: ModeContext): Promise<MaimaiCollectedArticle | null> {
   const response = await fetchMaimaiPage(articleUrl, ctx.signal, "脉脉文章详情");
-  if (response.status < 200 || response.status >= 300) {
-    ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉文章详情请求异常：HTTP ${response.status} ${articleUrl}` } });
+  if (isBlockedResponse(response)) {
+    ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉文章详情被登录或验证拦截：${articleUrl}` } });
     return null;
   }
-  if (isBlockedPage(response.body)) {
-    ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉文章详情被登录或验证拦截：${articleUrl}` } });
+  if (response.status < 200 || response.status >= 300) {
+    ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉文章详情请求异常：HTTP ${response.status} ${articleUrl}` } });
     return null;
   }
   const article = parseMaimaiArticlePage(response.body, articleUrl);
@@ -554,12 +600,12 @@ async function collectArticleUrlsFromList(listUrl: string, maxPages: number, del
     const pageUrl = buildListPageUrl(listUrl, page);
     ctx.emit({ type: "PROGRESS", payload: { keyword: "脉脉", current_page: page, captured_job_list: urls.size, captured_job_detail: 0, filtered_job: 0 } });
     const response = await fetchMaimaiPage(pageUrl, ctx.signal, `脉脉第 ${page} 页`);
-    if (response.status < 200 || response.status >= 300) {
-      ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉第 ${page} 页请求异常：HTTP ${response.status}` } });
+    if (isBlockedResponse(response)) {
+      ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉第 ${page} 页被登录或验证拦截。` } });
       break;
     }
-    if (isBlockedPage(response.body)) {
-      ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉第 ${page} 页被登录或验证拦截。` } });
+    if (response.status < 200 || response.status >= 300) {
+      ctx.emit({ type: "LOG", payload: { level: "warn", message: `脉脉第 ${page} 页请求异常：HTTP ${response.status}` } });
       break;
     }
     const pageLinks = parseMaimaiArticleLinks(response.body, pageUrl);

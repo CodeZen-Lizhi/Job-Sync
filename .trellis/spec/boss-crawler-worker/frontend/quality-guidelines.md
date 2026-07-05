@@ -60,6 +60,11 @@ Questions to answer:
 
 ## Testing Requirements
 
+- After fixing a user-visible bug, do not stop at code review, type-check,
+  compilation, or unit tests. Run at least one functional simulation through
+  the real software path that users exercise, such as a desktop/browser flow,
+  a Tauri command path, or the actual worker stdin/stdout command loop. The
+  handoff must state the simulated action and the observed user-facing result.
 - Add contract tests when changing route caching, list/detail payload shape, or
   row-summary fields. Tests should assert that heavy list item types do not
   contain full bodies and that heavy route pages are not globally cached.
@@ -82,5 +87,7 @@ Questions to answer:
 - Does the page destroy or clean up heavy DOM/timers when leaving the route?
 - Are status badges and short labels backed by lightweight response fields
   rather than per-row JSON parsing?
+- For bug fixes, is there a functional simulation result from the real user
+  path, not only compile/unit-test output?
 
 (To be filled by the team)
