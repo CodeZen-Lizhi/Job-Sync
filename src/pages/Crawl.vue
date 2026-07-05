@@ -9,16 +9,24 @@ import { useCrawlPage } from "../lib/useCrawlPage";
 
 const runtimePanelReady = ref(false);
 let cancelRuntimePanelReady: (() => void) | null = null;
+let runtimePanelReadyTimer: number | null = null;
 
 onMounted(() => {
   cancelRuntimePanelReady = runAfterInitialPaint(() => {
-    runtimePanelReady.value = true;
+    runtimePanelReadyTimer = window.setTimeout(() => {
+      runtimePanelReady.value = true;
+      runtimePanelReadyTimer = null;
+    }, 600);
   });
 });
 
 onUnmounted(() => {
   cancelRuntimePanelReady?.();
   cancelRuntimePanelReady = null;
+  if (runtimePanelReadyTimer !== null) {
+    window.clearTimeout(runtimePanelReadyTimer);
+    runtimePanelReadyTimer = null;
+  }
 });
 
 const {

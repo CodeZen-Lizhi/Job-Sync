@@ -788,16 +788,6 @@ function createCrawlPageState() {
     delayMs.value = typeof config.delayMs === "number" && Number.isFinite(config.delayMs) && config.delayMs >= 0
       ? Math.floor(config.delayMs)
       : DEFAULT_DELAY_MS;
-    openSelectedSourceSettings();
-  }
-
-  function openSelectedSourceSettings(): void {
-    bossSettingsOpen.value = bossSelected.value;
-    liepinSettingsOpen.value = liepinSelected.value;
-    v2exFeedSettingsOpen.value = v2exSelected.value;
-    maimaiSettingsOpen.value = maimaiSelected.value;
-    linuxdoSettingsOpen.value = linuxdoSelected.value;
-    zhilianSettingsOpen.value = zhilianSelected.value;
   }
 
   function sanitizeBossFilterConditionSelection(value: unknown): Record<string, string> {
@@ -876,7 +866,6 @@ function createCrawlPageState() {
       bossCollectionEnabled.value = true;
       collectionSourceRegistry.value = PREVIEW_COLLECTION_SOURCES;
       collectionSourcesLoaded.value = true;
-      openSelectedSourceSettings();
       return;
     }
     try {
@@ -893,7 +882,6 @@ function createCrawlPageState() {
       if (!bossCollectionEnabled.value) {
         selectedCollectionSources.value = selectedCollectionSources.value.filter((source) => source !== BOSS_SOURCE_PLATFORM);
       }
-      openSelectedSourceSettings();
     } catch {
       bossCollectionEnabled.value = false;
       collectionSourcesLoaded.value = true;
@@ -1168,19 +1156,14 @@ function createCrawlPageState() {
 
   async function initializeRuntime(): Promise<void> {
     if (runtimeInitialized.value) {
-      void refreshCollectionSourceState();
+      void loadCollectionSources();
+      runAfterInitialPaint(() => void loadCollectionSummary());
       return;
     }
     runtimeInitialized.value = true;
     void initializeSchedule();
-    void refreshCollectionSourceState();
-  }
-
-  async function refreshCollectionSourceState(): Promise<void> {
-    await Promise.all([
-      loadCollectionSources(),
-      loadCollectionSummary(),
-    ]);
+    void loadCollectionSources();
+    runAfterInitialPaint(() => void loadCollectionSummary());
   }
 
   async function initializeSchedule(): Promise<void> {

@@ -663,7 +663,8 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(crawlConfigPage, /@focus="activateCronEditor"/);
     assert.doesNotMatch(crawlConfigPage, /onMounted\(\(\) => \{[\s\S]*cronEditorReady\.value = true/);
     assert.match(crawlPage, /useCrawlPage\(\{ initialize: "runtime" \}\)/);
-    assert.match(crawlPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,100}runtimePanelReady\.value = true/);
+    assert.match(crawlPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,160}window\.setTimeout\(\(\) => \{[\s\S]{0,120}runtimePanelReady\.value = true/);
+    assert.match(crawlPage, /window\.clearTimeout\(runtimePanelReadyTimer\)/);
     assert.match(crawlPage, /v-if="runtimePanelReady"/);
     assert.match(crawlLogic, /type CrawlPageInitializeMode = "full" \| "runtime" \| "schedule"/);
     assert.match(configInitializer, /initializeSchedule/);
@@ -674,9 +675,13 @@ describe("review workflow contract", () => {
     assert.doesNotMatch(configInitializer, /refreshCollectionSourceState/);
     assert.match(crawlLogic, /options\.initialize === "runtime"[\s\S]{0,120}runAfterInitialPaint\(\(\) => void state\.initializeRuntime\(\)\)/);
     assert.match(runtimeInitializer, /initializeSchedule/);
-    assert.match(runtimeInitializer, /refreshCollectionSourceState/);
+    assert.match(runtimeInitializer, /loadCollectionSources/);
+    assert.match(runtimeInitializer, /runAfterInitialPaint\(\(\) => void loadCollectionSummary\(\)\)/);
+    assert.doesNotMatch(crawlLogic, /function refreshCollectionSourceState/);
     assert.doesNotMatch(runtimeInitializer, /loadBossMeta/);
     assert.doesNotMatch(runtimeInitializer, /loadDefaultFilterProfile/);
+    assert.doesNotMatch(crawlLogic, /openSelectedSourceSettings/);
+    assert.doesNotMatch(crawlLogic, /bossSettingsOpen\.value = bossSelected\.value/);
     assert.match(frontendQualityGuide, /Split heavy widgets out of primary route shells/);
   });
 
@@ -1722,9 +1727,10 @@ describe("review workflow contract", () => {
     assert.match(crawlConfigPage, /来源/);
     assert.match(crawlConfigPage, /collectableSourceOptions/);
     assert.match(crawlLogic, /if \(initialized\.value\) \{\s*void loadCollectionSources\(\);\s*return;\s*\}/);
-    assert.match(crawlLogic, /async function refreshCollectionSourceState\(\)/);
     assert.match(crawlLogic, /loadCollectionSources\(\)/);
     assert.match(crawlLogic, /loadCollectionSummary\(\)/);
+    assert.match(crawlLogic, /runAfterInitialPaint\(\(\) => void loadCollectionSummary\(\)\)/);
+    assert.doesNotMatch(crawlLogic, /async function refreshCollectionSourceState\(\)/);
     assert.match(crawlPage, /Boss、猎聘、智联、V2EX、LinuxDo 或脉脉/);
     assert.match(crawlConfigPage, /连接一次 \/ 后台复用 profile/);
     assert.doesNotMatch(crawlConfigPage, /sourcePlatformModeLabel/);
