@@ -656,9 +656,15 @@ describe("review workflow contract", () => {
     assert.match(router, /path: "\/crawl-config", component: \(\) => import\("\.\/pages\/CrawlConfig\.vue"\)/);
     assert.doesNotMatch(appShell, /import\("\.\/pages\/CrawlConfig\.vue"\)/);
     assert.match(crawlConfigPage, /defineAsyncComponent\(async \(\) => \(await import\("@vue-js-cron\/light"\)\)\.CronLight\)/);
-    assert.match(crawlConfigPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,80}cronEditorReady\.value = true/);
+    assert.match(crawlConfigPage, /function activateCronEditor\(\): void \{/);
+    assert.match(crawlConfigPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,100}cronEditorReady\.value = true/);
     assert.match(crawlConfigPage, /v-if="cronEditorReady"/);
+    assert.match(crawlConfigPage, /@click="activateCronEditor"/);
+    assert.doesNotMatch(crawlConfigPage, /@focus="activateCronEditor"/);
+    assert.doesNotMatch(crawlConfigPage, /onMounted\(\(\) => \{[\s\S]*cronEditorReady\.value = true/);
     assert.match(crawlPage, /useCrawlPage\(\{ initialize: "runtime" \}\)/);
+    assert.match(crawlPage, /runAfterInitialPaint\(\(\) => \{[\s\S]{0,100}runtimePanelReady\.value = true/);
+    assert.match(crawlPage, /v-if="runtimePanelReady"/);
     assert.match(crawlLogic, /type CrawlPageInitializeMode = "full" \| "runtime" \| "schedule"/);
     assert.match(configInitializer, /initializeSchedule/);
     assert.match(configInitializer, /loadCollectionSources/);
@@ -681,7 +687,9 @@ describe("review workflow contract", () => {
     assert.match(runtime, /case "JOB_NORMALIZED_CAPTURED"/);
     assert.match(runtime, /已入库：\$\{evt\.payload\.position_name \?\? evt\.payload\.encrypt_job_id\}/);
     assert.match(crawlPanel, /运行日志/);
-    assert.match(crawlPanel, /v-for="\(line, index\) in logs"/);
+    assert.match(crawlPanel, /const VISIBLE_LOG_LIMIT = 80/);
+    assert.match(crawlPanel, /props\.logs\.slice\(-VISIBLE_LOG_LIMIT\)/);
+    assert.match(crawlPanel, /v-for="\(line, index\) in visibleLogs"/);
   });
 
   it("keeps scheduled crawl config app-open only and wired to the existing crawl flow", () => {

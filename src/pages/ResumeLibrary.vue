@@ -203,17 +203,50 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div v-if="loading" class="px-4 py-8 text-sm text-content-muted">正在加载简历库…</div>
-    <div v-else-if="!hasResumes && !isCreating" class="ui-panel-muted p-8 text-center">
-      <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-white text-content-primary ring-1 ring-border/90">
-        <FileText class="h-5 w-5" aria-hidden="true" />
+    <div v-if="loading" class="ui-loading-state">
+      <div class="mb-4 flex items-center gap-2 text-sm font-medium text-content-secondary">
+        <FileText class="h-4 w-4 text-content-muted" aria-hidden="true" />
+        正在加载简历库…
       </div>
-      <h2 class="mt-4 text-base font-semibold text-content-primary">暂无简历</h2>
-      <p class="mt-2 text-sm text-content-muted">创建第一份 Markdown 简历后，就可以设为默认或关联岗位。</p>
-      <button class="ui-btn-primary mt-5 inline-flex items-center gap-2 px-3 py-1.5 text-xs" @click="startCreate">
-        <Plus class="h-3.5 w-3.5" aria-hidden="true" />
-        新建简历
-      </button>
+      <div class="grid gap-2 sm:grid-cols-[280px_minmax(0,1fr)]">
+        <div class="ui-skeleton-row space-y-3">
+          <div class="ui-skeleton-line w-28" />
+          <div class="ui-skeleton-line w-40" />
+          <div class="ui-skeleton-line w-24" />
+        </div>
+        <div class="ui-skeleton-row space-y-3">
+          <div class="ui-skeleton-line w-44" />
+          <div class="ui-skeleton-line w-full" />
+          <div class="ui-skeleton-line w-5/6" />
+        </div>
+      </div>
+    </div>
+    <div v-else-if="!hasResumes && !isCreating" class="ui-empty-state">
+      <div class="ui-empty-icon">
+        <FileText class="h-6 w-6" aria-hidden="true" />
+      </div>
+      <h2 class="ui-empty-title">暂无简历</h2>
+      <p class="ui-empty-copy">创建第一份 Markdown 简历后，就可以设为默认或关联岗位。</p>
+      <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <span class="ui-badge !bg-white !text-blue-700 !ring-blue-200">
+          <FilePenLine class="h-3 w-3" aria-hidden="true" />
+          Markdown
+        </span>
+        <span class="ui-badge !bg-white !text-amber-700 !ring-amber-200">
+          <Star class="h-3 w-3" aria-hidden="true" />
+          默认简历
+        </span>
+        <span class="ui-badge !bg-white !text-emerald-700 !ring-emerald-200">
+          <Link2 class="h-3 w-3" aria-hidden="true" />
+          岗位关联
+        </span>
+      </div>
+      <div class="ui-empty-actions">
+        <button class="ui-btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs" @click="startCreate">
+          <Plus class="h-3.5 w-3.5" aria-hidden="true" />
+          新建简历
+        </button>
+      </div>
     </div>
 
     <div v-else class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -229,9 +262,9 @@ onMounted(async () => {
             v-for="resume in resumes"
             :key="resume.id"
             type="button"
-            class="block w-full px-4 py-3 text-left transition-colors hover:bg-slate-50"
+            class="ui-list-row block w-full px-4 py-3 text-left"
             :class="[
-              selectedResume?.id === resume.id ? 'bg-slate-50' : '',
+              selectedResume?.id === resume.id ? 'ui-list-row-active' : '',
               highlightedResumeId === resume.id ? 'ring-2 ring-inset ring-slate-900/20' : '',
             ]"
             @click="selectResume(resume.id)"
@@ -343,9 +376,11 @@ onMounted(async () => {
                   <div class="mt-1 text-xs text-content-muted">{{ linkedJobs.length }} 个岗位</div>
                 </div>
               </div>
-              <div v-if="linkedJobs.length === 0" class="mt-4 text-sm text-content-muted">暂无关联岗位。</div>
+              <div v-if="linkedJobs.length === 0" class="mt-4 rounded-xl border border-dashed border-border/80 bg-white/70 px-3 py-4 text-sm text-content-muted">
+                暂无关联岗位。
+              </div>
               <div v-else class="mt-4 space-y-2">
-                <div v-for="job in linkedJobs" :key="job.encrypt_job_id" class="rounded-md border border-border/90 bg-white p-3">
+                <div v-for="job in linkedJobs" :key="job.encrypt_job_id" class="rounded-xl border border-border/75 bg-white/95 p-3">
                   <div class="text-sm font-medium text-content-primary">{{ jobLabel(job) }}</div>
                   <div class="mt-1 text-[11px] text-content-muted">{{ job.salary_desc ?? "薪资未知" }} / {{ job.review_status ?? "pending" }}</div>
                   <div class="mt-3 flex flex-wrap gap-2">
@@ -360,27 +395,27 @@ onMounted(async () => {
       </main>
     </div>
 
-    <div v-if="linkModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-      <div class="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl ring-1 ring-border/90">
-        <div class="flex items-center justify-between gap-3 border-b border-border/90 px-4 py-3">
+    <div v-if="linkModalOpen" class="ui-modal-backdrop">
+      <div class="ui-modal-shell max-w-3xl">
+        <div class="ui-modal-header">
           <div>
             <div class="text-sm font-semibold text-content-primary">关联岗位</div>
             <div class="mt-1 text-xs text-content-muted">已有关联的岗位会切换到当前简历。</div>
           </div>
-          <button class="ui-btn-secondary inline-flex h-8 w-8 items-center justify-center p-0" @click="linkModalOpen = false">
+          <button class="ui-icon-btn p-0" @click="linkModalOpen = false">
             <X class="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         <div class="max-h-[60vh] overflow-y-auto p-4">
-          <div v-if="linkJobsLoading" class="py-8 text-sm text-content-muted">正在加载推荐岗位…</div>
-          <div v-else-if="linkJobs.length === 0" class="py-8 text-center text-sm text-content-muted">暂无推荐查看岗位。</div>
+          <div v-if="linkJobsLoading" class="ui-loading-state px-0">正在加载推荐岗位…</div>
+          <div v-else-if="linkJobs.length === 0" class="rounded-xl border border-dashed border-border/80 bg-surface-alt px-4 py-8 text-center text-sm text-content-muted">暂无推荐查看岗位。</div>
           <div v-else class="space-y-2">
             <button
               v-for="job in linkJobs"
               :key="job.encrypt_job_id"
               type="button"
-              class="flex w-full items-start gap-3 rounded-md border border-border/90 p-3 text-left transition-colors hover:bg-slate-50"
-              :class="selectedJobIds.has(job.encrypt_job_id) ? 'bg-slate-50 ring-1 ring-slate-900/20' : 'bg-white'"
+              class="ui-list-row flex w-full items-start gap-3 rounded-xl border border-border/80 bg-white/95 p-3 text-left"
+              :class="selectedJobIds.has(job.encrypt_job_id) ? 'ui-list-row-active ring-slate-900/20' : ''"
               @click="toggleLinkJob(job.encrypt_job_id)"
             >
               <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border/90 bg-white">
@@ -393,7 +428,7 @@ onMounted(async () => {
             </button>
           </div>
         </div>
-        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border/90 px-4 py-3">
+        <div class="ui-modal-footer">
           <div class="text-xs text-content-muted">已选择 {{ selectedJobIds.size }} 个岗位</div>
           <div class="flex gap-2">
             <button class="ui-btn-secondary px-3 py-1.5 text-xs" @click="linkModalOpen = false">取消</button>

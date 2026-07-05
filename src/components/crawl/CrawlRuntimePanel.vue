@@ -11,6 +11,8 @@ const props = defineProps<{
   error?: string | null;
 }>();
 
+const VISIBLE_LOG_LIMIT = 80;
+
 defineEmits<{
   (e: "clear-logs"): void;
 }>();
@@ -41,6 +43,7 @@ function buildRunStats(run: CollectionRun | null | undefined): {
 }
 
 const runStats = computed(() => buildRunStats(props.run));
+const visibleLogs = computed(() => props.logs.slice(-VISIBLE_LOG_LIMIT));
 </script>
 
 <template>
@@ -71,7 +74,7 @@ const runStats = computed(() => buildRunStats(props.run));
     <div class="ui-log-panel-header">
       <div class="space-y-1">
         <div class="text-sm font-semibold text-content-primary">运行日志</div>
-        <div class="text-xs text-content-muted">最近 500 条</div>
+        <div class="text-xs text-content-muted">最近 {{ visibleLogs.length }} / {{ logs.length }} 条</div>
       </div>
       <div class="flex items-center gap-2">
         <span class="ui-badge" :class="sidecarRunning ? 'bg-emerald-400/10 text-emerald-700 ring-emerald-400/20' : ''">
@@ -82,7 +85,7 @@ const runStats = computed(() => buildRunStats(props.run));
       </div>
     </div>
     <div class="ui-log-surface">
-      <div v-for="(line, index) in logs" :key="index" class="ui-log-row">
+      <div v-for="(line, index) in visibleLogs" :key="`${line.ts}-${index}`" class="ui-log-row">
         <span class="ui-log-time" :title="line.ts">{{ formatLogTime(line.ts) }}</span>
         <span class="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" :class="line.level === 'error' ? 'bg-rose-500' : 'bg-sky-500/80'" />
         <span class="ui-log-message">{{ line.message }}</span>

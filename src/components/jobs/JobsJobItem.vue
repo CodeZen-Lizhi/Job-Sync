@@ -146,12 +146,12 @@ watch(
 <template>
   <div>
     <div
-      class="flex cursor-pointer items-center gap-3 py-2.5 transition-colors"
-      :class="[rowPaddingClass, expanded ? 'bg-slate-50' : 'hover:bg-slate-50']"
+      class="group flex min-h-16 cursor-pointer items-center gap-3 py-3 transition-colors duration-150"
+      :class="[rowPaddingClass, expanded ? 'bg-surface-alt ring-1 ring-inset ring-border/70' : 'hover:bg-surface-alt/80']"
       @click="$emit('toggle-detail', job.encrypt_job_id)"
     >
       <svg
-        class="h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-200"
+        class="h-4 w-4 shrink-0 rounded-md text-content-muted transition-transform duration-200 group-hover:text-content-secondary"
         :class="expanded ? 'rotate-90' : ''"
         viewBox="0 0 20 20"
         fill="currentColor"
@@ -164,8 +164,8 @@ watch(
       </svg>
 
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="truncate text-sm font-medium text-content-primary" style="max-width: 220px;">{{ job.position_name ?? '-' }}</span>
-        <span class="truncate text-sm text-content-secondary" style="max-width: 160px;">{{ job.brand_name ?? '-' }}</span>
+        <span class="max-w-[220px] truncate text-sm font-semibold text-content-primary">{{ job.position_name ?? '-' }}</span>
+        <span class="max-w-[160px] truncate text-sm text-content-secondary">{{ job.brand_name ?? '-' }}</span>
         <span class="ui-badge !bg-white !text-blue-700 !ring-blue-200">{{ sourcePlatformLabel(job.source_platform) }}</span>
         <span class="ui-badge !bg-white !text-cyan-700 !ring-cyan-200">岗位状态：{{ reviewStatusLabel(job.review_status) }}</span>
         <span
@@ -192,9 +192,9 @@ watch(
       </div>
     </div>
 
-    <div v-if="expanded" class="bg-white py-4" :class="detailPaddingClass">
-      <div class="mb-4 space-y-3 rounded-lg border border-border/90 bg-white p-3">
-        <div class="flex flex-wrap items-center gap-2 text-xs text-content-muted">
+    <div v-if="expanded" class="bg-white/95 py-4" :class="detailPaddingClass">
+      <div class="ui-card-soft mb-4 space-y-3 p-3">
+        <div class="flex flex-wrap items-center gap-2 rounded-lg bg-white/85 p-2 text-xs text-content-muted ring-1 ring-border/60">
           <span class="font-medium text-content-secondary">岗位状态：{{ reviewStatusLabel(job.review_status) }}</span>
           <span>平台：{{ sourcePlatformLabel(job.source_platform) }}</span>
           <span>AI 结果：{{ aiAuditStatusLabel(aiAuditStatus) }}</span>
@@ -257,7 +257,7 @@ watch(
             <option v-if="job.company_review_status === 'manual_not_fit'" value="company_restore" :disabled="!job.brand_name">恢复公司</option>
           </UiActionMenu>
         </div>
-        <div class="space-y-2 border-t border-border/90 pt-3">
+        <div class="space-y-2 border-t border-border/80 pt-3">
           <div class="flex flex-wrap items-center gap-2">
             <button
               class="ui-btn-secondary px-2.5 py-1 text-xs"
@@ -286,7 +286,7 @@ watch(
             <div>{{ props.greetingError.hint }}</div>
             <div class="whitespace-pre-wrap text-[11px] text-red-700">{{ props.greetingError.message }}</div>
           </div>
-          <div v-if="props.greetingDraft" class="rounded-lg border border-border/90 bg-surface-secondary p-3 text-xs leading-6 text-content-secondary">
+          <div v-if="props.greetingDraft" class="rounded-xl border border-border/70 bg-white/90 p-3 text-xs leading-6 text-content-secondary">
             <div class="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-content-muted">打招呼草稿</div>
             <pre class="whitespace-pre-wrap break-words font-sans">{{ props.greetingDraft }}</pre>
           </div>
@@ -303,13 +303,13 @@ watch(
       <div v-else-if="!detail" class="text-sm text-content-muted">未采集到该职位的详情数据。</div>
       <div v-else class="space-y-3">
         <div class="flex flex-wrap gap-2">
-          <span v-if="detail.jobInfo?.jobStatusDesc" class="rounded-md bg-white px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">{{ detail.jobInfo.jobStatusDesc }}</span>
+          <span v-if="detail.jobInfo?.jobStatusDesc" class="ui-badge !bg-white !text-amber-700 !ring-amber-200">{{ detail.jobInfo.jobStatusDesc }}</span>
           <span v-if="detail.bossInfo?.activeTimeDesc" class="ui-badge">{{ detail.bossInfo.activeTimeDesc }}</span>
         </div>
         <div v-if="detail.jobInfo?.postDescription">
           <button
             type="button"
-            class="flex w-full items-center justify-between gap-3 rounded-lg border border-border/80 bg-surface-secondary px-3 py-2 text-left transition-colors hover:bg-slate-100"
+            class="flex w-full items-center justify-between gap-3 rounded-lg border border-border/80 bg-surface-alt px-3 py-2 text-left transition-colors hover:bg-white focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10"
             @click="descriptionOpen = !descriptionOpen"
           >
             <span class="text-xs font-semibold text-content-muted">职位描述</span>

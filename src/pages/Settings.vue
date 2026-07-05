@@ -658,7 +658,7 @@ watch(
             </div>
             <div class="flex flex-wrap items-center justify-start gap-2 md:justify-end">
               <button
-                class="inline-flex min-w-[6.25rem] items-center gap-2 rounded-full px-2 py-1 text-xs font-medium ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                class="inline-flex min-h-11 min-w-[6.25rem] items-center gap-2 rounded-full px-2.5 py-2 text-xs font-medium ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 type="button"
                 :class="source.enabled ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-700 ring-slate-300 hover:bg-slate-200'"
                 :disabled="!tauri || sourcesLoading || sourceUpdatingPlatform !== null"
@@ -818,10 +818,10 @@ watch(
 
         <!-- Model dropdown with load button -->
         <div class="block space-y-1 md:col-span-2">
-          <div class="text-xs font-medium text-content-muted">Model（可选）</div>
+          <label for="settings-model-input" class="block text-xs font-medium text-content-muted">Model（可选）</label>
           <div class="flex items-center gap-2">
             <div class="flex-1">
-              <UiSelect v-if="models.length > 0" v-model="model">
+              <UiSelect v-if="models.length > 0" id="settings-model-input" v-model="model" aria-label="Model（可选）">
                 <option value="">不指定（使用默认）</option>
                 <option v-for="m in models" :key="m.id" :value="m.id">
                   {{ m.id }}
@@ -829,6 +829,7 @@ watch(
               </UiSelect>
               <input
                 v-else
+                id="settings-model-input"
                 v-model="model"
                 class="ui-input w-full"
                 placeholder="点击右侧按钮加载模型列表，或手动输入模型名"
@@ -842,10 +843,10 @@ watch(
               {{ modelsLoading ? "加载中…" : "加载模型" }}
             </button>
           </div>
-        <div v-if="models.length > 0" class="ui-badge mt-1">
-          已加载 {{ models.length }} 个模型
+          <div v-if="models.length > 0" class="ui-badge mt-1">
+            已加载 {{ models.length }} 个模型
+          </div>
         </div>
-      </div>
 
         <label class="block space-y-1 md:col-span-2">
           <div class="text-xs font-medium text-content-muted">通用 AI 补充提示（可选）</div>

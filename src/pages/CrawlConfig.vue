@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, onUnmounted, ref } from "vue";
+import { defineAsyncComponent, onUnmounted, ref } from "vue";
 
 import UiMultiSelect from "../components/ui/UiMultiSelect.vue";
 import UiSelect from "../components/ui/UiSelect.vue";
@@ -9,22 +9,17 @@ import { useCrawlPage } from "../lib/useCrawlPage";
 
 const CronLight = defineAsyncComponent(async () => (await import("@vue-js-cron/light")).CronLight);
 const cronEditorReady = ref(false);
-let cronEditorTimer: number | null = null;
 let cancelCronEditorReady: (() => void) | null = null;
 
-onMounted(() => {
-  cronEditorTimer = window.setTimeout(() => {
-    cancelCronEditorReady = runAfterInitialPaint(() => {
-      cronEditorReady.value = true;
-    });
-  }, 1_000);
-});
+function activateCronEditor(): void {
+  if (cronEditorReady.value || cancelCronEditorReady) return;
+  cancelCronEditorReady = runAfterInitialPaint(() => {
+    cronEditorReady.value = true;
+    cancelCronEditorReady = null;
+  });
+}
 
 onUnmounted(() => {
-  if (cronEditorTimer !== null) {
-    window.clearTimeout(cronEditorTimer);
-    cronEditorTimer = null;
-  }
   cancelCronEditorReady?.();
   cancelCronEditorReady = null;
 });
@@ -228,7 +223,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
               <button
                 v-for="option in collectableSourceOptions"
                 :key="option.value"
-                class="inline-flex h-9 items-center rounded-md border px-3 text-sm font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10"
+                class="inline-flex min-h-11 items-center rounded-lg border px-3.5 py-2 text-sm font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10"
                 :class="isCollectionSourceSelected(option.value)
                   ? 'border-slate-900 bg-slate-900 text-white'
                   : 'border-border/90 bg-white text-content-secondary hover:border-border-strong hover:bg-slate-50 hover:text-content-primary'"
@@ -263,14 +258,22 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
         <div class="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
           <div class="space-y-3">
             <label class="flex min-h-11 items-center gap-3 rounded-lg border border-border/90 bg-white px-3 py-2">
-              <input v-model="crawlScheduleEnabled" type="checkbox" class="h-4 w-4 accent-slate-900" />
+              <input v-model="crawlScheduleEnabled" type="checkbox" class="h-5 w-5 accent-slate-900" />
               <span class="text-sm font-medium text-content-primary">启用 cron 定时采集</span>
             </label>
 
             <div class="rounded-lg border border-border/90 bg-white p-3">
               <div class="mb-2 flex items-center justify-between gap-2">
-                <div class="text-xs font-medium text-content-muted">Cron 表达式</div>
-                <span class="text-[11px] text-content-muted">仅支持 5 段式</span>
+                <label for="crawl-schedule-expression" class="text-xs font-medium text-content-muted">Cron 表达式</label>
+                <button
+                  v-if="!cronEditorReady"
+                  class="ui-btn-secondary px-2.5 py-1.5 text-[11px]"
+                  type="button"
+                  @click="activateCronEditor"
+                >
+                  可视编辑
+                </button>
+                <span v-else class="text-[11px] text-content-muted">仅支持 5 段式</span>
               </div>
               <CronLight
                 v-if="cronEditorReady"
@@ -283,6 +286,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
               />
               <input
                 v-else
+                id="crawl-schedule-expression"
                 v-model="crawlScheduleExpression"
                 class="ui-input w-full"
                 :disabled="!crawlScheduleEnabled"
@@ -378,7 +382,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
 
         <div v-if="bossSettingsOpen" class="space-y-3 p-4">
           <label class="flex items-start gap-3 rounded-lg border border-border/90 bg-white px-3 py-3">
-            <input v-model="bossLowRiskMode" type="checkbox" class="mt-1 h-4 w-4 accent-slate-900 focus:outline-none focus:ring-4 focus:ring-border-glow/10" />
+            <input v-model="bossLowRiskMode" type="checkbox" class="mt-1 h-5 w-5 accent-slate-900 focus:outline-none focus:ring-4 focus:ring-border-glow/10" />
             <span class="space-y-1">
               <span class="block text-xs font-medium text-content-primary">低风控模式</span>
               <span class="block text-[11px] leading-5 text-content-muted">

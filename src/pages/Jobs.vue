@@ -429,9 +429,42 @@ watch(
         </div>
       </div>
 
-      <div v-if="displayedJobsLoading" class="px-4 py-6 text-sm text-content-muted">正在加载岗位列表…</div>
-      <div v-else-if="displayedJobs.length === 0" class="px-4 py-10 text-center text-sm text-content-muted">
-        当前分区暂无岗位。
+      <div v-if="displayedJobsLoading" class="ui-loading-state">
+        <div class="mb-4 flex items-center gap-2 text-sm font-medium text-content-secondary">
+          <RefreshCw class="h-4 w-4 animate-spin text-content-muted" aria-hidden="true" />
+          正在加载岗位列表…
+        </div>
+        <div class="grid gap-2">
+          <div v-for="index in 3" :key="index" class="ui-skeleton-row">
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="ui-skeleton-line w-36" />
+              <div class="ui-skeleton-line w-24" />
+              <div class="ui-skeleton-line w-20" />
+              <div class="ml-auto hidden h-8 w-28 rounded-lg bg-slate-200/70 sm:block" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="displayedJobs.length === 0" class="px-4 py-5">
+        <div class="ui-empty-state">
+          <div class="ui-empty-icon">
+            <Database class="h-6 w-6" aria-hidden="true" />
+          </div>
+          <h3 class="ui-empty-title">当前分区暂无岗位</h3>
+          <p class="ui-empty-copy">
+            {{ hasActiveFilters ? "可以先清除筛选条件，再回到当前分区查看。" : activeBucket.description }}
+          </p>
+          <div class="ui-empty-actions">
+            <button v-if="hasActiveFilters" class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" @click="clearCurrentViewFilters">
+              <X class="h-3.5 w-3.5" aria-hidden="true" />
+              清除筛选
+            </button>
+            <button class="ui-btn-secondary px-3 py-1.5 text-xs" type="button" :disabled="!tauri || displayedJobsLoading" @click="refreshCandidates">
+              <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
+              刷新列表
+            </button>
+          </div>
+        </div>
       </div>
       <div v-else class="divide-y divide-border/10">
         <JobsJobItem
@@ -488,9 +521,9 @@ watch(
       </div>
     </section>
 
-    <div v-if="optimizedResumePreview" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6">
-      <section class="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-border bg-white shadow-xl">
-        <header class="flex flex-wrap items-start justify-between gap-3 border-b border-border/90 px-4 py-3">
+    <div v-if="optimizedResumePreview" class="ui-modal-backdrop">
+      <section class="ui-modal-shell flex max-h-[88vh] max-w-5xl flex-col">
+        <header class="ui-modal-header">
           <div class="min-w-0">
             <div class="ui-section-kicker">Optimized Resume</div>
             <h2 class="mt-1 text-base font-semibold text-content-primary">岗位版简历预览</h2>
@@ -561,7 +594,7 @@ watch(
           </div>
         </div>
 
-        <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-border/90 px-4 py-3">
+        <footer class="ui-modal-footer">
           <div class="min-w-0 text-xs">
             <span v-if="optimizedResumeMessage" class="text-emerald-700">{{ optimizedResumeMessage }}</span>
             <span v-else-if="optimizedResumeError" class="text-red-700">{{ optimizedResumeError }}</span>

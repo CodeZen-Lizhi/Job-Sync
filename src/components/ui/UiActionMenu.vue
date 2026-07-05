@@ -123,7 +123,7 @@ onUnmounted(() => {
       ref="buttonEl"
       v-bind="buttonAttrs"
       type="button"
-      class="group relative flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-border/90 bg-white px-3 py-2 text-left transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+      class="group relative flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-border/80 bg-white/95 px-3.5 py-2 text-left shadow-sm shadow-slate-200/50 transition-colors duration-150 hover:border-border-strong hover:bg-white focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
       :class="open ? 'border-border-glow bg-white ring-4 ring-border-glow/10' : ''"
       :disabled="isDisabled"
       :aria-expanded="open"
@@ -141,8 +141,8 @@ onUnmounted(() => {
         :class="open ? 'rotate-180 text-content-secondary' : ''"
         aria-hidden="true"
       />
-      <span class="pointer-events-none absolute inset-0 rounded-md border border-transparent transition-colors group-hover:border-border/20" aria-hidden="true" />
-      <span class="pointer-events-none absolute -inset-0.5 hidden rounded-lg border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100" aria-hidden="true" />
+      <span class="pointer-events-none absolute inset-0 rounded-lg border border-transparent transition-colors group-hover:border-border/20" aria-hidden="true" />
+      <span class="pointer-events-none absolute -inset-0.5 hidden rounded-xl border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100" aria-hidden="true" />
     </button>
 
     <Teleport to="body">
@@ -150,7 +150,7 @@ onUnmounted(() => {
         v-if="open"
         ref="menuEl"
         :id="menuId"
-        class="fixed z-[120] overflow-hidden rounded-md border border-border/90 bg-white shadow-lg shadow-slate-200/70"
+        class="fixed z-[120] overflow-hidden rounded-lg border border-border/75 bg-white shadow-xl shadow-slate-200/70"
         :style="menuStyle"
         role="menu"
         @keydown="onKeydown"
@@ -163,7 +163,7 @@ onUnmounted(() => {
             <button
               v-else
               type="button"
-              class="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm text-content-secondary transition-colors duration-150 hover:bg-slate-50 hover:text-content-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-secondary"
+              class="flex min-h-10 w-full items-center rounded-md px-3 py-2 text-left text-sm text-content-secondary transition-colors duration-150 hover:bg-surface-alt hover:text-content-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-content-secondary"
               :disabled="it.disabled"
               role="menuitem"
               @click="selectOption(it.value)"

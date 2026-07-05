@@ -1,9 +1,25 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
 import CrawlActionBar from "../components/crawl/CrawlActionBar.vue";
 import CrawlRuntimePanel from "../components/crawl/CrawlRuntimePanel.vue";
+import { runAfterInitialPaint } from "../lib/defer";
 import { useCrawlPage } from "../lib/useCrawlPage";
+
+const runtimePanelReady = ref(false);
+let cancelRuntimePanelReady: (() => void) | null = null;
+
+onMounted(() => {
+  cancelRuntimePanelReady = runAfterInitialPaint(() => {
+    runtimePanelReady.value = true;
+  });
+});
+
+onUnmounted(() => {
+  cancelRuntimePanelReady?.();
+  cancelRuntimePanelReady = null;
+});
 
 const {
   tauri,
@@ -65,11 +81,13 @@ const {
     </div>
 
     <CrawlRuntimePanel
+      v-if="runtimePanelReady"
       :run="latestCollectionRun"
       :logs="runtime.logs"
       :sidecar-running="sidecarRunning"
       :error="error"
       @clear-logs="clearLogs"
     />
+    <div v-else class="ui-log-panel min-h-40 shrink-0" />
   </section>
 </template>

@@ -7,13 +7,17 @@
     /* Foundations */
     --color-base: 255 255 255;
     --color-surface: 255 255 255;
-    --color-surface-secondary: 248 250 252;
-    --color-surface-alt: 255 255 255;
+    --color-surface-secondary: 244 247 251;
+    --color-surface-alt: 249 251 253;
     --color-surface-elevated: 255 255 255;
     --color-input: 255 255 255;
-    --color-border: 203 213 225;
-    --color-border-strong: 100 116 139;
+    --color-border: 196 207 222;
+    --color-border-strong: 90 105 127;
     --color-border-glow: 37 99 235;
+    --shadow-panel: 0 18px 50px -36px rgba(15, 23, 42, 0.48);
+    --shadow-control: 0 8px 22px -18px rgba(15, 23, 42, 0.45);
+    --shadow-panel-hover: 0 24px 60px -42px rgba(15, 23, 42, 0.62);
+    --shadow-modal: 0 28px 90px -48px rgba(15, 23, 42, 0.72);
 
     /* Legacy surface aliases */
     --color-card: var(--color-surface);
@@ -39,7 +43,7 @@
 
   body {
     @apply min-h-screen bg-surface-secondary text-content-primary antialiased;
-    background-image: none;
+    background-image: linear-gradient(180deg, rgba(248, 251, 255, 0.96) 0%, rgba(241, 245, 250, 1) 100%);
   }
 
   #app {
@@ -54,20 +58,22 @@
 
 @layer components {
   .ui-panel {
-    @apply rounded-lg bg-white ring-1 ring-border/90;
-    box-shadow: none;
+    @apply rounded-xl bg-white/95 ring-1 ring-border/75;
+    box-shadow: var(--shadow-panel);
   }
 
   .ui-panel-muted {
-    @apply rounded-lg bg-white ring-1 ring-border/90;
+    @apply rounded-xl bg-white/[0.92] ring-1 ring-border/75;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-card {
-    @apply rounded-lg border border-border/80 bg-white;
+    @apply rounded-xl border border-border/70 bg-white/95;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-card-soft {
-    @apply rounded-lg border border-border/80 bg-surface-secondary;
+    @apply rounded-xl border border-border/70 bg-surface-alt;
   }
 
   .ui-section-header {
@@ -87,19 +93,20 @@
   }
 
   .ui-segmented {
-    @apply inline-flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border/80 bg-white p-1;
+    @apply inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border/75 bg-surface-alt p-1;
   }
 
   .ui-segmented-button {
-    @apply inline-flex shrink-0 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-content-secondary transition-colors hover:bg-slate-50 hover:text-content-primary focus:outline-none focus:ring-2 focus:ring-border-glow/20;
+    @apply inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-content-secondary transition-colors duration-150 hover:bg-white hover:text-content-primary focus:outline-none focus:ring-2 focus:ring-border-glow/20;
   }
 
   .ui-segmented-button-active {
-    @apply bg-slate-900 text-white ring-1 ring-slate-900;
+    @apply bg-slate-950 text-white ring-1 ring-slate-950;
   }
 
   .ui-rule-group {
-    @apply rounded-lg border border-border/80 bg-white p-3;
+    @apply rounded-xl border border-border/70 bg-white/95 p-3;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-rule-group-title {
@@ -115,11 +122,12 @@
   }
 
   .ui-toolbar {
-    @apply rounded-lg bg-white ring-1 ring-border/90;
+    @apply rounded-xl bg-white/95 ring-1 ring-border/75;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-badge {
-    @apply inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-content-primary ring-1 ring-border/90;
+    @apply inline-flex items-center gap-1 rounded-lg bg-white/90 px-2 py-0.5 text-[11px] font-semibold text-content-primary ring-1 ring-border/75;
   }
 
   .ui-status-success {
@@ -134,52 +142,118 @@
     @apply rounded-md bg-red-50 text-red-800 ring-1 ring-red-200;
   }
 
+  .ui-empty-state {
+    @apply rounded-xl border border-border/70 bg-white/95 px-5 py-10 text-center sm:px-8;
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(249, 251, 253, 0.98) 100%);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .ui-empty-icon {
+    @apply mx-auto inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border/75 bg-white text-content-primary;
+    box-shadow: var(--shadow-control);
+  }
+
+  .ui-empty-title {
+    @apply mt-4 text-base font-semibold text-content-primary;
+  }
+
+  .ui-empty-copy {
+    @apply mx-auto mt-2 max-w-xl text-sm leading-6 text-content-muted;
+  }
+
+  .ui-empty-actions {
+    @apply mt-5 flex flex-wrap items-center justify-center gap-2;
+  }
+
+  .ui-loading-state {
+    @apply px-4 py-6 text-sm text-content-muted;
+  }
+
+  .ui-skeleton-line {
+    @apply h-3 rounded-full bg-slate-200/80;
+  }
+
+  .ui-skeleton-row {
+    @apply rounded-xl border border-border/60 bg-white/70 p-3;
+  }
+
+  .ui-list-row {
+    @apply transition-colors duration-150 hover:bg-surface-alt focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10;
+  }
+
+  .ui-list-row-active {
+    @apply bg-surface-alt ring-1 ring-inset ring-border/70;
+  }
+
+  .ui-modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm;
+  }
+
+  .ui-modal-shell {
+    @apply w-full overflow-hidden rounded-xl border border-border/75 bg-white/95 shadow-2xl ring-1 ring-white/80;
+    box-shadow: var(--shadow-modal);
+  }
+
+  .ui-modal-header {
+    @apply flex flex-wrap items-start justify-between gap-3 border-b border-border/80 px-4 py-3;
+  }
+
+  .ui-modal-footer {
+    @apply flex flex-wrap items-center justify-between gap-3 border-t border-border/80 px-4 py-3;
+  }
+
   .ui-input {
-    @apply min-h-9 rounded-md border border-border/90 bg-white px-3 py-1.5 text-sm text-content-primary placeholder:text-content-muted transition-colors duration-150 focus:border-border-glow focus:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    @apply min-h-11 rounded-lg border border-border/80 bg-white px-3.5 py-2 text-sm text-content-primary placeholder:text-content-muted transition-colors duration-150 hover:border-border-strong/80 focus:border-border-glow focus:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-textarea {
-    @apply rounded-md border border-border/90 bg-white px-3 py-2 text-sm text-content-primary placeholder:text-content-muted transition-colors duration-150 focus:border-border-glow focus:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    @apply rounded-lg border border-border/80 bg-white px-3.5 py-2.5 text-sm text-content-primary placeholder:text-content-muted transition-colors duration-150 hover:border-border-strong/80 focus:border-border-glow focus:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-btn-primary {
-    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-accent bg-accent px-3 py-1.5 text-sm font-semibold text-white transition-colors duration-150 hover:border-blue-700 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-border-glow/15 disabled:cursor-not-allowed disabled:opacity-60;
-    box-shadow: none;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-3.5 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:border-blue-700 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-border-glow/15 disabled:cursor-not-allowed disabled:opacity-60;
+    box-shadow: 0 14px 30px -20px rgba(37, 99, 235, 0.72);
   }
 
   .ui-btn-secondary {
-    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-border/90 bg-white px-3 py-1.5 text-sm font-semibold text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 hover:text-content-primary focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border/80 bg-white/95 px-3.5 py-2 text-sm font-semibold text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-white hover:text-content-primary focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-btn-danger {
-    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-accent-danger bg-accent-danger px-3 py-1.5 text-sm font-semibold text-white transition-colors duration-150 hover:border-red-700 hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-500/15 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-accent-danger bg-accent-danger px-3.5 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:border-red-700 hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-500/15 disabled:cursor-not-allowed disabled:opacity-60;
+    box-shadow: 0 14px 30px -20px rgba(220, 38, 38, 0.72);
   }
 
   .ui-icon-btn {
-    @apply inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/90 bg-white text-content-secondary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 hover:text-content-primary focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border/80 bg-white/95 text-content-secondary transition-colors duration-150 hover:border-border-strong hover:bg-white hover:text-content-primary focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-crawl-panel {
-    @apply rounded-lg bg-white;
-    border: 1px solid rgb(var(--color-border) / 0.9);
-    box-shadow: none;
+    @apply rounded-xl bg-white/95;
+    border: 1px solid rgb(var(--color-border) / 0.75);
+    box-shadow: var(--shadow-panel);
   }
 
   .ui-crawl-toolbar {
-    @apply rounded-lg bg-white;
-    border: 1px solid rgb(var(--color-border) / 0.9);
+    @apply rounded-xl bg-white/95;
+    border: 1px solid rgb(var(--color-border) / 0.75);
+    box-shadow: var(--shadow-control);
   }
 
   .ui-crawl-stat {
-    @apply rounded-lg bg-white;
-    border: 1px solid rgb(var(--color-border) / 0.9);
-    box-shadow: none;
+    @apply rounded-xl bg-white/95;
+    border: 1px solid rgb(var(--color-border) / 0.75);
+    box-shadow: var(--shadow-control);
   }
 
   .ui-log-panel {
-    @apply flex h-[320px] shrink-0 flex-col overflow-hidden rounded-lg bg-white p-0;
-    border: 1px solid rgb(var(--color-border) / 0.9);
-    box-shadow: none;
+    @apply flex h-[320px] shrink-0 flex-col overflow-hidden rounded-xl bg-white/95 p-0;
+    border: 1px solid rgb(var(--color-border) / 0.75);
+    box-shadow: var(--shadow-panel);
   }
 
   .ui-log-panel-header {
@@ -187,11 +261,11 @@
   }
 
   .ui-log-surface {
-    @apply min-h-0 flex-1 overflow-auto bg-surface-secondary px-2 py-2 ring-1 ring-inset ring-border/80;
+    @apply min-h-0 flex-1 overflow-auto bg-surface-alt px-2 py-2 ring-1 ring-inset ring-border/70;
   }
 
   .ui-log-row {
-    @apply grid grid-cols-[60px_10px_minmax(0,1fr)] items-start gap-2 rounded-md px-2.5 py-2 font-mono transition-colors duration-150 hover:bg-slate-50;
+    @apply grid grid-cols-[60px_10px_minmax(0,1fr)] items-start gap-2 rounded-lg px-2.5 py-2 font-mono transition-colors duration-150 hover:bg-white;
   }
 
   .ui-log-time {
@@ -242,8 +316,8 @@
   }
 
   .resume-review-stat {
-    @apply rounded-lg border border-border/90 bg-white px-4 py-3;
-    box-shadow: none;
+    @apply rounded-xl border border-border/75 bg-white/95 px-4 py-3;
+    box-shadow: var(--shadow-control);
   }
 
   .resume-review-stat-label {
@@ -263,23 +337,23 @@
   }
 
   .resume-paper-stage {
-    @apply min-w-0 rounded-lg border border-border/90 bg-surface-secondary px-4 py-4 lg:px-5 lg:py-5;
-    box-shadow: none;
+    @apply min-w-0 rounded-xl border border-border/75 bg-surface-alt px-4 py-4 lg:px-5 lg:py-5;
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-panel {
-    @apply rounded-lg border border-border/90 bg-white px-4 py-4;
-    box-shadow: none;
+    @apply rounded-xl border border-border/75 bg-white/95 px-4 py-4;
+    box-shadow: var(--shadow-panel);
   }
 
   .resume-paper-panel-soft {
-    @apply rounded-lg border border-border/80 bg-surface-secondary px-4 py-4;
-    box-shadow: none;
+    @apply rounded-xl border border-border/70 bg-surface-alt px-4 py-4;
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-aside {
-    @apply rounded-lg border border-border/90 bg-white p-4;
-    box-shadow: none;
+    @apply rounded-xl border border-border/75 bg-white/95 p-4;
+    box-shadow: var(--shadow-panel);
   }
 
   .resume-paper-title {
@@ -299,64 +373,67 @@
   }
 
   .resume-paper-input {
-    @apply w-full rounded-md border border-border/90 bg-white px-3 py-2 text-sm text-content-primary transition-colors duration-150 placeholder:text-content-muted focus:border-border-glow focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    @apply min-h-11 w-full rounded-lg border border-border/80 bg-white px-3.5 py-2 text-sm text-content-primary transition-colors duration-150 placeholder:text-content-muted hover:border-border-strong/80 focus:border-border-glow focus:outline-none focus:ring-4 focus:ring-border-glow/10;
     background: rgb(var(--color-input) / 0.98);
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-textarea {
-    @apply w-full rounded-md border border-border/90 bg-white px-3 py-3 text-sm leading-7 text-content-primary transition-colors duration-150 placeholder:text-content-muted focus:border-border-glow focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    @apply w-full rounded-lg border border-border/80 bg-white px-3.5 py-3 text-sm leading-7 text-content-primary transition-colors duration-150 placeholder:text-content-muted hover:border-border-strong/80 focus:border-border-glow focus:outline-none focus:ring-4 focus:ring-border-glow/10;
     background: rgb(var(--color-input) / 0.98);
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-btn-primary {
-    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-accent bg-accent px-3 py-1.5 text-sm font-semibold text-white transition-colors duration-150 hover:border-blue-700 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-border-glow/15 disabled:cursor-not-allowed disabled:opacity-60;
-    box-shadow: none;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-accent bg-accent px-3.5 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:border-blue-700 hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-border-glow/15 disabled:cursor-not-allowed disabled:opacity-60;
+    box-shadow: 0 14px 30px -20px rgba(37, 99, 235, 0.72);
   }
 
   .resume-paper-btn-primary:hover {
-    box-shadow: none;
+    box-shadow: 0 14px 30px -20px rgba(37, 99, 235, 0.72);
   }
 
   .resume-paper-btn-secondary {
-    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-border/90 bg-white px-3 py-1.5 text-sm font-semibold text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border/80 bg-white/95 px-3.5 py-2 text-sm font-semibold text-content-primary transition-colors duration-150 hover:border-border-strong hover:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-btn-secondary:hover {
-    background: rgb(var(--color-card-hover) / 1);
+    background: rgb(var(--color-surface) / 1);
   }
 
   .resume-paper-chip {
-    @apply inline-flex items-center gap-2 rounded-md border border-border/90 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-content-secondary;
+    @apply inline-flex items-center gap-2 rounded-lg border border-border/75 bg-white/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-content-secondary;
   }
 
   .resume-paper-segmented {
-    @apply inline-flex rounded-lg border border-border/90 bg-white p-1;
+    @apply inline-flex rounded-xl border border-border/75 bg-surface-alt p-1;
   }
 
   .resume-paper-segment {
-    @apply rounded-md px-3 py-1.5 text-sm font-medium text-content-muted transition-colors duration-150;
+    @apply min-h-11 rounded-lg px-3 py-2 text-sm font-medium text-content-muted transition-colors duration-150;
   }
 
   .resume-paper-segment--active {
-    @apply bg-slate-900 text-white;
-    box-shadow: none;
+    @apply bg-slate-950 text-white;
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-file-card {
-    @apply rounded-lg border border-border/90 bg-surface-secondary px-4 py-4;
+    @apply rounded-xl border border-border/75 bg-surface-alt px-4 py-4;
   }
 
   .resume-paper-document {
-    @apply whitespace-pre-wrap rounded-lg border border-border/90 bg-white px-4 py-4 text-sm leading-7 text-content-primary;
-    box-shadow: none;
+    @apply whitespace-pre-wrap rounded-xl border border-border/75 bg-white/95 px-4 py-4 text-sm leading-7 text-content-primary;
+    box-shadow: var(--shadow-control);
   }
 
   .resume-paper-annotation {
-    @apply rounded-lg border border-border/90 bg-surface-secondary px-4 py-4;
+    @apply rounded-xl border border-border/75 bg-surface-alt px-4 py-4;
   }
 
   .resume-paper-alert {
-    @apply rounded-lg border px-4 py-3 text-sm leading-6;
+    @apply rounded-xl border px-4 py-3 text-sm leading-6;
   }
 
   .resume-paper-alert--warning {
@@ -378,17 +455,17 @@
   }
 
   .resume-workflow-rail {
-    @apply rounded-lg border bg-white p-4;
-    border-color: rgb(var(--color-border) / 0.9);
-    box-shadow: none;
+    @apply rounded-xl border bg-white/95 p-4;
+    border-color: rgb(var(--color-border) / 0.75);
+    box-shadow: var(--shadow-panel);
   }
 
   .resume-workflow-item {
-    @apply relative flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors duration-150;
+    @apply relative flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors duration-150;
   }
 
   .resume-workflow-index {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold tracking-[0.16em];
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-[11px] font-semibold tracking-[0.16em];
   }
 
   .resume-workflow-tag {

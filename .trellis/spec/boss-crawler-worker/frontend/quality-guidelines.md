@@ -43,6 +43,10 @@ Questions to answer:
   should keep their route shell cheap; move expensive editors/widgets into
   async components instead of making the user wait on them during the route
   click. Heavier non-primary pages may still use Vue Router dynamic imports.
+- Do not auto-mount heavy optional editors in primary route shells with timers
+  after the first paint. If an editor is not required for the default read path
+  (for example the crawl schedule visual cron editor), keep a lightweight input
+  visible and mount the async editor only after an explicit user action.
 - Use route-level dynamic imports for page components in `src/router.ts` when a
   page owns substantial state or dependencies. Preserve existing route paths
   and redirects while letting Vite split pages into separate chunks.
