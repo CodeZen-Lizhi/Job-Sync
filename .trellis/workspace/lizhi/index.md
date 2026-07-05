@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 35
+- **Total Sessions**: 36
 - **Last Active**: 2026-07-05
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1171 | Active |
+| `journal-1.md` | ~1204 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 36 | 2026-07-05 | 提升移动导航与采集页性能 | `d847bb88` | `remote-job-intelligence` |
 | 35 | 2026-07-05 | 打包 JobPilot release | - | `remote-job-intelligence` |
 | 34 | 2026-07-05 | UI 工作台视觉优化 | `dc4610e` | `remote-job-intelligence` |
 | 33 | 2026-07-05 | 修复项目优化审计问题 | `33f4ce3c` | `remote-job-intelligence` |

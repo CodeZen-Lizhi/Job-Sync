@@ -1169,3 +1169,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 36: 提升移动导航与采集页性能
+
+**Date**: 2026-07-05
+**Task**: 提升移动导航与采集页性能
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成 JobPilot UI polish：优化移动导航、统一控件和空态/弹窗样式，延迟重型采集组件与日志渲染，并通过构建、契约、路由性能和桌面/移动浏览器烟测。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d847bb88` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
