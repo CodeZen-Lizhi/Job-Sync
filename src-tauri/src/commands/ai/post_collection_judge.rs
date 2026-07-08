@@ -122,13 +122,27 @@ fn run_recompute_ai_post_collection_judgement(
         },
     );
     let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
-    let profile = db::models::load_default_filter_profile(&conn).map_err(|e| e.to_string())?;
     let requested_ids = normalize_job_ids(job_ids);
+    let requested_empty_ids = requested_ids.as_ref().is_some_and(Vec::is_empty);
     let limit = normalize_limit(limit, requested_ids.is_some());
     let inputs = load_job_judge_inputs(&conn, requested_ids.as_deref(), limit)?;
     if inputs.is_empty() {
+        if requested_empty_ids {
+            let counts = filter_profile::count_filter_buckets_on_conn(&conn)?;
+            return Ok(send_ai_post_collection_telegram_summary(
+                saved_settings.as_ref(),
+                &counts,
+                0,
+                0,
+                0,
+                0,
+                &[],
+                true,
+            ));
+        }
         return Err("暂无可进行 AI 采后判断的岗位。请先采集岗位或切换职位库分区。".to_string());
     }
+    let profile = db::models::load_default_filter_profile(&conn).map_err(|e| e.to_string())?;
 
     let mut updated = 0_u64;
     let mut ai_judged = 0_u64;
@@ -227,46 +241,16 @@ fn run_recompute_ai_post_collection_judgement(
     }
 
     let counts = filter_profile::count_filter_buckets_on_conn(&conn)?;
-    let mut telegram_sent = false;
-    let mut telegram_error = None::<String>;
-    if ai_judged > 0 {
-        let telegram_messages = build_telegram_summary_messages(
-            &counts,
-            updated,
-            ai_judged,
-            hard_skipped,
-            failed,
-            &telegram_jobs,
-        );
-        match saved_settings.as_ref() {
-            Some(settings) => {
-                for message in telegram_messages {
-                    match send_telegram_message_from_settings_with_format(
-                        settings,
-                        &message,
-                        Some("HTML"),
-                    ) {
-                        Ok(()) => telegram_sent = true,
-                        Err(err) => {
-                            telegram_error = Some(err);
-                            break;
-                        }
-                    }
-                }
-            }
-            None => telegram_error = Some("未找到已保存设置，无法发送 Telegram 通知。".to_string()),
-        }
-    }
-
-    Ok(json!({
-      "updated": updated,
-      "ai_judged": ai_judged,
-      "hard_skipped": hard_skipped,
-      "failed": failed,
-      "counts": counts,
-      "telegram_sent": telegram_sent,
-      "telegram_error": telegram_error,
-    }))
+    Ok(send_ai_post_collection_telegram_summary(
+        saved_settings.as_ref(),
+        &counts,
+        updated,
+        ai_judged,
+        hard_skipped,
+        failed,
+        &telegram_jobs,
+        ai_judged > 0,
+    ))
 }
 
 fn emit_ai_judge_log(app: &AppHandle, level: &str, message: impl Into<String>) {
@@ -364,18 +348,13 @@ fn normalize_limit(limit: Option<u32>, has_explicit_ids: bool) -> u32 {
 
 fn normalize_job_ids(job_ids: Option<Vec<String>>) -> Option<Vec<String>> {
     let mut seen = HashSet::new();
-    let ids: Vec<String> = job_ids
-        .unwrap_or_default()
-        .into_iter()
-        .map(|id| id.trim().to_string())
-        .filter(|id| !id.is_empty())
-        .filter(|id| seen.insert(id.clone()))
-        .collect();
-    if ids.is_empty() {
-        None
-    } else {
-        Some(ids)
-    }
+    job_ids.map(|ids| {
+        ids.into_iter()
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty())
+            .filter(|id| seen.insert(id.clone()))
+            .collect()
+    })
 }
 
 fn load_job_judge_inputs(
@@ -691,6 +670,58 @@ fn build_telegram_summary_messages(
     messages
 }
 
+fn send_ai_post_collection_telegram_summary(
+    saved_settings: Option<&settings::AppSettings>,
+    counts: &crate::db::models::BucketCounts,
+    updated: u64,
+    ai_judged: u64,
+    hard_skipped: u64,
+    failed: u64,
+    telegram_jobs: &[TelegramJobSummary],
+    should_send_telegram: bool,
+) -> Value {
+    let mut telegram_sent = false;
+    let mut telegram_error = None::<String>;
+    if should_send_telegram {
+        let telegram_messages = build_telegram_summary_messages(
+            counts,
+            updated,
+            ai_judged,
+            hard_skipped,
+            failed,
+            telegram_jobs,
+        );
+        match saved_settings {
+            Some(settings) => {
+                for message in telegram_messages {
+                    match send_telegram_message_from_settings_with_format(
+                        settings,
+                        &message,
+                        Some("HTML"),
+                    ) {
+                        Ok(()) => telegram_sent = true,
+                        Err(err) => {
+                            telegram_error = Some(err);
+                            break;
+                        }
+                    }
+                }
+            }
+            None => telegram_error = Some("未找到已保存设置，无法发送 Telegram 通知。".to_string()),
+        }
+    }
+
+    json!({
+      "updated": updated,
+      "ai_judged": ai_judged,
+      "hard_skipped": hard_skipped,
+      "failed": failed,
+      "counts": counts,
+      "telegram_sent": telegram_sent,
+      "telegram_error": telegram_error,
+    })
+}
+
 fn build_telegram_overview_message(
     counts: &crate::db::models::BucketCounts,
     updated: u64,
@@ -706,7 +737,12 @@ fn build_telegram_overview_message(
             "通过：{passed_jobs} 个；推荐 {} / 待确认 {} / 已过滤 {} / 已处理 {} / 全部 {}",
             counts.recommended, counts.pending, counts.filtered, counts.processed, counts.all
         ),
-        "成功岗位分批发送，标题可点击。".to_string(),
+        if passed_jobs > 0 {
+            "成功岗位分批发送，标题可点击。"
+        } else {
+            "本轮没有采集到新增岗位，因此没有岗位列表。"
+        }
+        .to_string(),
     ]
     .join("\n")
 }
@@ -950,5 +986,38 @@ mod tests {
         assert!(messages[1].contains("<a href=\"https://example.com/0\">岗位0</a>"));
         assert!(messages[2].contains("成功岗位（续）"));
         assert!(messages[2].contains("<a href=\"https://example.com/20\">岗位20</a>"));
+    }
+
+    #[test]
+    fn normalize_job_ids_preserves_explicit_empty_list() {
+        assert!(normalize_job_ids(None).is_none());
+        assert_eq!(normalize_job_ids(Some(vec![])), Some(vec![]));
+        assert_eq!(
+            normalize_job_ids(Some(vec![
+                " job-1 ".to_string(),
+                "".to_string(),
+                "job-1".to_string(),
+            ])),
+            Some(vec!["job-1".to_string()])
+        );
+    }
+
+    #[test]
+    fn telegram_summary_for_empty_collection_has_no_job_list() {
+        let counts = crate::db::models::BucketCounts {
+            recommended: 41,
+            pending: 130,
+            filtered: 224,
+            processed: 1,
+            all: 396,
+        };
+
+        let messages = telegram_messages_for_test(&counts, 0, 0, 0, 0, &[]);
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("更新：0 个岗位，AI 判断：0 个"));
+        assert!(messages[0]
+            .contains("通过：0 个；推荐 41 / 待确认 130 / 已过滤 224 / 已处理 1 / 全部 396"));
+        assert!(messages[0].contains("本轮没有采集到新增岗位，因此没有岗位列表。"));
+        assert!(!messages[0].contains("成功岗位分批发送"));
     }
 }

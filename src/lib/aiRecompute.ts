@@ -10,6 +10,10 @@ export interface AiPostCollectionJudgeResult {
   telegram_error?: string | null;
 }
 
+type AiPostCollectionJudgeOptions = {
+  notifyWhenEmpty?: boolean;
+};
+
 export function formatAiPostCollectionJudgeSummary(result: AiPostCollectionJudgeResult | null): string {
   if (!result) return "当前没有可进行 AI 采后判断的岗位";
   return `AI 采后判断 ${result.updated} 个职位，其中 ${result.ai_judged} 个由 AI 判断${result.hard_skipped > 0 ? `，${result.hard_skipped} 个保留硬规则结果` : ""}${result.failed > 0 ? `，${result.failed} 个审核失败` : ""}${result.telegram_sent ? "，已推送 Telegram" : ""}${result.telegram_error ? `，推送失败：${result.telegram_error}` : ""}`;
@@ -51,10 +55,13 @@ export async function recomputeAiPostCollectionJudgementForAllJobs(): Promise<Ai
   return recomputeAiPostCollectionJudgementForJobIds(jobIds);
 }
 
-export async function recomputeAiPostCollectionJudgementForJobIds(jobIds: readonly string[]): Promise<AiPostCollectionJudgeResult | null> {
+export async function recomputeAiPostCollectionJudgementForJobIds(
+  jobIds: readonly string[],
+  options: AiPostCollectionJudgeOptions = {},
+): Promise<AiPostCollectionJudgeResult | null> {
   if (!isTauri()) return null;
 
-  if (jobIds.length === 0) return null;
+  if (jobIds.length === 0 && !options.notifyWhenEmpty) return null;
 
   return invoke<AiPostCollectionJudgeResult>("recompute_ai_post_collection_judgement", {
     jobIds,

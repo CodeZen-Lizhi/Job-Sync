@@ -1100,7 +1100,10 @@ function createCrawlPageState() {
         const aiResult = await recomputeAiPostCollectionJudgementForJobIds([...insertedJobIds]);
         appendRuntimeLog("info", formatAiPostCollectionJudgeSummary(aiResult));
       } else if (!stopRequested.value && completedSources > 0) {
-        appendRuntimeLog("info", "本次采集没有新入库岗位，跳过 AI 采后判断和 Telegram 推送。");
+        const aiResult = await recomputeAiPostCollectionJudgementForJobIds([], {
+          notifyWhenEmpty: true,
+        });
+        appendRuntimeLog("info", `本次采集没有新入库岗位；${formatAiPostCollectionJudgeSummary(aiResult)}`);
       }
       return completedSources > 0 || insertedJobIds.size > 0;
     } catch (cause) {
