@@ -49,10 +49,10 @@
   - natural Boss HTTP response readers must preserve non-JSON response text and content type before risk classification; otherwise `200 text/html` login/security pages can be misreported as terminal JSON parse failures
   - if a Boss visible-browser mode is stopped while the latest login state is `invalid`, `captcha`, or `denied`, the worker should disconnect from the browser instead of closing it so the user can finish the in-progress verification and rerun with the same profile
   - job list collection should prefer the natural `/wapi/zpgeek/search/joblist.json` response produced by normal Boss search-page navigation and fall back to DOM recovery or page-context API fetch only when the natural response is missing
-  - in Boss 低风控模式, page-context `api_fallback` is disabled: if neither the natural search-page joblist response nor a verified matching DOM list can be collected, the worker stops the current Boss run, sets cooldown, and tells the user to retry after confirming the official search page is readable
+  - in Boss 低风控模式, page-context POST `api_fallback` is disabled: if neither the natural search-page joblist response, a verified matching DOM list, nor page-context GET `page_get_fallback` can be collected, the worker stops the current Boss run, sets cooldown, and tells the user to retry after confirming the official search page is readable
   - natural job-list response matching must guard against wrong page/filter capture: if the response exposes `query`, `page`, or selected `city`, they must match the active request before the worker treats it as the current page's result
   - DOM job-list fallback must not parse a stale page after navigation failure or URL mismatch; only parse DOM when the current Boss search URL matches the active keyword/page/city request
-  - `JOB_LIST_CAPTURED.payload.capture_source` is optional but, when present, must be one of `natural`, `dom_fallback`, or `api_fallback`; canary and diagnostics should prefer this structured field over parsing log text
+  - `JOB_LIST_CAPTURED.payload.capture_source` is optional but, when present, must be one of `natural`, `dom_fallback`, `page_get_fallback`, or `api_fallback`; canary and diagnostics should prefer this structured field over parsing log text
   - a Boss run that finishes without any extracted job-list items or without any stable job ids must emit an explicit `ERROR`; `FINISHED` alone is not a success signal
   - emits Boss list/detail events already understood by sidecar
   - `query` is built from Boss search keywords; each keyword line is one Boss search request, so remote intent should be expressed as one line such as `Go 远程` rather than a separate standalone `远程` keyword.
@@ -307,7 +307,7 @@
   - Liepin normalized payload stores `source_platform = "liepin"`, `encrypt_job_id = "liepin:<stableId>"`, and stable `dedup_key`.
   - Liepin mode with no browser profile emits an `ERROR` telling the user to reconnect from Settings and emits no `JOB_NORMALIZED_CAPTURED`.
   - Boss city array filters expand into one job-list request body per city code while sharing the other filters.
-  - Boss natural job-list capture exposes `capture_source = "natural"`; DOM fallback exposes `"dom_fallback"`; page-context API fallback exposes `"api_fallback"`.
+  - Boss natural job-list capture exposes `capture_source = "natural"`; DOM fallback exposes `"dom_fallback"`; page-context GET fallback exposes `"page_get_fallback"`; page-context POST API fallback exposes `"api_fallback"`.
   - Boss HTML login/security-check responses are treated as recoverable risk/login states.
   - Boss empty-list / missing-stable-id runs emit `ERROR` before `FINISHED`.
 - Rust tests:

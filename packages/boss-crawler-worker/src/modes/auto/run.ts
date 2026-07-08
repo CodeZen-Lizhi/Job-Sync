@@ -13,7 +13,7 @@ import { API_PATH, JOB_CARD_SELECTORS, URLS } from "../../boss/selectors.js";
 import { delayWithJitter } from "../../utils/delay.js";
 import { SageTime } from "../../utils/sage-time.js";
 
-import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, closeBrowserRespectingHumanVerification, createHumanVerificationTracker, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, matchesExpectedJobListPayload, normalizeFilterVariants, readApiCode, readApiMessage, readHttpResponseAsPageFetchJsonResult, requestBossJsonWithRiskRecovery, safeError, setLocalStorage, waitUntilBossLoginReady, waitUntilNoRiskUrl } from "./shared.js";
+import { buildJobDetailBody, buildJobDetailUrl, buildJobListBody, buildJobListUrl, closeBrowserRespectingHumanVerification, createHumanVerificationTracker, detectRiskUrl, extractJobList, fetchJsonFromPage, isAbnormalAccess, matchesExpectedJobListPayload, normalizeFilterVariants, readApiCode, readApiMessage, readHttpResponseAsPageFetchJsonResult, requestBossJsonWithRiskRecovery, safeError, setLocalStorage, waitUntilBossLoginReady, waitUntilNoRiskUrl } from "./shared.js";
 import type { ApiFilters, PageFetchJsonResult } from "./shared.js";
 import type { CrawlAutoStartPayload, ModeContext } from "./types.js";
 import { runV2exFeedMode } from "../../v2ex/feed.js";
@@ -215,6 +215,25 @@ function matchesBossSearchPageUrl(currentUrl: string, keyword: string, pageIndex
   }
 }
 
+async function simulateBossSearchPageActivity(page: Page, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  const scrolls = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < scrolls; i += 1) {
+    if (signal.aborted) return;
+    const delta = Math.random() < 0.15
+      ? -(80 + Math.floor(Math.random() * 120))
+      : 180 + Math.floor(Math.random() * 360);
+    await page.evaluate((y) => window.scrollBy(0, y), delta).catch(() => undefined);
+    await delayWithJitter(650, signal, 1200);
+  }
+  if (signal.aborted || Math.random() >= 0.45) return;
+  await page.mouse.move(
+    160 + Math.floor(Math.random() * 720),
+    140 + Math.floor(Math.random() * 420),
+    { steps: 4 + Math.floor(Math.random() * 5) },
+  ).catch(() => undefined);
+}
+
 async function fetchJobListFromNaturalPage(
   page: Page,
   ctx: ModeContext,
@@ -249,6 +268,7 @@ async function fetchJobListFromNaturalPage(
       capture_source: "natural",
     };
   }
+  await simulateBossSearchPageActivity(page, ctx.signal);
 
   const response = await responsePromise;
   if (response) {
@@ -283,7 +303,7 @@ async function fetchJobListFromNaturalPage(
     return { status: 200, json: domResult.raw, capture_source: "dom_fallback" };
   }
 
-  warn(`未捕获自然 joblist 响应，且页面 DOM 未解析到岗位列表，回退到接口请求：${searchUrl}`);
+  warn(`未捕获自然 joblist 响应，且页面 DOM 未解析到岗位列表，准备尝试页面内 GET 恢复：${searchUrl}`);
   return null;
 }
 
@@ -500,11 +520,22 @@ async function requestJobList(
 ): Promise<PageFetchJsonResult | null> {
   const natural = await fetchJobListFromNaturalPage(page, ctx, keyword, pageIndex, pageSize, filters, warn, riskRecoveryOptions);
   if (natural) return natural;
+
+  const jobListGetUrl = buildJobListUrl(keyword, pageIndex, pageSize, filters);
+  const pageGetResult = await fetchJsonFromPage(page, jobListGetUrl, {
+    method: "GET",
+    timeoutMs: 60_000,
+  });
+  if (pageGetResult.json && typeof pageGetResult.json === "object") {
+    return { ...pageGetResult, capture_source: "page_get_fallback" };
+  }
+
   if (!allowApiFallback) {
-    warn("低风控模式未捕获搜索页自然 joblist 响应，已停止本页采集，不再回退到接口请求。");
+    warn("低风控模式未捕获搜索页自然 joblist 响应，且页面内 GET 未返回有效 JSON，已停止本页采集，不再回退到 POST 接口请求。");
     return null;
   }
 
+  warn("页面内 GET 未返回有效 JSON，回退到接口请求。");
   const jobListUrl = `https://www.zhipin.com${API_PATH.JOB_LIST}?_=${Date.now()}`;
   const jobListBody = buildJobListBody(keyword, pageIndex, pageSize, filters);
   const apiResult = await fetchJsonFromPage(page, jobListUrl, {

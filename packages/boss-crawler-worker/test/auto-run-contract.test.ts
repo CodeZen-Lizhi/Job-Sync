@@ -12,6 +12,7 @@ import {
 } from "../src/modes/auto/run.js";
 import {
   buildJobListBody,
+  buildJobListUrl,
   closeBrowserRespectingHumanVerification,
   createHumanVerificationTracker,
   isAbnormalAccess,
@@ -132,6 +133,34 @@ describe("Boss auto collection contract", () => {
       bodies.map((body) => body.get("multiBusinessDistrict")),
       ["2001,2002", "2001,2002"],
     );
+  });
+
+  it("builds a Boss page-context GET job-list URL without empty filter noise", () => {
+    const url = new URL(buildJobListUrl("Go 远程", 2, 15, {
+      city: "101020100",
+      multiSubway: "",
+      multiBusinessDistrict: "",
+      position: "",
+      jobType: "",
+      salary: "406",
+      experience: "",
+      degree: "203",
+      industry: "",
+      scale: "",
+      stage: "",
+    }));
+
+    assert.equal(url.origin, "https://www.zhipin.com");
+    assert.equal(url.pathname, "/wapi/zpgeek/search/joblist.json");
+    assert.equal(url.searchParams.get("scene"), "1");
+    assert.equal(url.searchParams.get("query"), "Go 远程");
+    assert.equal(url.searchParams.get("city"), "101020100");
+    assert.equal(url.searchParams.get("page"), "2");
+    assert.equal(url.searchParams.get("pageSize"), "15");
+    assert.equal(url.searchParams.get("salary"), "406");
+    assert.equal(url.searchParams.get("degree"), "203");
+    assert.equal(url.searchParams.has("experience"), false);
+    assert.equal(url.searchParams.has("multiSubway"), false);
   });
 
   it("pauses and retries Boss risk-control responses instead of treating them as terminal failures", () => {
@@ -334,7 +363,7 @@ describe("Boss auto collection contract", () => {
     assert.deepEqual(browser.actions, ["close"]);
   });
 
-  it("uses the persisted Boss browser profile and natural job-list responses before direct API fallback", () => {
+  it("uses the persisted Boss browser profile and lower-risk list capture before POST API fallback", () => {
     const runSource = readWorkerFile("src/modes/auto/run.ts");
     const launchSource = readWorkerFile("src/browser/launch.ts");
     const loginSource = readWorkerFile("src/modes/login.ts");
@@ -380,12 +409,18 @@ describe("Boss auto collection contract", () => {
     assert.match(runSource, /source:\s*"dom_fallback"/);
     assert.match(runSource, /capture_source:\s*"dom_fallback"/);
     assert.match(runSource, /已从搜索页 DOM 列表恢复/);
+    assert.match(runSource, /页面内 GET/);
+    assert.match(runSource, /capture_source:\s*"page_get_fallback"/);
+    assert.match(runSource, /buildJobListUrl\(keyword, pageIndex, pageSize, filters\)/);
+    assert.match(runSource, /method:\s*"GET"/);
+    assert.match(runSource, /不再回退到 POST 接口请求/);
     assert.match(runSource, /回退到接口请求/);
     assert.match(runSource, /capture_source:\s*"api_fallback"/);
     assert.match(runSource, /allowApiFallback = true/);
     assert.match(runSource, /requestJobList\(page, ctx, keyword, pageIndex, pageSize, apiFilters, warn, bossRiskRecoveryOptions, !lowRiskMode\)/);
-    assert.match(runSource, /低风控模式未捕获搜索页自然 joblist 响应，已停止本页采集，不再回退到接口请求/);
-    assert.match(runSource, /低风控模式不再回退到接口请求/);
+    assert.match(runSource, /低风控模式未捕获搜索页自然 joblist 响应，且页面内 GET 未返回有效 JSON/);
+    assert.match(runSource, /不再回退到 POST 接口请求/);
+    assert.match(runSource, /simulateBossSearchPageActivity/);
   });
 
   it("keeps Boss metadata sync out of the default auto-collection request path", () => {

@@ -1354,13 +1354,14 @@ describe("review workflow contract", () => {
 
     assert.match(workerRun, /capture_source:\s*"natural"/);
     assert.match(workerRun, /capture_source:\s*"dom_fallback"/);
+    assert.match(workerRun, /capture_source:\s*"page_get_fallback"/);
     assert.match(workerRun, /capture_source:\s*"api_fallback"/);
-    assert.match(workerProtocol, /capture_source:\s*z\.enum\(\["natural", "dom_fallback", "api_fallback"\]\)\.optional\(\)/);
+    assert.match(workerProtocol, /capture_source:\s*z\.enum\(\["natural", "dom_fallback", "page_get_fallback", "api_fallback"\]\)\.optional\(\)/);
     assert.match(rustProtocol, /pub enum BossJobListCaptureSource/);
     assert.match(rustProtocol, /pub capture_source: Option<BossJobListCaptureSource>/);
     assert.doesNotMatch(rustProtocol, /pub capture_source: Option<String>/);
     assert.match(rustProtocol, /job_list_capture_source_rejects_unknown_values/);
-    assert.match(frontendProtocol, /capture_source\?: "natural" \| "dom_fallback" \| "api_fallback"/);
+    assert.match(frontendProtocol, /capture_source\?: "natural" \| "dom_fallback" \| "page_get_fallback" \| "api_fallback"/);
     assert.match(canaryScript, /const source = event\.payload\?\.capture_source \?\? "unknown"/);
     assert.match(canaryScript, /source=\$\{source\}/);
   });

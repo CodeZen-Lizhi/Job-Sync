@@ -281,6 +281,7 @@ pub struct CookieCollectedPayload {
 pub enum BossJobListCaptureSource {
     Natural,
     DomFallback,
+    PageGetFallback,
     ApiFallback,
 }
 
@@ -438,7 +439,7 @@ mod tests {
             r#"{
               "type": "JOB_LIST_CAPTURED",
               "payload": {
-                "capture_source": "dom_fallback",
+                "capture_source": "page_get_fallback",
                 "raw": { "zpData": { "jobList": [] } }
               }
             }"#,
@@ -450,12 +451,12 @@ mod tests {
         };
         assert_eq!(
             payload.capture_source,
-            Some(BossJobListCaptureSource::DomFallback)
+            Some(BossJobListCaptureSource::PageGetFallback)
         );
         assert_eq!(
             serde_json::to_value(payload.capture_source.expect("capture source"))
                 .expect("serialize capture source"),
-            serde_json::json!("dom_fallback")
+            serde_json::json!("page_get_fallback")
         );
     }
 

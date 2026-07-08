@@ -32,7 +32,7 @@ const PAYLOAD_FILTER_MATCH_KEYS: Array<Exclude<keyof ApiFilters, "city">> = [
   "stage",
 ];
 
-export type BossJobListCaptureSource = "natural" | "dom_fallback" | "api_fallback";
+export type BossJobListCaptureSource = "natural" | "dom_fallback" | "page_get_fallback" | "api_fallback";
 
 export type PageFetchJsonResult = {
   status: number;
@@ -480,6 +480,22 @@ export function buildJobListBody(keyword: string, page: number, pageSize: number
   params.set("scene", "1");
   params.set("encryptExpectId", "");
   return params.toString();
+}
+
+export function buildJobListUrl(keyword: string, page: number, pageSize: number, filters: ApiFilters): string {
+  const params = new URLSearchParams();
+  params.set("scene", "1");
+  params.set("query", keyword);
+  if (filters.city) params.set("city", filters.city);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+
+  for (const key of PAYLOAD_FILTER_MATCH_KEYS) {
+    const value = filters[key];
+    if (value) params.set(key, value);
+  }
+
+  return `https://www.zhipin.com${API_PATH.JOB_LIST}?${params.toString()}`;
 }
 
 export function buildJobDetailUrl(securityId: string, lid?: string): string {

@@ -173,7 +173,7 @@ export const CookieCollectedPayloadSchema = z.object({
 export const JobListCapturedPayloadSchema = z.object({
   keyword: z.string().optional(),
   filters: z.any().optional(),
-  capture_source: z.enum(["natural", "dom_fallback", "api_fallback"]).optional(),
+  capture_source: z.enum(["natural", "dom_fallback", "page_get_fallback", "api_fallback"]).optional(),
   raw: z.any(),
 });
 

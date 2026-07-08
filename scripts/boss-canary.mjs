@@ -243,6 +243,9 @@ function printEvent(event, summary) {
       if (event.payload?.message?.includes("DOM 列表恢复")) {
         summary.logSources.add("dom_fallback");
       }
+      if (event.payload?.message?.includes("页面内 GET")) {
+        summary.logSources.add("page_get_fallback");
+      }
       if (event.payload?.message?.includes("回退到接口请求")) {
         summary.logSources.add("api_fallback");
       }
