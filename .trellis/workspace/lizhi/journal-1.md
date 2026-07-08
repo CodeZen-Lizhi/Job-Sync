@@ -1202,3 +1202,36 @@ Diagnosed duplicate Telegram notifications after automatic collection. Moved AI 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 37: Boss low-risk collection wrap-up
+
+**Date**: 2026-07-08
+**Task**: Boss low-risk collection wrap-up
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+Finished Boss low-risk collection hardening: added page-context GET joblist fallback, disabled low-risk POST fallback, synchronized capture_source contracts, bumped app version to 0.1.6, verified worker/review/frontend/Rust tests, committed and pushed remote-job-intelligence.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f9655edb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
