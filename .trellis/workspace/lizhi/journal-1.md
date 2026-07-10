@@ -1301,3 +1301,70 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 40: 重构采集运行页 UI
+
+**Date**: 2026-07-10
+**Task**: 重构采集运行页 UI
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+重构采集运行控制、批次统计与日志布局，完成响应式浏览器验证并提交推送。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5a24789` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 41: 完成采集运行页重构与旧库迁移修复
+
+**Date**: 2026-07-10
+**Task**: 完成采集运行页重构与旧库迁移修复
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+完成采集运行页紧凑布局重构，并修复旧数据库在新增 batch_id 前提前创建索引导致的启动失败；补充旧库升级回归测试、全量验证和迁移规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5a24789` | (see git log) |
+| `a1f43cd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
