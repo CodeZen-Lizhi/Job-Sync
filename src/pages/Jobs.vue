@@ -73,7 +73,7 @@ const {
 
 type JobLibraryBucket = "recommended" | "confirm" | "filtered" | "processed" | "all";
 
-const activeJobLibraryBucket = ref<JobLibraryBucket>("recommended");
+const activeJobLibraryBucket = ref<JobLibraryBucket>("all");
 const router = useRouter();
 const route = useRoute();
 
@@ -268,7 +268,7 @@ watch(
       return;
     }
     if (jobCandidates.value.length === 0) {
-      applyBucket("recommended");
+      applyBucket("all");
     }
   },
   { immediate: true },
@@ -283,7 +283,7 @@ watch(
         <div class="min-w-0">
           <h1 class="text-xl font-semibold text-content-primary">职位库工作台</h1>
           <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary [overflow-wrap:anywhere]">
-            自动采集先保留岗位事实，再由采后判断规则生成推荐、待确认和已过滤视图；默认只处理可行动结果。
+            自动采集先保留岗位事实，再由采后判断规则生成推荐、待确认和已过滤视图；默认展示全部入库岗位。
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">

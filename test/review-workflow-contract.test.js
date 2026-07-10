@@ -37,6 +37,8 @@ describe("review workflow contract", () => {
     assert.match(jobsPage, /待确认/);
     assert.match(jobsPage, /已过滤/);
     assert.match(jobsPage, /全部入库/);
+    assert.match(jobsPage, /const activeJobLibraryBucket = ref<JobLibraryBucket>\("all"\)/);
+    assert.match(jobsPage, /if \(jobCandidates\.value\.length === 0\) \{\s*applyBucket\("all"\)/);
     assert.match(jobsPage, /JOB_TIME_RANGE_OPTIONS/);
     assert.match(jobsPage, /PROCESSED_FILTER_OPTIONS/);
     assert.match(jobsPage, /JOB_STATUS_FILTER_OPTIONS/);
