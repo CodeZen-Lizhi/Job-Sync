@@ -114,6 +114,7 @@ fn collection_uses_optional_session(source_platform: &str) -> bool {
 pub fn crawl_auto_start(
     sidecar: State<SidecarManager>,
     mut task: SearchTaskPayload,
+    batch_id: Option<String>,
 ) -> Result<String, String> {
     let conn = db::init_db(sidecar.app_data_dir()).map_err(|e| e.to_string())?;
     let run_id = models::new_collection_run_id();
@@ -123,6 +124,7 @@ pub fn crawl_auto_start(
         &conn,
         &models::NewCollectionRun {
             id: &run_id,
+            batch_id: batch_id.as_deref(),
             source_platform: &source_platform,
             keywords: &task.keywords,
             filters: &task.filters,
@@ -182,6 +184,16 @@ pub fn crawl_auto_start(
         return Err(message);
     }
     Ok(run_id)
+}
+
+#[tauri::command]
+pub fn get_collection_batch_summary(
+    app: tauri::AppHandle,
+    batch_id: String,
+) -> Result<models::CollectionBatchSummary, String> {
+    let app_data_dir = paths::resolve_data_dir(&app)?;
+    let conn = db::init_db(&app_data_dir).map_err(|e| e.to_string())?;
+    models::get_collection_batch_summary(&conn, &batch_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

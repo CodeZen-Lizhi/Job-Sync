@@ -89,6 +89,7 @@ export type RecomputeFilterProfileResult = {
 
 export type CollectionRun = {
   id: string;
+  batch_id?: string | null;
   source_platform: string;
   keywords_json: string;
   filters_json?: string | null;
@@ -107,6 +108,14 @@ export type CollectionRun = {
   failed: number;
   processed: number;
   all_jobs: number;
+};
+
+export type CollectionBatchSummary = {
+  batch_id: string;
+  captured: number;
+  inserted: number;
+  not_inserted: number;
+  passed: number;
 };
 
 export type CollectionFailure = {

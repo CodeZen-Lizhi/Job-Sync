@@ -1095,15 +1095,27 @@ describe("review workflow contract", () => {
 
   it("keeps post-collection AI judgement triggered once after all selected crawl sources finish", () => {
     const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+    const crawlPanel = readProjectFile("src/components/crawl/CrawlRuntimePanel.vue");
     const sidecar = readProjectFile("src-tauri/src/sidecar/mod.rs");
     const crawlCommand = readProjectFile("src-tauri/src/commands/crawl.rs");
+    const collectionModel = readProjectFile("src-tauri/src/db/models/collection.rs");
 
     assert.match(crawlLogic, /for \(const source of selectedSources\)/);
     assert.match(crawlCommand, /pub fn list_collection_run_inserted_job_ids/);
     assert.match(sidecar, /record_collection_run_job_inserted/);
     assert.match(crawlLogic, /const runId = await invoke<string>\("crawl_auto_start"/);
+    assert.match(crawlLogic, /const batchId = `batch_\$\{crypto\.randomUUID\(\)\}`/);
+    assert.match(crawlLogic, /batchId,/);
     assert.match(crawlLogic, /loadCollectionRunInsertedJobIds\(runId\)/);
     assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForJobIds\(\[\.\.\.insertedJobIds\]\)/);
+    assert.match(crawlLogic, /get_collection_batch_summary/);
+    assert.match(collectionModel, /WHERE batch_id = \?1/);
+    assert.match(collectionModel, /SELECT DISTINCT crj\.encrypt_job_id/);
+    assert.match(collectionModel, /ai_judgement\.status'\) = 'passed'/);
+    assert.match(crawlPanel, />未新增</);
+    assert.match(crawlPanel, />新入库</);
+    assert.match(crawlPanel, /summary\.not_inserted/);
+    assert.match(crawlPanel, /summary\.passed/);
     assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForAllJobs\(\)/);
     assert.doesNotMatch(sidecar, /auto_recompute_ai_after_collection/);
     assert.doesNotMatch(sidecar, /commands::\{ai,/);

@@ -555,7 +555,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 ### 2. Signatures
 
 - Tauri command:
-  - `crawl_auto_start(task: SearchTaskPayload)`
+  - `crawl_auto_start(task: SearchTaskPayload, batch_id?: string)`
   - creates a local `collection_run` before sending the worker command.
 - Worker command:
   - `CRAWL_AUTO_START`
@@ -564,13 +564,14 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
   - payload: `{ session, encrypt_job_id, source_url?, raw_payload? }`
 - Tauri query commands:
   - `list_collection_runs(limit?: number) -> CollectionRun[]`
+  - `get_collection_batch_summary(batch_id: string) -> { batch_id, captured, inserted, not_inserted, passed }`
   - `list_collection_failures(limit?: number) -> CollectionFailure[]`
   - `refresh_pending_job_evidence(encrypt_job_id: string) -> { encrypt_job_id, status, message }`
 - Default filter recompute:
   - `recompute_default_filter_profile() -> { updated, counts }`
   - `counts` has `recommended`, `pending`, `filtered`, `processed`, `all`.
 - SQLite tables:
-  - `collection_run(id, source_platform, keywords_json, filters_json, limits_json, status, started_at, finished_at, error_message, captured, inserted, updated, duplicate, recommended, pending, filtered, failed, processed, all_jobs)`
+  - `collection_run(id, batch_id?, source_platform, keywords_json, filters_json, limits_json, status, started_at, finished_at, error_message, captured, inserted, updated, duplicate, recommended, pending, filtered, failed, processed, all_jobs)`
   - `collection_failure(id, run_id, source_platform, event_type, keyword, encrypt_job_id, reason, raw_payload_json, created_at)`
 - SQLite init entry points:
   - `init_db(app_data_dir)` opens/migrates the database for normal commands and must not mutate active `collection_run` rows.
@@ -579,6 +580,10 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 ### 3. Contracts
 
 - `collection_run` is created per automatic source invocation. The frontend may start Boss and V2EX sequentially from one button click; each source invocation owns one run.
+- One frontend automatic-collection action creates one stable `batch_id` and passes it to every selected source run. The runtime cards summarize the latest batch, not only `collectionRuns[0]`.
+- Batch runtime metrics have one explicit contract: `captured = SUM(captured)`, `inserted = SUM(inserted)`, `not_inserted = SUM(updated + duplicate)`, and `passed = distinct newly inserted jobs whose final reason_json.ai_judgement.status is passed`.
+- The frontend reloads the batch summary after post-collection AI judgement finishes. A summary query failure clears the previous summary instead of leaving stale numbers visible.
+- Legacy runs with a null/empty `batch_id` are queried as a single-run batch using their run id. They must not be merged by timestamp inference.
 - `captured`, `inserted`, `updated`, `duplicate`, and `failed` are run-operation counters.
 - `recommended`, `pending`, `filtered`, `processed`, and `all_jobs` are refreshed from canonical DB/filter state after recompute/finish. They are not limited to only rows captured in that run.
 - Upsert outcome is based on persisted DB fields before/after write. `last_seen_at` alone must not turn an unchanged row into `updated`.
@@ -594,6 +599,8 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - Worker emits `ERROR` during active run -> failure row is written and run status becomes `failed`; later `FINISHED` may still refresh bucket counts but must not overwrite failed status.
 - App process starts with stale `status='running'` rows from a previous crash -> `init_db_for_app_start` marks them `failed` with `error_message='app restarted before collection finished'`.
 - Normal command opens DB while sidecar is running -> active `status='running'` rows remain running.
+- Batch id is missing for a legacy run -> `get_collection_batch_summary(run.id)` returns that run only.
+- Batch summary query fails -> the runtime cards clear to the unknown state and surface the error; they do not retain the previous batch's values.
 - List item lacks stable ID -> write `collection_failure(event_type='JOB_LIST_CAPTURED', reason='missing stable job id')`.
 - Upsert or recompute fails for one item -> write item-level failure and continue processing other items where possible.
 - `refresh_pending_job_evidence` for non-pending job -> return clear error; do not start worker.
@@ -604,10 +611,12 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 
 - Good: a Boss run captures 10 list rows, inserts 4, updates 3, sees 3 duplicates, records 1 missing-id failure, then refreshes canonical bucket counts.
 - Good: a V2EX run writes normalized jobs through the same run summary and failure table as Boss.
+- Good: one click runs Boss and V2EX with the same `batch_id`; the cards aggregate both and refresh `passed` only after AI judgement.
 - Good: a pending Boss job triggers `REFRESH_JOB_EVIDENCE`, receives a detail payload, and leaves pending if evidence is still insufficient.
 - Base: old databases have no run history but can still query jobs and bucket counts after additive migration.
 - Base: the collection page polls run history during an active run; polling must not mark the active run failed.
 - Bad: using worker profile-filter eligibility as the final recommended/pending/filtered count.
+- Bad: labeling `updated + duplicate` as newly inserted, using `filtered` as a collection-skip counter, or showing only the newest source run for a multi-source action.
 - Bad: silently skipping malformed list rows without a durable failure record.
 - Bad: calling stale-run cleanup from generic DB initialization used by normal commands.
 - Bad: making pending refresh look successful when the source is unsupported or Boss session is missing.
@@ -620,6 +629,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
   - upsert outcome classifies inserted/updated/duplicate without counting `last_seen_at` only changes.
   - normal `init_db` preserves active `status='running'` rows.
   - `init_db_for_app_start` marks stale `status='running'` rows failed.
+  - multiple runs with the same `batch_id` aggregate operation counters and count only inserted jobs with final AI status `passed`.
 - Rust filter tests:
   - bucket counts are derived from `job_filter_result.reason_json.bucket`, review/communication/company state, and blacklist state.
 - Worker tests:
@@ -674,6 +684,22 @@ pub fn init_db_for_app_start(app_data_dir: &Path) -> Result<Connection> {
     fail_stale_running_collection_runs(&conn, "app restarted before collection finished")?;
     Ok(conn)
 }
+```
+
+#### Wrong
+
+```typescript
+const latestRun = collectionRuns.value[0];
+const inserted = latestRun.inserted + latestRun.updated + latestRun.duplicate;
+const passed = latestRun.recommended;
+```
+
+#### Correct
+
+```typescript
+const summary = await invoke("get_collection_batch_summary", {
+  batchId: latestRun.batch_id || latestRun.id,
+});
 ```
 
 #### Wrong

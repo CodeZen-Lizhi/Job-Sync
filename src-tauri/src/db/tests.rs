@@ -714,6 +714,7 @@ fn collection_run_and_failure_helpers_persist_summary_records() {
         &conn,
         &models::NewCollectionRun {
             id: &run_id,
+            batch_id: None,
             source_platform: "boss",
             keywords: &["Go".to_string(), "平台工程".to_string()],
             filters: &json!({ "city": ["101020100"] }),
@@ -776,6 +777,111 @@ fn collection_run_and_failure_helpers_persist_summary_records() {
 }
 
 #[test]
+fn collection_batch_summary_aggregates_runs_and_uses_final_inserted_job_buckets() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = init_db(&app_data_dir).expect("init db");
+    let batch_id = "batch-test";
+    let run_ids = [
+        models::new_collection_run_id(),
+        models::new_collection_run_id(),
+    ];
+
+    for (index, run_id) in run_ids.iter().enumerate() {
+        models::create_collection_run(
+            &conn,
+            &models::NewCollectionRun {
+                id: run_id,
+                batch_id: Some(batch_id),
+                source_platform: if index == 0 { "boss" } else { "v2ex" },
+                keywords: &[],
+                filters: &json!({}),
+                limits: &json!({}),
+            },
+        )
+        .expect("create batched run");
+    }
+
+    models::increment_collection_counter(
+        &conn,
+        &run_ids[0],
+        models::CollectionCounter::Captured,
+        12,
+    )
+    .expect("captured");
+    models::increment_collection_counter(
+        &conn,
+        &run_ids[0],
+        models::CollectionCounter::Inserted,
+        7,
+    )
+    .expect("inserted");
+    models::increment_collection_counter(
+        &conn,
+        &run_ids[0],
+        models::CollectionCounter::Duplicate,
+        5,
+    )
+    .expect("duplicate");
+    models::increment_collection_counter(
+        &conn,
+        &run_ids[1],
+        models::CollectionCounter::Captured,
+        8,
+    )
+    .expect("captured");
+    models::increment_collection_counter(
+        &conn,
+        &run_ids[1],
+        models::CollectionCounter::Inserted,
+        4,
+    )
+    .expect("inserted");
+    models::increment_collection_counter(&conn, &run_ids[1], models::CollectionCounter::Updated, 4)
+        .expect("updated");
+
+    for (job_id, run_id, bucket, eligible) in [
+        ("job-passed", &run_ids[0], "recommended", 1),
+        ("job-not-ai-judged", &run_ids[0], "recommended", 1),
+        ("job-rejected", &run_ids[0], "filtered", 0),
+        ("job-pending", &run_ids[1], "pending_confirmation", 0),
+    ] {
+        conn.execute(
+            "INSERT INTO job (encrypt_job_id, source_platform) VALUES (?1, 'boss')",
+            [job_id],
+        )
+        .expect("insert job");
+        conn.execute(
+            "INSERT INTO job_filter_result (encrypt_job_id, profile_id, eligible, reason_json, updated_at) VALUES (?1, 'default', ?2, ?3, 'now')",
+            rusqlite::params![
+                job_id,
+                eligible,
+                if job_id == "job-not-ai-judged" {
+                    json!({ "bucket": bucket })
+                } else {
+                    json!({
+                        "bucket": bucket,
+                        "ai_judgement": {
+                            "status": if bucket == "recommended" { "passed" } else { "rejected" }
+                        }
+                    })
+                }
+                .to_string()
+            ],
+        )
+        .expect("insert filter result");
+        models::record_collection_run_job_inserted(&conn, run_id, job_id)
+            .expect("record inserted job");
+    }
+
+    let summary = models::get_collection_batch_summary(&conn, batch_id).expect("batch summary");
+    assert_eq!(summary.captured, 20);
+    assert_eq!(summary.inserted, 11);
+    assert_eq!(summary.not_inserted, 9);
+    assert_eq!(summary.passed, 1);
+}
+
+#[test]
 fn init_db_preserves_active_collection_runs() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");
@@ -786,6 +892,7 @@ fn init_db_preserves_active_collection_runs() {
         &conn,
         &models::NewCollectionRun {
             id: &run_id,
+            batch_id: None,
             source_platform: "v2ex",
             keywords: &["V2EX".to_string()],
             filters: &json!({}),
@@ -816,6 +923,7 @@ fn finish_collection_run_does_not_overwrite_failed_user_stop() {
         &conn,
         &models::NewCollectionRun {
             id: &run_id,
+            batch_id: None,
             source_platform: "boss",
             keywords: &["Go 远程".to_string()],
             filters: &json!({}),
@@ -845,6 +953,7 @@ fn finish_collection_run_does_not_overwrite_failed_worker_error() {
         &conn,
         &models::NewCollectionRun {
             id: &run_id,
+            batch_id: None,
             source_platform: "boss",
             keywords: &["Go 远程".to_string()],
             filters: &json!({}),
@@ -877,6 +986,7 @@ fn init_db_for_app_start_marks_stale_running_collection_runs_failed() {
         &conn,
         &models::NewCollectionRun {
             id: &run_id,
+            batch_id: None,
             source_platform: "v2ex",
             keywords: &["V2EX".to_string()],
             filters: &json!({}),

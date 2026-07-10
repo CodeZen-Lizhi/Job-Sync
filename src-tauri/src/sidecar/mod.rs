@@ -501,6 +501,7 @@ mod tests {
             &conn,
             &models::NewCollectionRun {
                 id: &run_id,
+                batch_id: None,
                 source_platform: "boss",
                 keywords: &["Go 远程".to_string()],
                 filters: &json!({ "city": "101020100" }),
@@ -695,6 +696,7 @@ mod tests {
             &conn,
             &models::NewCollectionRun {
                 id: &run_id,
+                batch_id: None,
                 source_platform: "zhilian",
                 keywords: &["Java".to_string()],
                 filters: &json!({ "city": "530" }),
@@ -914,6 +916,7 @@ mod tests {
             &conn,
             &models::NewCollectionRun {
                 id: &run_id,
+                batch_id: None,
                 source_platform: "zhilian",
                 keywords: &["Java".to_string()],
                 filters: &json!({ "city": "530" }),
@@ -1072,6 +1075,7 @@ mod tests {
             &conn,
             &models::NewCollectionRun {
                 id: &run_id,
+                batch_id: None,
                 source_platform: "boss",
                 keywords: &["Go 远程".to_string()],
                 filters: &json!({}),

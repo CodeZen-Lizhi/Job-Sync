@@ -301,6 +301,11 @@ pub fn migrate(conn: &Connection) -> Result<()> {
     add_column_if_missing(conn, "job", "dedup_key", "TEXT")?;
     add_column_if_missing(conn, "job", "jd_text", "TEXT")?;
     add_column_if_missing(conn, "job", "raw_payload_json", "TEXT")?;
+    add_column_if_missing(conn, "collection_run", "batch_id", "TEXT")?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_collection_run_batch_started_at ON collection_run(batch_id, started_at)",
+        [],
+    )?;
     conn.execute(
     "UPDATE job SET source_platform = COALESCE(NULLIF(source_platform, ''), 'boss'), dedup_key = COALESCE(NULLIF(dedup_key, ''), encrypt_job_id)",
     [],

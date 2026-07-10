@@ -38,7 +38,7 @@ const {
   sidecarRunning,
   selectedCollectionSources,
   delayMs,
-  latestCollectionRun,
+  collectionBatchSummary,
   start,
   stop,
 } = useCrawlPage({ initialize: "runtime" });
@@ -90,7 +90,7 @@ const {
 
     <CrawlRuntimePanel
       v-if="runtimePanelReady"
-      :run="latestCollectionRun"
+      :summary="collectionBatchSummary"
       :logs="runtime.logs"
       :sidecar-running="sidecarRunning"
       :error="error"

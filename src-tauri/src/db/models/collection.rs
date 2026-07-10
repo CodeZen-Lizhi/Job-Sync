@@ -57,6 +57,7 @@ pub struct BucketCounts {
 #[derive(Debug, Clone, Serialize)]
 pub struct CollectionRun {
     pub id: String,
+    pub batch_id: Option<String>,
     pub source_platform: String,
     pub keywords_json: String,
     pub filters_json: Option<String>,
@@ -77,6 +78,15 @@ pub struct CollectionRun {
     pub all_jobs: i64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct CollectionBatchSummary {
+    pub batch_id: String,
+    pub captured: i64,
+    pub inserted: i64,
+    pub not_inserted: i64,
+    pub passed: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CollectionFailure {
     pub id: i64,
@@ -93,6 +103,7 @@ pub struct CollectionFailure {
 #[derive(Debug)]
 pub(crate) struct NewCollectionRun<'a> {
     pub id: &'a str,
+    pub batch_id: Option<&'a str>,
     pub source_platform: &'a str,
     pub keywords: &'a [String],
     pub filters: &'a Value,
@@ -121,12 +132,13 @@ pub(crate) fn create_collection_run(conn: &Connection, input: &NewCollectionRun<
     conn.execute(
         r#"
         INSERT INTO collection_run (
-          id, source_platform, keywords_json, filters_json, limits_json, status, started_at
+          id, batch_id, source_platform, keywords_json, filters_json, limits_json, status, started_at
         )
-        VALUES (?1, ?2, ?3, ?4, ?5, 'running', ?6)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'running', ?7)
         "#,
         params![
             input.id,
+            input.batch_id,
             input.source_platform,
             keywords_json,
             filters_json,
@@ -293,7 +305,7 @@ pub fn list_collection_runs(conn: &Connection, limit: Option<u32>) -> Result<Vec
     let limit = limit.unwrap_or(10).clamp(1, 100);
     let mut stmt = conn.prepare(
         r#"
-        SELECT id, source_platform, keywords_json, filters_json, limits_json,
+        SELECT id, batch_id, source_platform, keywords_json, filters_json, limits_json,
                status, started_at, finished_at, error_message,
                captured, inserted, updated, duplicate,
                recommended, pending, filtered, failed, processed, all_jobs
@@ -305,27 +317,71 @@ pub fn list_collection_runs(conn: &Connection, limit: Option<u32>) -> Result<Vec
     let rows = stmt.query_map([limit], |row| {
         Ok(CollectionRun {
             id: row.get(0)?,
-            source_platform: row.get(1)?,
-            keywords_json: row.get(2)?,
-            filters_json: row.get(3)?,
-            limits_json: row.get(4)?,
-            status: row.get(5)?,
-            started_at: row.get(6)?,
-            finished_at: row.get(7)?,
-            error_message: row.get(8)?,
-            captured: row.get(9)?,
-            inserted: row.get(10)?,
-            updated: row.get(11)?,
-            duplicate: row.get(12)?,
-            recommended: row.get(13)?,
-            pending: row.get(14)?,
-            filtered: row.get(15)?,
-            failed: row.get(16)?,
-            processed: row.get(17)?,
-            all_jobs: row.get(18)?,
+            batch_id: row.get(1)?,
+            source_platform: row.get(2)?,
+            keywords_json: row.get(3)?,
+            filters_json: row.get(4)?,
+            limits_json: row.get(5)?,
+            status: row.get(6)?,
+            started_at: row.get(7)?,
+            finished_at: row.get(8)?,
+            error_message: row.get(9)?,
+            captured: row.get(10)?,
+            inserted: row.get(11)?,
+            updated: row.get(12)?,
+            duplicate: row.get(13)?,
+            recommended: row.get(14)?,
+            pending: row.get(15)?,
+            filtered: row.get(16)?,
+            failed: row.get(17)?,
+            processed: row.get(18)?,
+            all_jobs: row.get(19)?,
         })
     })?;
     Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+pub fn get_collection_batch_summary(
+    conn: &Connection,
+    batch_id: &str,
+) -> Result<CollectionBatchSummary> {
+    Ok(conn.query_row(
+        r#"
+        WITH batch_runs AS (
+          SELECT id, captured, inserted, updated, duplicate
+          FROM collection_run
+          WHERE batch_id = ?1
+             OR ((batch_id IS NULL OR batch_id = '') AND id = ?1)
+        ), inserted_jobs AS (
+          SELECT DISTINCT crj.encrypt_job_id
+          FROM collection_run_job crj
+          INNER JOIN batch_runs br ON br.id = crj.run_id
+          WHERE crj.outcome = 'inserted'
+        )
+        SELECT
+          COALESCE((SELECT SUM(captured) FROM batch_runs), 0),
+          COALESCE((SELECT SUM(inserted) FROM batch_runs), 0),
+          COALESCE((SELECT SUM(updated + duplicate) FROM batch_runs), 0),
+          COALESCE((
+            SELECT COUNT(*)
+            FROM inserted_jobs ij
+            INNER JOIN job_filter_result r ON r.encrypt_job_id = ij.encrypt_job_id
+            WHERE r.eligible = 1
+              AND COALESCE(json_extract(r.reason_json, '$.bucket'), 'recommended') = 'recommended'
+              AND json_extract(r.reason_json, '$.ai_judgement.status') = 'passed'
+          ), 0)
+        "#,
+        [batch_id],
+        |row| {
+            Ok(CollectionBatchSummary {
+                batch_id: batch_id.to_string(),
+                captured: row.get(0)?,
+                inserted: row.get(1)?,
+                not_inserted: row.get(2)?,
+                passed: row.get(3)?,
+            })
+        },
+    )?)
 }
 
 pub fn list_collection_run_inserted_job_ids(

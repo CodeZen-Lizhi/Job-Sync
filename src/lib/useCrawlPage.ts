@@ -46,6 +46,7 @@ import {
   type BossOption,
   type BossIndustryGroup,
   type CollectionFailure,
+  type CollectionBatchSummary,
   type CollectionRun,
   type JobSourcePlatform,
 } from "./crawl";
@@ -201,6 +202,7 @@ function createCrawlPageState() {
   const collectionSourcesLoaded = ref(false);
   const collectionSourceRegistry = ref<CollectionSourceRegistryEntry[]>([]);
   const collectionRuns = ref<CollectionRun[]>([]);
+  const collectionBatchSummary = ref<CollectionBatchSummary | null>(null);
   const collectionFailures = ref<CollectionFailure[]>([]);
   const collectionSummaryLoading = ref(false);
   const v2exFeedSettingsOpen = ref(false);
@@ -1048,6 +1050,7 @@ function createCrawlPageState() {
         return false;
       }
       await filterProfileState.saveDefaultFilterProfile();
+      const batchId = `batch_${crypto.randomUUID()}`;
       let completedSources = 0;
       let skippedSources = 0;
       const insertedJobIds = new Set<string>();
@@ -1066,7 +1069,10 @@ function createCrawlPageState() {
           runtime.sidecarTask.running = true;
           runtime.sidecarTask.type = CRAWL_TASK_TYPE_AUTO;
           appendRuntimeLog("info", `准备启动 ${label} 自动采集。`);
-          const runId = await invoke<string>("crawl_auto_start", { task: buildTaskForSource(source) });
+          const runId = await invoke<string>("crawl_auto_start", {
+            task: buildTaskForSource(source),
+            batchId,
+          });
           await waitForFinishedCounterToAdvance(beforeFinished);
           const runInsertedJobIds = await loadCollectionRunInsertedJobIds(runId);
           for (const jobId of runInsertedJobIds) insertedJobIds.add(jobId);
@@ -1105,6 +1111,7 @@ function createCrawlPageState() {
         });
         appendRuntimeLog("info", `本次采集没有新入库岗位；${formatAiPostCollectionJudgeSummary(aiResult)}`);
       }
+      await loadCollectionSummary();
       return completedSources > 0 || insertedJobIds.size > 0;
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : String(cause);
@@ -1184,12 +1191,19 @@ function createCrawlPageState() {
     collectionSummaryLoading.value = true;
     try {
       const [runs, failures] = await Promise.all([
-        invoke<CollectionRun[]>("list_collection_runs", { limit: 5 }),
+        invoke<CollectionRun[]>("list_collection_runs", { limit: 20 }),
         invoke<CollectionFailure[]>("list_collection_failures", { limit: 8 }),
       ]);
       collectionRuns.value = runs;
       collectionFailures.value = failures;
+      const latestRun = runs[0];
+      collectionBatchSummary.value = latestRun
+        ? await invoke<CollectionBatchSummary>("get_collection_batch_summary", {
+            batchId: latestRun.batch_id || latestRun.id,
+          })
+        : null;
     } catch (cause) {
+      collectionBatchSummary.value = null;
       error.value = cause instanceof Error ? cause.message : String(cause);
     } finally {
       collectionSummaryLoading.value = false;
@@ -1219,6 +1233,7 @@ function createCrawlPageState() {
     clearLogs,
     selectedCollectionSources,
     collectionRuns,
+    collectionBatchSummary,
     collectionFailures,
     collectionSummaryLoading,
     latestCollectionRun,

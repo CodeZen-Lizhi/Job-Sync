@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS job_source_link (
 
 CREATE TABLE IF NOT EXISTS collection_run (
   id TEXT PRIMARY KEY,
+  batch_id TEXT,
   source_platform TEXT NOT NULL,
   keywords_json TEXT NOT NULL,
   filters_json TEXT,
@@ -237,6 +238,9 @@ CREATE INDEX IF NOT EXISTS idx_job_list_summary_projection_hash
 
 CREATE INDEX IF NOT EXISTS idx_collection_run_started_at
   ON collection_run(started_at);
+
+CREATE INDEX IF NOT EXISTS idx_collection_run_batch_started_at
+  ON collection_run(batch_id, started_at);
 
 CREATE INDEX IF NOT EXISTS idx_collection_failure_run_id
   ON collection_failure(run_id);

@@ -22,8 +22,8 @@ pub(crate) use collection::{
     NewCollectionRun,
 };
 pub use collection::{
-    list_collection_failures, list_collection_run_inserted_job_ids, list_collection_runs,
-    CollectionFailure, CollectionRun,
+    get_collection_batch_summary, list_collection_failures, list_collection_run_inserted_job_ids,
+    list_collection_runs, CollectionBatchSummary, CollectionFailure, CollectionRun,
 };
 pub(crate) use company_score::{
     compute_company_score, rebuild_company_scores, upsert_company_score,

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import type { CollectionRun } from "../../lib/crawl";
+import type { CollectionBatchSummary } from "../../lib/crawl";
 import type { LogLine } from "../../lib/runtime";
 
 const props = defineProps<{
-  run?: CollectionRun | null;
+  summary?: CollectionBatchSummary | null;
   logs: LogLine[];
   sidecarRunning: boolean;
   error?: string | null;
@@ -27,22 +27,22 @@ function formatStat(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "—";
 }
 
-function buildRunStats(run: CollectionRun | null | undefined): {
+function buildRunStats(summary: CollectionBatchSummary | null | undefined): {
   total: number | null;
   skipped: number | null;
   inserted: number | null;
   passed: number | null;
 } {
-  if (!run) return { total: null, skipped: null, inserted: null, passed: null };
+  if (!summary) return { total: null, skipped: null, inserted: null, passed: null };
   return {
-    total: run.captured,
-    skipped: run.filtered,
-    inserted: run.inserted + run.updated + run.duplicate,
-    passed: run.recommended,
+    total: summary.captured,
+    skipped: summary.not_inserted,
+    inserted: summary.inserted,
+    passed: summary.passed,
   };
 }
 
-const runStats = computed(() => buildRunStats(props.run));
+const runStats = computed(() => buildRunStats(props.summary));
 const visibleLogs = computed(() => props.logs.slice(-VISIBLE_LOG_LIMIT));
 </script>
 
@@ -54,14 +54,14 @@ const visibleLogs = computed(() => props.logs.slice(-VISIBLE_LOG_LIMIT));
       <div class="mt-2 text-xs text-content-muted">原始条目数</div>
     </div>
     <div class="ui-crawl-stat p-4">
-      <div class="text-xs font-medium text-content-muted">跳过</div>
+      <div class="text-xs font-medium text-content-muted">未新增</div>
       <div class="mt-1 text-2xl font-semibold text-rose-700">{{ formatStat(runStats.skipped) }}</div>
-      <div class="mt-2 text-xs text-content-muted">被规则跳过</div>
+      <div class="mt-2 text-xs text-content-muted">已有岗位更新或重复</div>
     </div>
     <div class="ui-crawl-stat p-4">
-      <div class="text-xs font-medium text-content-muted">入库</div>
+      <div class="text-xs font-medium text-content-muted">新入库</div>
       <div class="mt-1 text-2xl font-semibold text-emerald-500">{{ formatStat(runStats.inserted) }}</div>
-      <div class="mt-2 text-xs text-content-muted">写入本地库</div>
+      <div class="mt-2 text-xs text-content-muted">本批次新增岗位</div>
     </div>
     <div class="ui-crawl-stat p-4">
       <div class="text-xs font-medium text-content-muted">通过</div>
