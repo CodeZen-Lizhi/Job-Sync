@@ -1235,3 +1235,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 38: 职位库默认展示全部入库
+
+**Date**: 2026-07-10
+**Task**: 职位库默认展示全部入库
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+定位职位列表默认仅显示推荐岗位的原因，将默认分区调整为全部入库，并补充契约测试；前端构建和相关 Rust 查询测试通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86d79180` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
