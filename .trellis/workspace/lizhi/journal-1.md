@@ -1368,3 +1368,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 42: 升级 JobPilot 0.1.7 并完成 macOS 打包
+
+**Date**: 2026-07-10
+**Task**: 升级 JobPilot 0.1.7 并完成 macOS 打包
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+同步 npm 与 Cargo 桌面端版本至 0.1.7，完成契约测试、前端构建和 Rust 全量测试，正式生成并验证 JobPilot.app 与 JobPilot_0.1.7_aarch64.dmg。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0cf4f27` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

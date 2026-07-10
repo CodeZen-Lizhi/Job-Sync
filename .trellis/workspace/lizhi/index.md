@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 41
+- **Total Sessions**: 42
 - **Last Active**: 2026-07-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1370 | Active |
+| `journal-1.md` | ~1403 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 42 | 2026-07-10 | 升级 JobPilot 0.1.7 并完成 macOS 打包 | `0cf4f27` | `remote-job-intelligence` |
 | 41 | 2026-07-10 | 完成采集运行页重构与旧库迁移修复 | `5a24789`, `a1f43cd` | `remote-job-intelligence` |
 | 40 | 2026-07-10 | 重构采集运行页 UI | `5a24789` | `remote-job-intelligence` |
 | 39 | 2026-07-10 | 修复采集批次统计 | `177b432` | `remote-job-intelligence` |
