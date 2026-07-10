@@ -113,6 +113,23 @@ export function useCrawlPage(): CrawlPageState {
 
 **Related**: Apply this when simplifying crawl setup, filter profile setup, or any page that mainly edits persisted configuration.
 
+### Convention: Keep Runtime Workspaces Viewport-Efficient
+
+**What**: Execution pages should place source context, the single authoritative run status, runtime parameters, and primary actions in one compact control surface. Group peer metrics into one segmented summary and let the runtime log consume the remaining viewport height with internal scrolling.
+
+**Why**: Tall control cards, duplicated status badges, independent metric cards, and fixed-height logs push the most useful feedback below the fold. A compact command surface keeps the current action understandable while preserving first-viewport space for live output.
+
+**Example**:
+```vue
+<section class="flex min-h-[calc(100vh-5.25rem)] flex-col gap-3">
+  <div class="ui-crawl-panel shrink-0 p-4">...</div>
+  <div class="ui-crawl-metrics shrink-0">...</div>
+  <div class="ui-log-panel">...</div>
+</section>
+```
+
+**Related**: Keep status ownership in the action surface rather than repeating it in the log header. Smoke test at `1280x720` and `390x844`; assert the page and its main scroll container have no horizontal overflow, controls do not wrap incoherently, and the log header/body enter the desktop first viewport.
+
 ### Convention: Keep Resume Settings Text-Only
 
 **What**: Resume-related settings panels should only expose pasted text input for the editable resume source. Do not keep a separate "current situation" note field or a file-picker path mode in the settings page.

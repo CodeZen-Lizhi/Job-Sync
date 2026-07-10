@@ -699,6 +699,25 @@ describe("review workflow contract", () => {
     assert.match(crawlPanel, /v-for="\(line, index\) in visibleLogs"/);
   });
 
+  it("keeps the crawl runtime surface compact and uses one structured status source", () => {
+    const crawlPage = readProjectFile("src/pages/Crawl.vue");
+    const actionBar = readProjectFile("src/components/crawl/CrawlActionBar.vue");
+    const crawlPanel = readProjectFile("src/components/crawl/CrawlRuntimePanel.vue");
+    const styles = readProjectFile("src/styles/tailwind.css");
+
+    assert.match(crawlPage, /selectedCollectionSourceLabel/);
+    assert.match(crawlPage, /sm:grid-cols-\[minmax\(0,1fr\)_12rem\]/);
+    assert.match(actionBar, /import \{ Play, Square \} from "lucide-vue-next"/);
+    assert.match(actionBar, /sidecarRunning \? '运行中' : actionBusy \? '准备中' : '空闲'/);
+    assert.doesNotMatch(crawlPanel, /sidecarRunning/);
+    assert.match(crawlPanel, /class="ui-crawl-metrics shrink-0"/);
+    assert.match(crawlPanel, /暂无运行日志/);
+    assert.match(crawlPanel, /aria-label="清空日志"/);
+    assert.match(crawlPanel, /logIndicatorClass\(line.level\)/);
+    assert.match(styles, /\.ui-log-panel \{[\s\S]{0,160}min-h-\[18rem\][\s\S]{0,80}flex-1/);
+    assert.doesNotMatch(styles, /\.ui-log-panel \{[\s\S]{0,120}h-\[320px\]/);
+  });
+
   it("keeps scheduled crawl config app-open only and wired to the existing crawl flow", () => {
     const appShell = readProjectFile("src/App.vue");
     const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
@@ -1112,8 +1131,8 @@ describe("review workflow contract", () => {
     assert.match(collectionModel, /WHERE batch_id = \?1/);
     assert.match(collectionModel, /SELECT DISTINCT crj\.encrypt_job_id/);
     assert.match(collectionModel, /ai_judgement\.status'\) = 'passed'/);
-    assert.match(crawlPanel, />未新增</);
-    assert.match(crawlPanel, />新入库</);
+    assert.match(crawlPanel, /label: "未新增"/);
+    assert.match(crawlPanel, /label: "新入库"/);
     assert.match(crawlPanel, /summary\.not_inserted/);
     assert.match(crawlPanel, /summary\.passed/);
     assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForAllJobs\(\)/);

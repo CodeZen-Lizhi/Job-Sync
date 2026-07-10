@@ -2,8 +2,8 @@
 
 ## 前置条件
 
-- [ ] `07-10-job-display-approved-only` 已完成或相关工作树改动已稳定并通过验证。
-- [ ] 开始实现前重新读取最新 `Crawl.vue`、`CrawlActionBar.vue`、`CrawlRuntimePanel.vue` 与 crawl 专用 CSS diff。
+- [x] `07-10-job-display-approved-only` 已完成或相关工作树改动已稳定并通过验证。
+- [x] 开始实现前重新读取最新 `Crawl.vue`、`CrawlActionBar.vue`、`CrawlRuntimePanel.vue` 与 crawl 专用 CSS diff。
 
 ## 实施顺序
 
@@ -44,3 +44,11 @@ npm run dev -- --host 127.0.0.1
 - 不新增依赖，不改全局视觉 token，不影响其他页面。
 - 不从日志文本推算统计，不创建第二状态源。
 - 桌面与窄屏均有真实页面证据，不能只依赖构建成功。
+
+## 验证结果
+
+- `npm run test:review-workflow`：61/61 通过。
+- `npm run build`：Vue 类型检查与 Vite 生产构建通过。
+- 浏览器 `1280x720`：控制区约 `108px` 高，日志从 `y≈360` 开始，文档和主容器无横向溢出，控制台无错误。
+- 浏览器 `390x844`：指标稳定为 `2x2`，开始/停止按钮均为 `96x44`，无横向溢出或重叠，控制台无错误。
+- `npm run tauri:dev`：Rust 与 worker 编译通过，开发进程成功启动；机器上已有同 bundle id 安装版运行，Computer Use 无法可靠区分开发窗口，未执行真实开始/停止视觉烟测。

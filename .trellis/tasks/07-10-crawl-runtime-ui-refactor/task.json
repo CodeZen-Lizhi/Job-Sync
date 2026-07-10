@@ -3,7 +3,7 @@
   "name": "crawl-runtime-ui-refactor",
   "title": "重构采集运行页 UI",
   "description": "将采集运行页重构为紧凑的运营控制台，收敛控制、统计与日志的信息层级。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
