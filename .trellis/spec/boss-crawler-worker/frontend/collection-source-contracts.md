@@ -576,6 +576,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - SQLite init entry points:
   - `init_db(app_data_dir)` opens/migrates the database for normal commands and must not mutate active `collection_run` rows.
   - `init_db_for_app_start(app_data_dir)` is the only startup recovery entry point that may mark stale `status='running'` collection runs failed.
+  - additive column indexes are created by `migrate.rs` only after `add_column_if_missing`; `schema.sql` must not reference a newly added column on a table that may already exist.
 
 ### 3. Contracts
 
@@ -584,6 +585,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - Batch runtime metrics have one explicit contract: `captured = SUM(captured)`, `inserted = SUM(inserted)`, `not_inserted = SUM(updated + duplicate)`, and `passed = distinct newly inserted jobs whose final reason_json.ai_judgement.status is passed`.
 - The frontend reloads the batch summary after post-collection AI judgement finishes. A summary query failure clears the previous summary instead of leaving stale numbers visible.
 - Legacy runs with a null/empty `batch_id` are queried as a single-run batch using their run id. They must not be merged by timestamp inference.
+- `schema.sql` runs before imperative additive migrations. `CREATE TABLE IF NOT EXISTS` does not add columns to an existing table, so indexes for additive columns must stay after the corresponding `add_column_if_missing` call.
 - `captured`, `inserted`, `updated`, `duplicate`, and `failed` are run-operation counters.
 - `recommended`, `pending`, `filtered`, `processed`, and `all_jobs` are refreshed from canonical DB/filter state after recompute/finish. They are not limited to only rows captured in that run.
 - Upsert outcome is based on persisted DB fields before/after write. `last_seen_at` alone must not turn an unchanged row into `updated`.
@@ -601,6 +603,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - Normal command opens DB while sidecar is running -> active `status='running'` rows remain running.
 - Batch id is missing for a legacy run -> `get_collection_batch_summary(run.id)` returns that run only.
 - Batch summary query fails -> the runtime cards clear to the unknown state and surface the error; they do not retain the previous batch's values.
+- Existing database has `collection_run` without `batch_id` -> initialization adds the column first, then creates `idx_collection_run_batch_started_at`; startup must not fail with `no such column`.
 - List item lacks stable ID -> write `collection_failure(event_type='JOB_LIST_CAPTURED', reason='missing stable job id')`.
 - Upsert or recompute fails for one item -> write item-level failure and continue processing other items where possible.
 - `refresh_pending_job_evidence` for non-pending job -> return clear error; do not start worker.
@@ -614,9 +617,11 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
 - Good: one click runs Boss and V2EX with the same `batch_id`; the cards aggregate both and refresh `passed` only after AI judgement.
 - Good: a pending Boss job triggers `REFRESH_JOB_EVIDENCE`, receives a detail payload, and leaves pending if evidence is still insufficient.
 - Base: old databases have no run history but can still query jobs and bucket counts after additive migration.
+- Base: an old database already has `collection_run`; migration upgrades it without requiring the user to delete local data.
 - Base: the collection page polls run history during an active run; polling must not mark the active run failed.
 - Bad: using worker profile-filter eligibility as the final recommended/pending/filtered count.
 - Bad: labeling `updated + duplicate` as newly inserted, using `filtered` as a collection-skip counter, or showing only the newest source run for a multi-source action.
+- Bad: putting `CREATE INDEX ... (batch_id, ...)` in the initial schema batch when `batch_id` is an additive column on an existing table.
 - Bad: silently skipping malformed list rows without a durable failure record.
 - Bad: calling stale-run cleanup from generic DB initialization used by normal commands.
 - Bad: making pending refresh look successful when the source is unsupported or Boss session is missing.
@@ -630,6 +635,7 @@ if !local_job_exists(conn, &payload.encrypt_job_id) {
   - normal `init_db` preserves active `status='running'` rows.
   - `init_db_for_app_start` marks stale `status='running'` rows failed.
   - multiple runs with the same `batch_id` aggregate operation counters and count only inserted jobs with final AI status `passed`.
+  - a legacy `collection_run` table without `batch_id` survives `init_db`; assert both the migrated column and batch index exist afterward.
 - Rust filter tests:
   - bucket counts are derived from `job_filter_result.reason_json.bucket`, review/communication/company state, and blacklist state.
 - Worker tests:
@@ -700,6 +706,24 @@ const passed = latestRun.recommended;
 const summary = await invoke("get_collection_batch_summary", {
   batchId: latestRun.batch_id || latestRun.id,
 });
+```
+
+#### Wrong
+
+```sql
+-- schema.sql runs before ALTER TABLE migrations and fails on existing databases.
+CREATE INDEX idx_collection_run_batch_started_at
+  ON collection_run(batch_id, started_at);
+```
+
+#### Correct
+
+```rust
+add_column_if_missing(conn, "collection_run", "batch_id", "TEXT")?;
+conn.execute(
+    "CREATE INDEX IF NOT EXISTS idx_collection_run_batch_started_at ON collection_run(batch_id, started_at)",
+    [],
+)?;
 ```
 
 #### Wrong

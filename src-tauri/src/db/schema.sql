@@ -239,9 +239,6 @@ CREATE INDEX IF NOT EXISTS idx_job_list_summary_projection_hash
 CREATE INDEX IF NOT EXISTS idx_collection_run_started_at
   ON collection_run(started_at);
 
-CREATE INDEX IF NOT EXISTS idx_collection_run_batch_started_at
-  ON collection_run(batch_id, started_at);
-
 CREATE INDEX IF NOT EXISTS idx_collection_failure_run_id
   ON collection_failure(run_id);
 

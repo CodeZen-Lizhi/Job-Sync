@@ -913,6 +913,45 @@ fn init_db_preserves_active_collection_runs() {
 }
 
 #[test]
+fn init_db_upgrades_legacy_collection_run_before_creating_batch_index() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+    let conn = connect_db(&app_data_dir).expect("connect legacy db");
+    conn.execute_batch(
+        r#"
+        CREATE TABLE collection_run (
+          id TEXT PRIMARY KEY,
+          source_platform TEXT NOT NULL,
+          keywords_json TEXT NOT NULL,
+          status TEXT NOT NULL,
+          started_at TEXT NOT NULL
+        );
+        "#,
+    )
+    .expect("create legacy collection_run");
+    drop(conn);
+
+    let conn = init_db(&app_data_dir).expect("migrate legacy collection_run");
+    let has_batch_id = conn
+        .prepare("PRAGMA table_info(collection_run)")
+        .expect("prepare table info")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("query columns")
+        .filter_map(Result::ok)
+        .any(|column| column == "batch_id");
+    let has_batch_index: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'index' AND name = 'idx_collection_run_batch_started_at'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query batch index");
+
+    assert!(has_batch_id);
+    assert!(has_batch_index);
+}
+
+#[test]
 fn finish_collection_run_does_not_overwrite_failed_user_stop() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");
