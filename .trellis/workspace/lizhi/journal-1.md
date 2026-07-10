@@ -1268,3 +1268,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 39: 修复采集批次统计
+
+**Date**: 2026-07-10
+**Task**: 修复采集批次统计
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+为一次多平台采集建立批次 ID，按批次汇总总搜到、未新增、新入库和最终 AI 通过数，并补充迁移、回归测试与页面烟测。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `177b432` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

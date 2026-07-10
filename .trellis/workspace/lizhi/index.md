@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 38
+- **Total Sessions**: 39
 - **Last Active**: 2026-07-10
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1270 | Active |
+| `journal-1.md` | ~1303 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 39 | 2026-07-10 | 修复采集批次统计 | `177b432` | `remote-job-intelligence` |
 | 38 | 2026-07-10 | 职位库默认展示全部入库 | `86d79180` | `remote-job-intelligence` |
 | 37 | 2026-07-08 | Boss low-risk collection wrap-up | `f9655edb` | `remote-job-intelligence` |
 | 36 | 2026-07-05 | 提升移动导航与采集页性能 | `d847bb88` | `remote-job-intelligence` |
