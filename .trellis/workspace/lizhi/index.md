@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 43
+- **Total Sessions**: 44
 - **Last Active**: 2026-07-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1436 | Active |
+| `journal-1.md` | ~1469 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 44 | 2026-07-11 | 完成 shadcn 全页面重构 | `86fe4db` | `remote-job-intelligence` |
 | 43 | 2026-07-11 | 重构全页面前端布局 | `ae6653c` | `remote-job-intelligence` |
 | 42 | 2026-07-10 | 升级 JobPilot 0.1.7 并完成 macOS 打包 | `0cf4f27` | `remote-job-intelligence` |
 | 41 | 2026-07-10 | 完成采集运行页重构与旧库迁移修复 | `5a24789`, `a1f43cd` | `remote-job-intelligence` |
