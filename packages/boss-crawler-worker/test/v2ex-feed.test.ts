@@ -621,7 +621,7 @@ describe("V2EX feed collector", () => {
 
     assert.equal(events.filter((event) => event.type === "JOB_NORMALIZED_CAPTURED").length, 60);
     assert.ok(events.some((event) => event.type === "LOG" && /网页分页请求完成：3 页，源 60 条/.test(event.payload.message)));
-    assert.ok(events.some((event) => event.type === "LOG" && /入库 60 条/.test(event.payload.message)));
+    assert.ok(events.some((event) => event.type === "LOG" && /采集候选 60 条/.test(event.payload.message)));
   });
 
   it("emits captured jobs as soon as each V2EX detail is ready", async () => {

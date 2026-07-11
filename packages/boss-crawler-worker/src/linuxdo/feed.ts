@@ -1069,7 +1069,7 @@ export async function runLinuxDoMode(payload: CrawlAutoStartPayload, ctx: ModeCo
       await delayWithJitter(delayMs, ctx.signal, 300);
     }
 
-    ctx.emit({ type: "LOG", payload: { level: "info", message: `LinuxDo 采集完成：入库 ${captured} 条，跳过 ${filtered} 条。` } });
+    ctx.emit({ type: "LOG", payload: { level: "info", message: `LinuxDo 采集完成：采集候选 ${captured} 条，跳过 ${filtered} 条。` } });
   } finally {
     const client = browserClient as { browser: Browser; page: Page } | null;
     await client?.browser.disconnect().catch(() => undefined);

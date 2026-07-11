@@ -878,6 +878,6 @@ export async function runV2exFeedMode(payload: any, ctx: ModeContext): Promise<v
 
   ctx.emit({
     type: "LOG",
-    payload: { level: "info", message: `V2EX 采集完成：入库 ${captured} 条，跳过 ${filtered} 条。` },
+    payload: { level: "info", message: `V2EX 采集完成：采集候选 ${captured} 条，跳过 ${filtered} 条。` },
   });
 }

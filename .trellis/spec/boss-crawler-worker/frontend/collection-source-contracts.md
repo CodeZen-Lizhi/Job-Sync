@@ -186,6 +186,7 @@
   - UI stores all selected collectable sources, not a single `selectedCollectionSource`
   - starting automatic collection invokes `crawl_auto_start` once per selected source, sequentially
   - each invocation keeps its platform-specific payload and session requirement
+  - worker completion logs must describe `captured` normalized events as `采集候选`, not `入库`; only the sidecar `inserted` outcome represents an actual new database row and qualifies the job for automatic post-collection AI judgement
   - the user action is still one button click; worker modes remain one source per command
   - platform-specific configuration panels must be rendered from the selected source set; selecting only LinuxDo must not show Boss-only filters, and selecting a platform should make its dedicated panel immediately visible/open
   - do not reintroduce a generic intent-to-platform synchronization layer; Boss, V2EX, and LinuxDo fields are edited and persisted directly
