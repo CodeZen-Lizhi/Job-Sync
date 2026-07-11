@@ -178,7 +178,6 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
   <section class="ui-page">
     <header class="ui-page-header">
       <div class="ui-page-heading">
-        <div class="ui-page-eyebrow">Collection Studio</div>
         <h1 class="ui-page-title">采集配置</h1>
         <p class="ui-page-description">按平台维护采集范围与默认采后规则，让运行页只保留执行反馈。</p>
       </div>
@@ -222,8 +221,8 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
                 :key="option.value"
                 class="inline-flex min-h-11 items-center rounded-lg border px-3.5 py-2 text-sm font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10"
                 :class="isCollectionSourceSelected(option.value)
-                  ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-900/15'
-                  : 'border-border/75 bg-white/75 text-content-secondary hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-content-primary'"
+                  ? 'border-slate-950 bg-slate-950 text-white'
+                  : 'border-border bg-white text-content-secondary hover:bg-surface-alt hover:text-content-primary'"
                 type="button"
                 :aria-pressed="isCollectionSourceSelected(option.value)"
                 @click="toggleCollectionSource(option.value)"

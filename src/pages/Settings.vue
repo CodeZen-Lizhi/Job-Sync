@@ -612,7 +612,6 @@ function scrollToSettingsSection(sectionId: string): void {
   <section class="ui-page">
     <header class="ui-page-header">
       <div class="ui-page-heading">
-        <div class="ui-page-eyebrow">System Settings</div>
         <h1 class="ui-page-title">设置</h1>
         <p class="ui-page-description">管理平台能力、本机浏览器、网络代理、模型服务和通知诊断。</p>
       </div>
@@ -623,7 +622,7 @@ function scrollToSettingsSection(sectionId: string): void {
       </div>
     </header>
 
-    <nav class="ui-toolbar sticky top-0 z-20 grid grid-cols-3 gap-1 p-2 backdrop-blur sm:flex sm:gap-2 sm:overflow-x-auto" aria-label="设置分区">
+    <nav class="ui-toolbar sticky top-0 z-20 grid grid-cols-3 gap-1 p-1 sm:flex sm:gap-1 sm:overflow-x-auto" aria-label="设置分区">
       <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-platforms')">平台能力</button>
       <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-browser')">浏览器</button>
       <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-network')">网络代理</button>
@@ -652,25 +651,8 @@ function scrollToSettingsSection(sectionId: string): void {
             {{ sourcesLoading ? "读取中…" : "刷新平台" }}
           </button>
         </div>
-        <div class="mt-4 divide-y divide-border/10 overflow-hidden rounded-md border border-border/10">
-          <div v-for="source in visibleJobSources" :key="source.platform" class="grid gap-3 px-3 py-3 text-sm md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
-            <div class="flex flex-wrap gap-2">
-              <span
-                class="ui-badge"
-                :class="sourceEnabledBadgeClass(source)"
-              >
-                {{ source.enabled ? "已启用" : "未启用" }}
-              </span>
-              <span
-                class="ui-badge"
-                :class="automaticCollectionBadgeClass(source)"
-              >
-                {{ automaticCollectionLabel(source) }}
-              </span>
-              <span class="ui-badge" :class="platformLoginBadgeClass(source)">
-                {{ platformLoginLabel(source) }}
-              </span>
-            </div>
+        <div class="mt-4 divide-y divide-border overflow-hidden rounded-md border border-border">
+          <div v-for="source in visibleJobSources" :key="source.platform" class="flex flex-col gap-3 px-4 py-4 text-sm lg:flex-row lg:items-center lg:justify-between">
             <div class="min-w-0 flex-1">
               <div class="truncate font-medium text-content-primary">{{ source.display_name }}</div>
               <div class="mt-0.5 text-xs text-content-muted">
@@ -678,47 +660,60 @@ function scrollToSettingsSection(sectionId: string): void {
               </div>
               <div class="mt-1 text-xs text-content-muted">{{ platformCapabilityHint(source) }}</div>
             </div>
-            <div class="flex flex-wrap items-center justify-start gap-2 md:justify-end">
-              <button
-                class="inline-flex min-h-11 min-w-[6.25rem] items-center gap-2 rounded-full px-2.5 py-2 text-xs font-medium ring-1 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                type="button"
-                :class="source.enabled ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-700 ring-slate-300 hover:bg-slate-200'"
-                :disabled="!tauri || sourcesLoading || sourceUpdatingPlatform !== null"
-                @click="setJobSourceEnabled(source, !source.enabled)"
-                :aria-pressed="source.enabled"
-              >
-                <span
-                  class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
-                  :class="source.enabled ? 'bg-emerald-400/80' : 'bg-slate-500/60'"
+            <div class="flex shrink-0 flex-col gap-2 lg:items-end">
+              <div class="flex flex-wrap gap-1.5">
+                <span class="ui-badge" :class="sourceEnabledBadgeClass(source)">
+                  {{ source.enabled ? "已启用" : "未启用" }}
+                </span>
+                <span class="ui-badge" :class="automaticCollectionBadgeClass(source)">
+                  {{ automaticCollectionLabel(source) }}
+                </span>
+                <span class="ui-badge" :class="platformLoginBadgeClass(source)">
+                  {{ platformLoginLabel(source) }}
+                </span>
+              </div>
+              <div class="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+                <button
+                  class="inline-flex min-h-10 min-w-[5.75rem] items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  :class="source.enabled ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-border bg-white text-content-secondary hover:bg-surface-alt'"
+                  :disabled="!tauri || sourcesLoading || sourceUpdatingPlatform !== null"
+                  @click="setJobSourceEnabled(source, !source.enabled)"
+                  :aria-pressed="source.enabled"
                 >
                   <span
-                    class="h-4 w-4 rounded-full bg-white shadow transition-transform"
-                    :class="source.enabled ? 'translate-x-4' : 'translate-x-0.5'"
-                  />
-                </span>
-                <span>{{ sourceUpdatingPlatform === source.platform ? "保存中…" : source.enabled ? "禁用" : "启用" }}</span>
-              </button>
-              <template v-if="loginCapablePlatforms.has(source.platform)">
-                <button
-                  class="ui-btn-primary px-3 py-1.5 text-xs"
-                  type="button"
-                  :disabled="!tauri || !source.enabled || loginLoading || sidecarRunning"
-                  @click="startPlatformLogin(source)"
-                >
-                  {{ loginLoadingPlatform === source.platform ? "打开中…" : source.platform === "linuxdo" || source.platform === "zhilian" ? "打开" : "登录" }}
+                    class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+                    :class="source.enabled ? 'bg-emerald-400/80' : 'bg-slate-500/60'"
+                  >
+                    <span
+                      class="h-4 w-4 rounded-full bg-white shadow transition-transform"
+                      :class="source.enabled ? 'translate-x-4' : 'translate-x-0.5'"
+                    />
+                  </span>
+                  <span>{{ sourceUpdatingPlatform === source.platform ? "保存中…" : source.enabled ? "禁用" : "启用" }}</span>
                 </button>
-                <button
-                  v-if="automatedLoginPlatforms.has(source.platform)"
-                  class="ui-btn-secondary px-3 py-1.5 text-xs"
-                  type="button"
-                  :disabled="!tauri || !source.enabled || loginRefreshingPlatform !== null"
-                  @click="refreshPlatformLogin(source.platform, true)"
-                >
-                  {{ loginRefreshingPlatform === source.platform ? "检查中…" : "刷新状态" }}
-                </button>
-              </template>
-              <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs !text-content-secondary !opacity-100" type="button" disabled>无需登录</button>
-              <button v-else class="ui-btn-secondary px-3 py-1.5 text-xs !text-content-secondary !opacity-100" type="button" disabled>登录预留</button>
+                <template v-if="loginCapablePlatforms.has(source.platform)">
+                  <button
+                    class="ui-btn-primary px-3 py-1.5 text-xs"
+                    type="button"
+                    :disabled="!tauri || !source.enabled || loginLoading || sidecarRunning"
+                    @click="startPlatformLogin(source)"
+                  >
+                    {{ loginLoadingPlatform === source.platform ? "打开中…" : source.platform === "linuxdo" || source.platform === "zhilian" ? "打开" : "登录" }}
+                  </button>
+                  <button
+                    v-if="automatedLoginPlatforms.has(source.platform)"
+                    class="ui-btn-secondary px-3 py-1.5 text-xs"
+                    type="button"
+                    :disabled="!tauri || !source.enabled || loginRefreshingPlatform !== null"
+                    @click="refreshPlatformLogin(source.platform, true)"
+                  >
+                    {{ loginRefreshingPlatform === source.platform ? "检查中…" : "刷新状态" }}
+                  </button>
+                </template>
+                <button v-else-if="source.adapter_kind === 'feed'" class="ui-btn-secondary px-3 py-1.5 text-xs !text-content-secondary !opacity-100" type="button" disabled>无需登录</button>
+                <button v-else class="ui-btn-secondary px-3 py-1.5 text-xs !text-content-secondary !opacity-100" type="button" disabled>登录预留</button>
+              </div>
             </div>
           </div>
         </div>

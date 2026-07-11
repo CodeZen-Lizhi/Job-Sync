@@ -64,27 +64,27 @@ void useCrawlPage({ initialize: "schedule" });
       <!-- Content -->
       <div class="relative z-10 flex h-full w-full max-w-full flex-col gap-0 lg:flex-row">
         <!-- Sidebar -->
-        <aside class="app-sidebar hidden w-full max-w-full shrink-0 flex-col border-white/10 lg:flex lg:w-72 lg:border-r">
-          <header class="px-5 pb-5 pt-6">
+        <aside class="app-sidebar hidden w-full max-w-full shrink-0 flex-col border-border lg:flex lg:w-64 lg:border-r">
+          <header class="flex h-16 items-center border-b border-border px-4">
             <div class="flex items-center gap-3">
               <div class="app-brand-mark" aria-hidden="true">
-                <Bot class="h-5 w-5" />
+                <Bot class="h-4 w-4" />
               </div>
               <div class="min-w-0">
                 <div class="flex min-w-0 items-center gap-2">
-                  <div class="truncate text-base font-semibold tracking-tight text-white">JobPilot</div>
-                  <div class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-400">
+                  <div class="truncate text-sm font-semibold tracking-tight text-content-primary">JobPilot</div>
+                  <div class="shrink-0 rounded-md bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium leading-none text-content-muted">
                     v{{ appVersion }}
                   </div>
                 </div>
-                <div class="mt-1 truncate text-xs text-slate-400">精准求职工作台</div>
+                <div class="mt-0.5 truncate text-[11px] text-content-muted">精准求职工作台</div>
               </div>
             </div>
           </header>
 
-          <nav class="flex flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6" aria-label="导航">
+          <nav class="flex flex-1 flex-col gap-5 overflow-y-auto px-3 py-4" aria-label="导航">
             <section v-for="g in navGroups" :key="g.label" class="min-w-0 space-y-2">
-              <div class="px-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+              <div class="px-2.5 text-[11px] font-medium text-content-muted">
                 {{ g.label }}
               </div>
               <div class="space-y-1">
@@ -95,32 +95,28 @@ void useCrawlPage({ initialize: "schedule" });
                   :class="navItemClass"
                   :exact-active-class="navItemExactActiveClass"
                 >
-                  <component :is="it.icon" class="nav-icon h-4 w-4 shrink-0 text-slate-500 transition-colors group-hover:text-white" aria-hidden="true" />
+                  <component :is="it.icon" class="nav-icon h-4 w-4 shrink-0 text-content-muted transition-colors group-hover:text-content-primary" aria-hidden="true" />
                   <span class="nav-label min-w-0 truncate">{{ it.label }}</span>
                 </RouterLink>
               </div>
             </section>
           </nav>
 
-          <div class="mx-4 mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div class="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-300">Workspace</div>
-            <div class="mt-2 text-xs leading-5 text-slate-400">把采集、判断与简历维护收拢在一个安静的工作流里。</div>
-          </div>
         </aside>
 
-        <header class="app-sidebar border-b border-white/10 px-3 py-3 shadow-lg shadow-slate-950/10 lg:hidden">
+        <header class="app-sidebar border-b border-border px-3 py-3 lg:hidden">
           <div class="flex items-center gap-3">
-            <div class="app-brand-mark !h-11 !w-11" aria-hidden="true">
-              <Bot class="h-5 w-5" />
+            <div class="app-brand-mark" aria-hidden="true">
+              <Bot class="h-4 w-4" />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex min-w-0 items-center gap-2">
-                <div class="truncate text-base font-semibold text-white">JobPilot</div>
-                <div class="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-400">
+                <div class="truncate text-sm font-semibold text-content-primary">JobPilot</div>
+                <div class="shrink-0 rounded-md bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium leading-none text-content-muted">
                   v{{ appVersion }}
                 </div>
               </div>
-              <div class="mt-0.5 truncate text-xs text-slate-400">精准求职工作台</div>
+              <div class="mt-0.5 truncate text-[11px] text-content-muted">精准求职工作台</div>
             </div>
           </div>
 
@@ -132,14 +128,14 @@ void useCrawlPage({ initialize: "schedule" });
               :class="mobileNavItemClass"
               :exact-active-class="mobileNavItemExactActiveClass"
             >
-              <component :is="it.icon" class="nav-icon h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-white" aria-hidden="true" />
+              <component :is="it.icon" class="nav-icon h-3.5 w-3.5 shrink-0 text-content-muted transition-colors group-hover:text-content-primary" aria-hidden="true" />
               <span class="whitespace-nowrap">{{ it.label }}</span>
             </RouterLink>
           </nav>
         </header>
 
         <!-- Main content -->
-        <main class="ui-soft-grid w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto bg-surface-secondary px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-7">
+        <main class="w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto bg-white px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
           <div :class="['mx-auto w-full', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
               <component :is="Component" />

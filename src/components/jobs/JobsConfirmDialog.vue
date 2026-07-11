@@ -18,7 +18,7 @@ defineEmits<{
     <Transition name="fade">
       <div
         v-if="visible"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
         @click.self="$emit('close')"
       >
         <div class="ui-panel mx-4 flex max-h-[82vh] w-full max-w-lg flex-col p-6">

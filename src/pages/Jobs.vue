@@ -279,7 +279,6 @@ watch(
   <section class="ui-page">
     <header class="ui-page-header">
       <div class="ui-page-heading">
-        <div class="ui-page-eyebrow">Job Intelligence</div>
         <h1 class="ui-page-title">职位库工作台</h1>
         <p class="ui-page-description">自动采集先保留岗位事实，再用筛选、AI 判断与人工状态逐步收敛下一步行动。</p>
       </div>

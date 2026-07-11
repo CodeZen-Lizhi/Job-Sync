@@ -5,33 +5,32 @@
 @layer base {
   :root {
     /* Foundations */
-    --color-base: 250 248 244;
-    --color-surface: 255 254 251;
-    --color-surface-secondary: 247 245 240;
-    --color-surface-alt: 242 239 232;
+    --color-base: 255 255 255;
+    --color-surface: 255 255 255;
+    --color-surface-secondary: 250 250 250;
+    --color-surface-alt: 244 244 245;
     --color-surface-elevated: 255 255 255;
-    --color-input: 255 254 251;
-    --color-border: 216 211 199;
-    --color-border-strong: 124 116 101;
-    --color-border-glow: 79 70 229;
-    --shadow-panel: 0 24px 70px -48px rgba(49, 46, 39, 0.42);
-    --shadow-control: 0 12px 30px -24px rgba(49, 46, 39, 0.38);
-    --shadow-panel-hover: 0 30px 80px -50px rgba(49, 46, 39, 0.5);
-    --shadow-modal: 0 34px 100px -44px rgba(17, 24, 39, 0.62);
+    --color-input: 255 255 255;
+    --color-border: 228 228 231;
+    --color-border-strong: 161 161 170;
+    --color-border-glow: 161 161 170;
+    --shadow-panel: 0 1px 2px 0 rgba(24, 24, 27, 0.04);
+    --shadow-control: 0 1px 2px 0 rgba(24, 24, 27, 0.05);
+    --shadow-modal: 0 20px 25px -5px rgba(24, 24, 27, 0.1), 0 8px 10px -6px rgba(24, 24, 27, 0.1);
 
     /* Legacy surface aliases */
     --color-card: var(--color-surface);
-    --color-card-hover: 250 248 243;
+    --color-card-hover: 250 250 250;
     --color-card-alt: var(--color-surface-alt);
 
     /* Text */
-    --color-content-primary: 35 33 29;
-    --color-content-secondary: 78 73 64;
-    --color-content-muted: 120 112 98;
+    --color-content-primary: 24 24 27;
+    --color-content-secondary: 63 63 70;
+    --color-content-muted: 113 113 122;
 
     /* Accents */
-    --color-accent: 79 70 229;
-    --color-accent-success: 5 150 105;
+    --color-accent: 24 24 27;
+    --color-accent-success: 22 163 74;
     --color-accent-danger: 220 38 38;
     --color-accent-warning: 202 116 12;
 
@@ -43,10 +42,7 @@
 
   body {
     @apply min-h-screen bg-surface-secondary text-content-primary antialiased;
-    font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    background-image:
-      radial-gradient(circle at 84% 8%, rgba(79, 70, 229, 0.07), transparent 30rem),
-      linear-gradient(145deg, rgb(250 248 244) 0%, rgb(244 241 234) 100%);
+    font-family: "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   }
 
   #app {
@@ -61,54 +57,54 @@
 
 @layer components {
   .ui-panel {
-    @apply rounded-2xl border border-border/65 bg-surface/90;
+    @apply rounded-lg border border-border bg-white;
     box-shadow: var(--shadow-panel);
   }
 
   .ui-panel-muted {
-    @apply rounded-2xl border border-border/55 bg-surface-alt/70;
+    @apply rounded-lg border border-border bg-surface-alt/35;
     box-shadow: var(--shadow-control);
   }
 
   .ui-card {
-    @apply rounded-2xl border border-border/60 bg-surface/90;
+    @apply rounded-lg border border-border bg-white;
     box-shadow: var(--shadow-control);
   }
 
   .ui-card-soft {
-    @apply rounded-2xl border border-border/55 bg-surface-alt/70;
+    @apply rounded-lg border border-border bg-surface-alt/40;
   }
 
   .ui-section-header {
-    @apply flex flex-wrap items-start justify-between gap-4 border-b border-border/60 px-5 py-4;
+    @apply flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3;
   }
 
   .ui-section-kicker {
-    @apply text-[10px] font-bold uppercase tracking-[0.2em] text-accent/75;
+    @apply text-[11px] font-medium text-content-muted;
   }
 
   .ui-section-title {
-    @apply text-base font-semibold tracking-tight text-content-primary;
+    @apply text-sm font-semibold tracking-tight text-content-primary;
   }
 
   .ui-section-copy {
-    @apply mt-1 max-w-3xl text-xs leading-5 text-content-secondary;
+    @apply mt-1 max-w-3xl text-xs leading-5 text-content-muted;
   }
 
   .ui-segmented {
-    @apply inline-flex max-w-full gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-surface-alt/80 p-1.5;
+    @apply inline-flex max-w-full gap-1 overflow-x-auto rounded-lg bg-surface-alt p-1;
   }
 
   .ui-segmented-button {
-    @apply inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold text-content-secondary transition-all duration-150 hover:bg-white/80 hover:text-content-primary focus:outline-none focus:ring-2 focus:ring-border-glow/20;
+    @apply inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-content-muted transition-colors duration-150 hover:bg-white hover:text-content-primary focus:outline-none focus:ring-2 focus:ring-border-glow/40;
   }
 
   .ui-segmented-button-active {
-    @apply bg-slate-950 text-white shadow-sm ring-1 ring-slate-950;
+    @apply bg-white text-content-primary shadow-sm ring-1 ring-border;
   }
 
   .ui-rule-group {
-    @apply rounded-2xl border border-border/55 bg-surface/75 p-4;
+    @apply rounded-lg border border-border bg-white p-3;
     box-shadow: var(--shadow-control);
   }
 
@@ -121,45 +117,42 @@
   }
 
   .ui-field-label {
-    @apply text-xs font-semibold text-content-secondary;
+    @apply text-xs font-medium text-content-primary;
   }
 
   .ui-toolbar {
-    @apply rounded-2xl border border-border/60 bg-surface/90;
+    @apply rounded-lg border border-border bg-white;
     box-shadow: var(--shadow-control);
   }
 
   .ui-badge {
-    @apply inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-content-secondary ring-1 ring-border/65;
+    @apply inline-flex items-center gap-1 rounded-md bg-surface-alt px-2 py-0.5 text-[11px] font-medium text-content-secondary ring-1 ring-border;
   }
 
   .ui-status-success {
-    @apply rounded-xl bg-emerald-50/90 text-emerald-800 ring-1 ring-emerald-200/90;
+    @apply rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800;
   }
 
   .ui-status-warning {
-    @apply rounded-xl bg-amber-50/90 text-amber-900 ring-1 ring-amber-200/90;
+    @apply rounded-md border border-amber-200 bg-amber-50 text-amber-900;
   }
 
   .ui-status-danger {
-    @apply rounded-xl bg-red-50/90 text-red-800 ring-1 ring-red-200/90;
+    @apply rounded-md border border-red-200 bg-red-50 text-red-800;
   }
 
   .ui-empty-state {
-    @apply relative overflow-hidden rounded-3xl border border-border/55 bg-surface/75 px-5 py-12 text-center sm:px-8;
-    background-image:
-      radial-gradient(circle at 50% 0%, rgba(79, 70, 229, 0.11), transparent 18rem),
-      linear-gradient(180deg, rgba(255, 254, 251, 0.96) 0%, rgba(244, 241, 234, 0.92) 100%);
+    @apply rounded-lg border border-dashed border-border bg-white px-5 py-10 text-center sm:px-8;
     box-shadow: var(--shadow-panel);
   }
 
   .ui-empty-icon {
-    @apply mx-auto inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-indigo-200/70 bg-indigo-50 text-indigo-700;
+    @apply mx-auto inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface-alt text-content-secondary;
     box-shadow: var(--shadow-control);
   }
 
   .ui-empty-title {
-    @apply mt-5 text-lg font-semibold tracking-tight text-content-primary;
+    @apply mt-4 text-sm font-semibold text-content-primary;
   }
 
   .ui-empty-copy {
@@ -183,19 +176,19 @@
   }
 
   .ui-list-row {
-    @apply transition-all duration-150 hover:bg-white/70 focus:outline-none focus-visible:ring-4 focus-visible:ring-border-glow/10;
+    @apply transition-colors duration-150 hover:bg-surface-alt/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-border-glow/40;
   }
 
   .ui-list-row-active {
-    @apply bg-indigo-50/65 ring-1 ring-inset ring-indigo-200/70;
+    @apply bg-surface-alt ring-1 ring-inset ring-border;
   }
 
   .ui-modal-backdrop {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm;
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6;
   }
 
   .ui-modal-shell {
-    @apply w-full overflow-hidden rounded-3xl border border-border/65 bg-surface/95 shadow-2xl ring-1 ring-white/80;
+    @apply w-full overflow-hidden rounded-xl border border-border bg-white;
     box-shadow: var(--shadow-modal);
   }
 
@@ -208,22 +201,22 @@
   }
 
   .ui-input {
-    @apply min-h-11 rounded-xl border border-border/75 bg-input px-3.5 py-2 text-sm text-content-primary placeholder:text-content-muted transition-all duration-150 hover:border-border-strong/70 focus:border-border-glow focus:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    @apply min-h-10 rounded-md border border-border bg-input px-3 py-2 text-sm text-content-primary placeholder:text-content-muted transition-colors duration-150 hover:border-border-strong focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-border-glow/30;
     box-shadow: var(--shadow-control);
   }
 
   .ui-textarea {
-    @apply rounded-xl border border-border/75 bg-input px-3.5 py-2.5 text-sm text-content-primary placeholder:text-content-muted transition-all duration-150 hover:border-border-strong/70 focus:border-border-glow focus:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10;
+    @apply rounded-md border border-border bg-input px-3 py-2.5 text-sm text-content-primary placeholder:text-content-muted transition-colors duration-150 hover:border-border-strong focus:border-border-strong focus:outline-none focus:ring-2 focus:ring-border-glow/30;
     box-shadow: var(--shadow-control);
   }
 
   .ui-btn-primary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-accent bg-accent px-4 py-2 text-sm font-semibold text-white transition-all duration-150 hover:-translate-y-0.5 hover:border-indigo-700 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-border-glow/20 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0;
-    box-shadow: 0 16px 34px -18px rgba(79, 70, 229, 0.72);
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-slate-950 bg-slate-950 px-3.5 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400/50 disabled:pointer-events-none disabled:opacity-50;
+    box-shadow: var(--shadow-control);
   }
 
   .ui-btn-secondary {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border/75 bg-white/75 px-4 py-2 text-sm font-semibold text-content-primary transition-all duration-150 hover:-translate-y-0.5 hover:border-border-strong/70 hover:bg-white focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-border bg-white px-3.5 py-2 text-sm font-medium text-content-primary transition-colors duration-150 hover:bg-surface-alt focus:outline-none focus:ring-2 focus:ring-border-glow/30 disabled:pointer-events-none disabled:opacity-50;
     box-shadow: var(--shadow-control);
   }
 
@@ -233,82 +226,68 @@
   }
 
   .ui-icon-btn {
-    @apply inline-flex h-11 w-11 items-center justify-center rounded-xl border border-border/75 bg-white/75 text-content-secondary transition-all duration-150 hover:-translate-y-0.5 hover:border-border-strong/70 hover:bg-white hover:text-content-primary focus:outline-none focus:ring-4 focus:ring-border-glow/10 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-white text-content-muted transition-colors duration-150 hover:bg-surface-alt hover:text-content-primary focus:outline-none focus:ring-2 focus:ring-border-glow/30 disabled:pointer-events-none disabled:opacity-50;
     box-shadow: var(--shadow-control);
   }
 
   .app-sidebar {
-    background:
-      radial-gradient(circle at 18% 0%, rgba(99, 102, 241, 0.22), transparent 18rem),
-      linear-gradient(180deg, #12182a 0%, #0b1020 55%, #080c18 100%);
+    @apply bg-surface-secondary;
   }
 
   .app-brand-mark {
-    @apply inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-white shadow-lg shadow-black/20;
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white;
   }
 
   .app-nav-link {
-    @apply relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-300 transition-all duration-150 hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/20;
-  }
-
-  .app-nav-link::before {
-    content: "";
-    @apply absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-indigo-400 opacity-0 transition-opacity;
+    @apply relative flex min-h-9 items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-content-muted transition-colors duration-150 hover:bg-surface-alt hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-glow/40;
   }
 
   .app-nav-link-active {
-    @apply bg-white/10 text-white shadow-inner shadow-white/5;
-  }
-
-  .app-nav-link-active::before {
-    @apply opacity-100;
+    @apply bg-surface-alt text-content-primary;
   }
 
   .app-mobile-nav-link {
-    @apply inline-flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 px-1 py-1.5 text-[10px] font-semibold leading-none text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-400/20;
+    @apply inline-flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[10px] font-medium leading-none text-content-muted transition-colors hover:bg-surface-alt hover:text-content-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-border-glow/40;
   }
 
   .app-mobile-nav-link-active {
-    @apply border-indigo-400/40 bg-indigo-500 text-white shadow-lg shadow-indigo-950/25;
+    @apply bg-slate-950 text-white;
   }
 
-  .app-nav-link-active .nav-icon,
+  .app-nav-link-active .nav-icon {
+    @apply text-content-primary;
+  }
+
   .app-mobile-nav-link-active .nav-icon {
     @apply text-white;
   }
 
   .ui-page {
-    @apply space-y-5 pb-8;
-    animation: ui-page-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    @apply space-y-5 pb-6;
   }
 
   .ui-page-header {
-    @apply relative flex flex-col gap-4 overflow-hidden rounded-3xl border border-white/70 bg-white/55 px-5 py-5 shadow-sm shadow-stone-900/5 backdrop-blur sm:flex-row sm:items-end sm:justify-between sm:px-6 sm:py-6;
+    @apply flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between;
   }
 
   .ui-page-header::after {
-    content: "";
-    @apply pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-indigo-200/35 blur-3xl;
+    content: none;
   }
 
   .ui-page-heading {
-    @apply relative z-10 min-w-0;
-  }
-
-  .ui-page-eyebrow {
-    @apply text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-600/80;
+    @apply min-w-0;
   }
 
   .ui-page-title {
-    @apply mt-1 text-2xl font-semibold tracking-[-0.035em] text-content-primary sm:text-[1.75rem];
+    @apply text-2xl font-semibold tracking-tight text-content-primary;
   }
 
   .ui-page-description {
-    @apply mt-2 max-w-3xl text-sm leading-6 text-content-secondary;
+    @apply mt-1 max-w-3xl text-sm leading-5 text-content-muted;
   }
 
   .ui-page-actions {
-    @apply relative z-10 flex shrink-0 flex-wrap items-center gap-2;
+    @apply flex shrink-0 flex-wrap items-center gap-2;
   }
 
   .ui-section-label {
@@ -324,40 +303,18 @@
     @apply pl-1 lg:pt-4;
   }
 
-  .ui-soft-grid {
-    background-image:
-      linear-gradient(rgb(120 113 108 / 0.055) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(120 113 108 / 0.055) 1px, transparent 1px);
-    background-size: 24px 24px;
-  }
-
-  @keyframes ui-page-enter {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
   .ui-crawl-panel {
-    @apply rounded-2xl bg-slate-950 text-white;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    @apply rounded-lg border border-border bg-white text-content-primary;
     box-shadow: var(--shadow-panel);
   }
 
   .ui-crawl-toolbar {
-    @apply rounded-xl bg-white/95;
-    border: 1px solid rgb(var(--color-border) / 0.75);
+    @apply rounded-lg border border-border bg-white;
     box-shadow: var(--shadow-control);
   }
 
   .ui-crawl-metrics {
-    @apply grid grid-cols-2 overflow-hidden rounded-2xl bg-surface/85;
-    border: 1px solid rgb(var(--color-border) / 0.6);
+    @apply grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-white;
     box-shadow: var(--shadow-control);
   }
 
@@ -374,21 +331,20 @@
   }
 
   .ui-log-panel {
-    @apply flex min-h-[18rem] flex-1 flex-col overflow-hidden rounded-2xl bg-slate-950 p-0 text-slate-100;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    @apply flex min-h-[18rem] flex-1 flex-col overflow-hidden rounded-lg border border-border bg-white p-0 text-content-primary;
     box-shadow: var(--shadow-panel);
   }
 
   .ui-log-panel-header {
-    @apply flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3;
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3;
   }
 
   .ui-log-surface {
-    @apply min-h-0 flex-1 overflow-auto bg-slate-950 px-2 py-2 ring-1 ring-inset ring-white/5;
+    @apply min-h-0 flex-1 overflow-auto bg-surface-alt/30 px-2 py-2;
   }
 
   .ui-log-row {
-    @apply grid grid-cols-[60px_10px_minmax(0,1fr)] items-start gap-2 rounded-lg px-2.5 py-2 transition-colors duration-150 hover:bg-white/5;
+    @apply grid grid-cols-[60px_10px_minmax(0,1fr)] items-start gap-2 rounded-md px-2.5 py-2 transition-colors duration-150 hover:bg-white;
   }
 
   .ui-log-time {
@@ -396,7 +352,7 @@
   }
 
   .ui-log-message {
-    @apply min-w-0 whitespace-pre-wrap break-words text-[12px] leading-5 text-slate-300 [overflow-wrap:anywhere];
+    @apply min-w-0 whitespace-pre-wrap break-words text-[12px] leading-5 text-content-secondary [overflow-wrap:anywhere];
   }
 
   @media (min-width: 1024px) {

@@ -178,7 +178,6 @@ onMounted(async () => {
   <section class="ui-page">
     <header class="ui-page-header">
       <div class="ui-page-heading">
-        <div class="ui-page-eyebrow">Resume Atelier</div>
         <h1 class="ui-page-title">简历库</h1>
         <p class="ui-page-description">集中维护 Markdown 简历、默认版本与岗位关联，保持编辑和预览上下文连续。</p>
       </div>

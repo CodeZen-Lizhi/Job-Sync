@@ -48,47 +48,21 @@ const buttonAttrs = computed(() => {
   return rest;
 });
 const isFilter = computed(() => props.variant === "filter");
-const triggerClass = computed(() =>
-  isFilter.value
-    ? "group relative flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-border/80 bg-white/95 px-3.5 py-2 text-sm text-content-primary shadow-sm shadow-slate-200/50 transition-colors duration-150 hover:border-border-strong hover:bg-white focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-    : "group relative flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-border/80 bg-white/95 px-3.5 py-2 text-sm text-content-primary shadow-sm shadow-slate-200/50 transition-colors duration-150 hover:border-border-strong hover:bg-white focus:outline-none disabled:cursor-not-allowed disabled:opacity-60",
-);
-const triggerOpenClass = computed(() =>
-  isFilter.value
-    ? "border-border-glow bg-white ring-4 ring-border-glow/10"
-    : "border-border-glow bg-white ring-4 ring-border-glow/10",
-);
-const triggerOverlayClass = computed(() =>
-  isFilter.value
-    ? "pointer-events-none absolute inset-0 rounded-lg border border-transparent transition-colors group-hover:border-border/20"
-    : "pointer-events-none absolute inset-0 rounded-lg border border-transparent transition-colors group-hover:border-border/20",
-);
-const triggerFocusRingClass = computed(() =>
-  isFilter.value
-    ? "pointer-events-none absolute -inset-0.5 hidden rounded-xl border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100"
-    : "pointer-events-none absolute -inset-0.5 hidden rounded-xl border-2 border-border-glow/30 opacity-0 transition-opacity group-focus-visible:block group-focus-visible:opacity-100",
-);
+const triggerClass = "group relative flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm text-content-primary shadow-sm transition-colors duration-150 hover:border-border-strong focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+const triggerOpenClass = "border-border-strong ring-2 ring-border-glow/30";
+const triggerOverlayClass = "pointer-events-none absolute inset-0 rounded-md";
+const triggerFocusRingClass = "pointer-events-none absolute -inset-0.5 hidden rounded-md ring-2 ring-border-glow/30 group-focus-visible:block";
 const countBadgeClass = computed(() =>
   isFilter.value
     ? "shrink-0 rounded-lg bg-surface-alt px-1.5 py-0.5 text-[11px] font-semibold text-content-muted ring-1 ring-inset ring-border/70"
     : "ui-badge shrink-0",
 );
-const menuClass = computed(() =>
-  isFilter.value
-    ? "fixed z-[120] overflow-hidden rounded-lg border border-border/75 bg-white shadow-xl shadow-slate-200/70"
-    : "fixed z-[120] overflow-hidden rounded-lg border border-border/75 bg-white shadow-xl shadow-slate-200/70",
-);
-const optionClass = computed(() =>
-  isFilter.value
-    ? "flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150"
-    : "flex min-h-10 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors duration-150",
-);
+const menuClass = "fixed z-[120] overflow-hidden rounded-md border border-border bg-white shadow-lg";
+const optionClass = "flex min-h-9 w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm transition-colors duration-150";
 const optionStateClass = computed(() => ({
   disabled: isFilter.value ? "cursor-not-allowed opacity-40" : "cursor-not-allowed opacity-50",
-  hover: isFilter.value ? "hover:bg-surface-alt" : "hover:bg-surface-alt",
-  selected: isFilter.value
-    ? "bg-border-glow/10 text-content-primary ring-1 ring-inset ring-border-glow/20"
-    : "bg-border-glow/10 text-content-primary ring-1 ring-inset ring-border-glow/20",
+  hover: "hover:bg-surface-alt",
+  selected: "bg-surface-alt text-content-primary",
   inactive: "text-content-secondary",
 }));
 const optionItems = computed(() => items.value.filter((it): it is SelectOptionItem => it.kind === "option"));

@@ -40,6 +40,26 @@ Questions to answer:
 
 <!-- How styles are applied (CSS modules, styled-components, Tailwind, etc.) -->
 
+### Convention: Use the Shadcn-Neutral Workbench Baseline
+
+**What**: Application shell, page headers, cards, forms, menus, dialogs, and empty states follow a shadcn-style neutral workbench: white or zinc-like surfaces, near-black primary actions, subtle muted backgrounds, 8–10px radii, one-pixel borders, and minimal shadows.
+
+**Why**: This desktop app is a repeated-use operational tool. Decorative gradients, glow effects, oversized title cards, dark feature panels, and heavy shadows make dense pages feel like concept mockups and create a second visual language that is difficult to maintain.
+
+**Example**:
+```css
+.ui-panel {
+  @apply rounded-lg border border-border bg-white;
+  box-shadow: 0 1px 2px rgb(24 24 27 / 0.04);
+}
+
+.ui-btn-primary {
+  @apply rounded-md border border-slate-950 bg-slate-950 text-white hover:bg-slate-800;
+}
+```
+
+**Related**: Do not add mesh/grid backgrounds, gradient sidebars, colored glow blobs, decorative English eyebrow labels, hover lift transforms, or page-level hero cards. Status colors remain valid for success, warning, danger, and source-specific evidence, but they are not brand surfaces.
+
 ### Convention: Responsive App Shell Navigation
 
 **What**: The app shell uses a compact top navigation on small viewports and switches to a fixed left sidebar only at the `lg` breakpoint.

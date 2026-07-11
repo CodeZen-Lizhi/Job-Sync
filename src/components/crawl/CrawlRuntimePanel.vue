@@ -76,8 +76,8 @@ function logIndicatorClass(level: string): string {
     <div class="ui-log-panel">
       <div class="ui-log-panel-header">
         <div class="min-w-0">
-          <div class="text-sm font-semibold text-white">运行日志</div>
-          <div class="mt-0.5 text-xs text-slate-400">最近 {{ visibleLogs.length }} / {{ logs.length }} 条</div>
+          <div class="text-sm font-semibold text-content-primary">运行日志</div>
+          <div class="mt-0.5 text-xs text-content-muted">最近 {{ visibleLogs.length }} / {{ logs.length }} 条</div>
         </div>
         <button
           type="button"
@@ -92,8 +92,8 @@ function logIndicatorClass(level: string): string {
       </div>
       <div class="ui-log-surface" role="log" aria-label="运行日志内容">
         <div v-if="visibleLogs.length === 0" class="flex h-full min-h-40 flex-col items-center justify-center px-4 py-8 text-center">
-          <ScrollText class="h-5 w-5 text-slate-500" aria-hidden="true" />
-          <div class="mt-2 text-xs font-medium text-slate-400">暂无运行日志</div>
+          <ScrollText class="h-5 w-5 text-content-muted" aria-hidden="true" />
+          <div class="mt-2 text-xs font-medium text-content-muted">暂无运行日志</div>
         </div>
         <div v-for="(line, index) in visibleLogs" v-else :key="`${line.ts}-${index}`" class="ui-log-row">
           <span class="ui-log-time" :title="line.ts">{{ formatLogTime(line.ts) }}</span>

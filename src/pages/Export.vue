@@ -40,7 +40,6 @@ async function exportJson(): Promise<void> {
   <section class="ui-page">
     <header class="ui-page-header">
       <div class="ui-page-heading">
-        <div class="ui-page-eyebrow">Data Export</div>
         <h1 class="ui-page-title">导出</h1>
         <p class="ui-page-description">将本地职位库整理为 CSV 或 JSON 文件。</p>
       </div>

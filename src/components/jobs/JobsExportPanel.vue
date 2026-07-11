@@ -90,7 +90,7 @@ onUnmounted(() => {
 
     <div
       v-if="open"
-      class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-72 overflow-hidden rounded-lg border border-border/90 bg-white p-1 shadow-lg shadow-slate-200/70"
+      class="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-72 overflow-hidden rounded-md border border-border bg-white p-1 shadow-lg"
       role="menu"
     >
       <button
