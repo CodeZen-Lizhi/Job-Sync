@@ -9,6 +9,7 @@ import { useCrawlPage } from "../lib/useCrawlPage";
 
 const CronLight = defineAsyncComponent(async () => (await import("@vue-js-cron/light")).CronLight);
 const cronEditorReady = ref(false);
+const scheduleDetailsOpen = ref(false);
 let cancelCronEditorReady: (() => void) | null = null;
 
 function activateCronEditor(): void {
@@ -175,13 +176,14 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
 </script>
 
 <template>
-  <section class="ui-page">
-    <header class="ui-page-header">
-      <div class="ui-page-heading">
-        <h1 class="ui-page-title">采集配置</h1>
-        <p class="ui-page-description">按平台维护采集范围与默认采后规则，让运行页只保留执行反馈。</p>
+  <section class="product-page">
+    <header class="product-page-header">
+      <div class="min-w-0">
+        <div class="text-xs font-medium text-content-muted">采集策略</div>
+        <h1 class="product-page-title">采集配置</h1>
+        <p class="product-page-description">选择职位来源，维护平台范围、定时计划与采后判断。</p>
       </div>
-      <div class="ui-page-actions">
+      <div class="flex shrink-0 items-center gap-2">
           <span v-if="collectionConfigMessage" class="text-xs font-medium text-emerald-700">{{ collectionConfigMessage }}</span>
           <button
             class="ui-btn-primary px-3 py-1.5 text-xs"
@@ -194,7 +196,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
       </div>
     </header>
 
-    <div v-if="!tauri" class="ui-status-warning p-4 text-sm">
+    <div v-if="!tauri" class="ui-status-warning px-3 py-2 text-xs">
       浏览器模式下只可预览，保存和同步不可用。
     </div>
 
@@ -240,24 +242,56 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
 
       <section class="ui-panel overflow-hidden">
         <div class="ui-section-header">
-          <div>
+          <div class="min-w-0">
             <h2 class="ui-section-title">定时采集</h2>
+            <p class="mt-1 truncate text-xs text-content-muted">
+              {{ crawlScheduleEnabled ? `${crawlScheduleExpression} · ${crawlScheduleDescription}` : "按需开启，应用运行期间按 Cron 自动采集。" }}
+            </p>
           </div>
-          <span
-            class="ui-badge"
-            :class="crawlScheduleEnabled ? 'bg-emerald-400/10 text-emerald-700 ring-emerald-400/20' : ''"
-          >
-            {{ crawlScheduleEnabled ? "已开启" : "未开启" }}
-          </span>
+          <div class="flex shrink-0 items-center gap-2">
+            <span
+              class="ui-badge"
+              :class="crawlScheduleEnabled ? 'bg-emerald-400/10 text-emerald-700 ring-emerald-400/20' : ''"
+            >
+              {{ crawlScheduleEnabled ? "已开启" : "未开启" }}
+            </span>
+            <button
+              class="ui-btn-secondary min-h-8 px-2.5 py-1 text-xs"
+              type="button"
+              :aria-expanded="scheduleDetailsOpen"
+              @click="scheduleDetailsOpen = !scheduleDetailsOpen"
+            >
+              {{ scheduleDetailsOpen ? "收起" : "编辑" }}
+            </button>
+          </div>
         </div>
 
-        <div class="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]">
-          <div class="space-y-3">
-            <label class="flex min-h-11 items-center gap-3 rounded-lg border border-border/90 bg-white px-3 py-2">
-              <input v-model="crawlScheduleEnabled" type="checkbox" class="h-5 w-5 accent-slate-900" />
-              <span class="text-sm font-medium text-content-primary">启用 cron 定时采集</span>
-            </label>
+        <div class="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <label class="flex min-w-0 items-center gap-3">
+            <input v-model="crawlScheduleEnabled" type="checkbox" class="h-5 w-5 shrink-0 accent-slate-900" />
+            <span class="min-w-0">
+              <span class="block text-sm font-medium text-content-primary">启用 cron 定时采集</span>
+              <span class="block truncate text-xs text-content-muted">下次触发：{{ crawlScheduleNextRunLabel }}</span>
+            </span>
+          </label>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-content-muted">上次结果</span>
+            <span
+              class="font-medium"
+              :class="{
+                'text-emerald-700': crawlScheduleStatusTone === 'success',
+                'text-red-700': crawlScheduleStatusTone === 'danger',
+                'text-amber-700': crawlScheduleStatusTone === 'warning',
+                'text-content-muted': crawlScheduleStatusTone === 'muted',
+              }"
+            >
+              {{ crawlScheduleLastStatusLabel }}
+            </span>
+          </div>
+        </div>
 
+        <div v-if="scheduleDetailsOpen" class="grid gap-3 border-t border-border p-4 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)]">
+          <div class="space-y-3">
             <div class="rounded-lg border border-border/90 bg-white p-3">
               <div class="mb-2 flex items-center justify-between gap-2">
                 <label for="crawl-schedule-expression" class="text-xs font-medium text-content-muted">Cron 表达式</label>

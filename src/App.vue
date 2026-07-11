@@ -43,7 +43,11 @@ const mobileNavItemExactActiveClass = "app-mobile-nav-link-active";
 
 const route = useRoute();
 const appVersion = ref(__APP_VERSION__);
-const contentMaxWidthClass = computed(() => (route.path === "/crawl" ? "max-w-6xl" : "max-w-7xl"));
+const contentMaxWidthClass = computed(() => {
+  if (route.path === "/jobs") return "max-w-[100rem]";
+  if (route.path === "/crawl") return "max-w-6xl";
+  return "max-w-7xl";
+});
 
 onMounted(() => {
   getVersion()
@@ -62,9 +66,9 @@ void useCrawlPage({ initialize: "schedule" });
   <div class="flex h-screen flex-col bg-surface-secondary">
     <div class="relative flex-1 overflow-hidden">
       <!-- Content -->
-      <div class="relative z-10 flex h-full w-full max-w-full flex-col gap-0 lg:flex-row">
+      <div class="relative z-10 flex h-full w-full max-w-full flex-col gap-0 md:flex-row">
         <!-- Sidebar -->
-        <aside class="app-sidebar hidden w-full max-w-full shrink-0 flex-col border-border lg:flex lg:w-64 lg:border-r">
+        <aside class="app-sidebar hidden w-full max-w-full shrink-0 flex-col border-border md:flex md:w-56 md:border-r">
           <header class="flex h-16 items-center border-b border-border px-4">
             <div class="flex items-center gap-3">
               <div class="app-brand-mark" aria-hidden="true">
@@ -104,7 +108,7 @@ void useCrawlPage({ initialize: "schedule" });
 
         </aside>
 
-        <header class="app-sidebar border-b border-border px-3 py-3 lg:hidden">
+        <header class="app-sidebar border-b border-border px-3 py-3 md:hidden">
           <div class="flex items-center gap-3">
             <div class="app-brand-mark" aria-hidden="true">
               <Bot class="h-4 w-4" />
@@ -135,7 +139,7 @@ void useCrawlPage({ initialize: "schedule" });
         </header>
 
         <!-- Main content -->
-        <main class="w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto bg-white px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6">
+        <main class="w-full min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto bg-surface-secondary px-3 py-4 sm:px-5 sm:py-5 lg:px-7 lg:py-6">
           <div :class="['mx-auto w-full', contentMaxWidthClass]">
             <RouterView v-slot="{ Component }">
               <component :is="Component" />

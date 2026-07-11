@@ -175,13 +175,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="ui-page">
-    <header class="ui-page-header">
-      <div class="ui-page-heading">
-        <h1 class="ui-page-title">简历库</h1>
-        <p class="ui-page-description">集中维护 Markdown 简历、默认版本与岗位关联，保持编辑和预览上下文连续。</p>
+  <section class="product-page">
+    <header class="product-page-header">
+      <div class="min-w-0">
+        <div class="text-xs font-medium text-content-muted">申请材料</div>
+        <h1 class="product-page-title">简历库</h1>
+        <p class="product-page-description">管理基础简历、岗位版本和关联关系，保持编辑上下文连续。</p>
       </div>
-      <div class="ui-page-actions">
+      <div class="flex shrink-0 items-center gap-2">
         <button class="ui-btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri" @click="startCreate">
           <Plus class="h-3.5 w-3.5" aria-hidden="true" />
           新建简历
@@ -189,8 +190,8 @@ onMounted(async () => {
       </div>
     </header>
 
-    <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。简历库命令不可用。</div>
-    <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
+    <div v-if="!tauri" class="ui-status-warning px-3 py-2 text-xs">浏览器预览模式：简历库命令不可用。</div>
+    <div v-if="error" class="ui-status-danger px-3 py-2 text-xs">{{ error }}</div>
     <div v-if="pendingJobId" class="ui-status-warning flex flex-wrap items-center justify-between gap-3 p-3 text-xs">
       <span>
         待关联岗位：{{ pendingJobSummary ? jobLabel(pendingJobSummary) : pendingJobId }}
@@ -246,8 +247,8 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-else class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-      <aside class="ui-panel overflow-hidden">
+    <div v-else class="grid min-h-[36rem] gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <aside class="overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_2px_rgba(24,24,27,0.035)]">
         <div class="ui-section-header">
           <div>
             <h2 class="ui-section-title">简历列表</h2>
@@ -278,7 +279,7 @@ onMounted(async () => {
         </div>
       </aside>
 
-      <main class="ui-panel overflow-hidden">
+      <main class="overflow-hidden rounded-xl border border-border bg-white shadow-[0_1px_2px_rgba(24,24,27,0.035)]">
         <div class="ui-section-header">
           <div>
             <h2 class="ui-section-title">{{ isCreating ? "新建简历" : selectedResume?.title ?? "简历详情" }}</h2>

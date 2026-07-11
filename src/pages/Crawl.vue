@@ -47,13 +47,14 @@ const {
 </script>
 
 <template>
-  <section class="ui-page flex min-h-[calc(100vh-6rem)] flex-col !space-y-0 gap-4">
-    <header class="ui-page-header shrink-0">
-      <div class="ui-page-heading">
-        <h1 class="ui-page-title">岗位采集</h1>
-        <p class="ui-page-description">只写入职位库，后续判断另算；来源控制、批次结果和运行日志集中在同一工作台。</p>
+  <section class="product-page flex min-h-[calc(100vh-6rem)] flex-col gap-4">
+    <header class="product-page-header shrink-0">
+      <div class="min-w-0">
+        <div class="text-xs font-medium text-content-muted">运行中心</div>
+        <h1 class="product-page-title">岗位采集</h1>
+        <p class="product-page-description">只写入职位库，控制本轮来源与执行节奏，实时查看批次结果和运行日志。</p>
       </div>
-      <div class="ui-page-actions">
+      <div class="flex shrink-0 items-center gap-2">
         <RouterLink class="ui-btn-secondary px-3 py-1.5 text-xs" to="/crawl-config">
           <Settings2 class="h-4 w-4" aria-hidden="true" />
           采集配置

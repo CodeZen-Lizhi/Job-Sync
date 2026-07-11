@@ -133,6 +133,34 @@ export function useCrawlPage(): CrawlPageState {
 
 **Related**: Apply this when simplifying crawl setup, filter profile setup, or any page that mainly edits persisted configuration.
 
+### Convention: Use Category Views for Dense Settings
+
+**What**: When a settings page owns several independent concerns, render one category at a time through local typed UI state. Keep one save action for the shared settings payload and place advanced, rarely edited fields in collapsed native disclosure regions.
+
+**Why**: Rendering every settings group in one vertical document turns configuration into a long help page, repeats actions, and hides the common fields below secondary options. Category views reduce the initial DOM and scanning cost without splitting one persisted settings contract across routes.
+
+**Example**:
+```vue
+<button
+  v-for="section in SETTINGS_SECTIONS"
+  :key="section.id"
+  :aria-current="activeSection === section.id ? 'page' : undefined"
+  @click="activeSection = section.id"
+>
+  {{ section.label }}
+</button>
+
+<section v-if="activeSection === 'model'">
+  <!-- common model fields -->
+  <details>
+    <summary>高级提示</summary>
+    <!-- optional prompt fields -->
+  </details>
+</section>
+```
+
+**Related**: Keep the category state page-local and typed; do not change the router hash for in-page categories. Switching categories must preserve unsaved refs, mobile category navigation may scroll internally without creating page-level overflow, and the page should expose only one primary save action.
+
 ### Convention: Keep Runtime Workspaces Viewport-Efficient
 
 **What**: Execution pages should place source context, the single authoritative run status, runtime parameters, and primary actions in one compact control surface. Group peer metrics into one segmented summary and let the runtime log consume the remaining viewport height with internal scrolling.

@@ -67,13 +67,6 @@ type MoreActionValue = "notes" | "company_not_fit" | "company_restore";
 const aiAuditStatus = computed(() =>
   props.aiAuditStatusOverride || props.job.ai_audit_status || (props.job.filter_eligible === false ? "rejected" : "not_judged"),
 );
-const aiAuditBadgeClass = computed(() => {
-  if (aiAuditStatus.value === "passed") return "!bg-white !text-emerald-700 !ring-emerald-200";
-  if (aiAuditStatus.value === "rejected" || aiAuditStatus.value === "failed") return "!bg-white !text-rose-700 !ring-rose-200";
-  if (aiAuditStatus.value === "pending_confirmation") return "!bg-white !text-amber-700 !ring-amber-200";
-  if (aiAuditStatus.value === "processing") return "!bg-white !text-blue-700 !ring-blue-200";
-  return "!bg-white !text-slate-600 !ring-slate-200";
-});
 const aiAuditReasonText = computed(() => {
   const summary = props.job.ai_audit_summary?.trim();
   if (aiAuditStatus.value === "processing") return summary || "AI 正在审核";
@@ -92,11 +85,6 @@ const canGenerateGreeting = computed(
   () => props.job.review_status === "ready_to_apply" || props.job.review_status === "applied",
 );
 const hasGreetingDraft = computed(() => props.greetingDraft.trim().length > 0);
-const resumeBadgeText = computed(() => {
-  if (props.resumeStatus?.resume_title) return `简历：${props.resumeStatus.resume_title}`;
-  if (props.resumeStatus?.default_resume_title) return `默认：${props.resumeStatus.default_resume_title}`;
-  return "关联简历";
-});
 const resumeBadgeClass = computed(() =>
   props.resumeStatus?.resume_id
     ? "!bg-white !text-emerald-700 !ring-emerald-200"
@@ -146,12 +134,18 @@ watch(
 <template>
   <div>
     <div
-      class="group flex min-h-16 cursor-pointer items-center gap-3 py-3 transition-colors duration-150"
-      :class="[rowPaddingClass, expanded ? 'bg-surface-alt ring-1 ring-inset ring-border/70' : 'hover:bg-surface-alt/80']"
+      class="group grid cursor-pointer gap-3 py-4 transition-colors duration-150 lg:grid-cols-[minmax(0,1.45fr)_minmax(14rem,0.75fr)_auto] lg:items-center"
+      :class="[rowPaddingClass, expanded ? 'bg-surface-alt/70' : 'hover:bg-surface-alt/45']"
+      role="button"
+      tabindex="0"
+      :aria-expanded="expanded"
       @click="$emit('toggle-detail', job.encrypt_job_id)"
+      @keydown.enter="$emit('toggle-detail', job.encrypt_job_id)"
+      @keydown.space.prevent="$emit('toggle-detail', job.encrypt_job_id)"
     >
+      <div class="flex min-w-0 items-start gap-3">
       <svg
-        class="h-4 w-4 shrink-0 rounded-md text-content-muted transition-transform duration-200 group-hover:text-content-secondary"
+        class="mt-1 h-4 w-4 shrink-0 text-content-muted transition-transform duration-200 group-hover:text-content-secondary"
         :class="expanded ? 'rotate-90' : ''"
         viewBox="0 0 20 20"
         fill="currentColor"
@@ -163,32 +157,47 @@ watch(
         />
       </svg>
 
-      <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="max-w-[220px] truncate text-sm font-semibold text-content-primary">{{ job.position_name ?? '-' }}</span>
-        <span class="max-w-[160px] truncate text-sm text-content-secondary">{{ job.brand_name ?? '-' }}</span>
-        <span class="ui-badge !bg-white !text-blue-700 !ring-blue-200">{{ sourcePlatformLabel(job.source_platform) }}</span>
-        <span class="ui-badge !bg-white !text-cyan-700 !ring-cyan-200">岗位状态：{{ reviewStatusLabel(job.review_status) }}</span>
-        <span
-          class="ui-badge"
-          :class="aiAuditBadgeClass"
-          :title="aiPostCollectionJudgementText"
-        >
-          AI 结果：{{ aiAuditStatusLabel(aiAuditStatus) }}
-        </span>
-        <button
-          type="button"
-          class="ui-badge inline-flex items-center gap-1 transition-colors hover:bg-slate-50"
-          :class="resumeBadgeClass"
-          @click.stop="$emit('open-resume', job)"
-        >
-          <FileText class="h-3 w-3" aria-hidden="true" />
-          {{ resumeBadgeText }}
-        </button>
+        <div class="min-w-0 flex-1">
+          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h3 class="max-w-full truncate text-sm font-semibold tracking-tight text-content-primary sm:text-[15px]">{{ job.position_name ?? '-' }}</h3>
+            <span class="max-w-[15rem] truncate text-sm text-content-secondary">{{ job.brand_name ?? '-' }}</span>
+          </div>
+          <div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-content-muted">
+            <span>{{ job.city_name ?? "地点未知" }}</span>
+            <span class="text-border-strong">·</span>
+            <span class="font-medium text-content-secondary">{{ job.salary_desc ?? "薪资未标注" }}</span>
+            <template v-if="job.experience_name">
+              <span class="text-border-strong">·</span>
+              <span>{{ job.experience_name }}</span>
+            </template>
+            <span class="text-border-strong">·</span>
+            <span>{{ sourcePlatformLabel(job.source_platform) }}</span>
+            <span class="text-border-strong">·</span>
+            <span>{{ formatDate(job.last_seen_at) }}</span>
+          </div>
+          <p class="mt-2 line-clamp-1 text-xs text-content-muted" :title="aiPostCollectionJudgementText">{{ aiAuditReasonText }}</p>
+        </div>
       </div>
 
-      <div class="flex shrink-0 items-center gap-1.5" @click.stop>
-        <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('copy-link', job)">复制</button>
-        <button class="ui-btn-secondary px-2.5 py-1 text-xs" @click="$emit('open-source-url', job)">岗位详情</button>
+      <div class="grid grid-cols-[4rem_minmax(0,1fr)] items-center gap-x-3 gap-y-1 lg:border-l lg:border-border lg:pl-4">
+        <div class="row-span-2 text-center">
+          <div class="text-lg font-semibold tabular-nums text-content-primary">{{ Math.round(job.final_score ?? 0) }}</div>
+          <div class="text-[10px] text-content-muted">综合匹配</div>
+        </div>
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="aiAuditStatus === 'passed' ? 'bg-emerald-500' : aiAuditStatus === 'rejected' || aiAuditStatus === 'failed' ? 'bg-rose-500' : aiAuditStatus === 'pending_confirmation' ? 'bg-amber-500' : 'bg-slate-300'" />
+          <span class="truncate text-xs font-medium text-content-secondary">{{ aiAuditStatusLabel(aiAuditStatus) }}</span>
+        </div>
+        <div class="truncate text-xs text-content-muted">{{ reviewStatusLabel(job.review_status) }} · {{ communicationStatusLabel(job.communication_status) }}</div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1.5 lg:justify-end" @click.stop>
+        <button type="button" class="ui-btn-secondary h-8 min-h-8 px-2.5 py-1 text-xs" :class="resumeBadgeClass" @click="$emit('open-resume', job)">
+          <FileText class="h-3.5 w-3.5" aria-hidden="true" />
+          简历
+        </button>
+        <button class="ui-btn-secondary h-8 min-h-8 px-2.5 py-1 text-xs" @click="$emit('copy-link', job)">复制</button>
+        <button class="ui-btn-primary h-8 min-h-8 px-2.5 py-1 text-xs" @click="$emit('open-source-url', job)">岗位详情</button>
       </div>
     </div>
 

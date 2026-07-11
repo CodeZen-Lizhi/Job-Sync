@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ChevronLeft, ChevronRight, Database, Filter, RefreshCw, Search, X } from "lucide-vue-next";
+import { BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, SlidersHorizontal, X } from "lucide-vue-next";
 
 import JobsExportPanel from "../components/jobs/JobsExportPanel.vue";
 import JobsConfirmDialog from "../components/jobs/JobsConfirmDialog.vue";
@@ -74,6 +74,7 @@ const {
 type JobLibraryBucket = "recommended" | "confirm" | "filtered" | "processed" | "all";
 
 const activeJobLibraryBucket = ref<JobLibraryBucket>("all");
+const advancedFiltersOpen = ref(false);
 const router = useRouter();
 const route = useRoute();
 
@@ -123,6 +124,14 @@ const displayedJobs = computed(() => jobCandidates.value);
 const displayedJobsLoading = computed(() => jobCandidatesLoading.value);
 
 const displayedJobsTotal = computed(() => jobCandidatesTotal.value);
+
+const activeAdvancedFilterCount = computed(
+  () =>
+    selectedJobStatusFilters.value.length +
+    selectedAiAuditFilters.value.length +
+    selectedSourcePlatformFilters.value.length +
+    selectedCollectionMethodFilters.value.length,
+);
 
 const showPagination = computed(() => true);
 
@@ -227,6 +236,7 @@ function clearCurrentViewFilters(): void {
   jobCandidateSearch.value = "";
   jobCandidateTimeRange.value = "last7";
   selectedJobStatusFilters.value = [];
+  selectedAiAuditFilters.value = [];
   selectedSourcePlatformFilters.value = [];
   selectedCollectionMethodFilters.value = [];
   jobCandidateProcessedFilter.value = defaultProcessedFilterForBucket(activeJobLibraryBucket.value);
@@ -276,153 +286,136 @@ watch(
 </script>
 
 <template>
-  <section class="ui-page">
-    <header class="ui-page-header">
-      <div class="ui-page-heading">
-        <h1 class="ui-page-title">职位库工作台</h1>
-        <p class="ui-page-description">自动采集先保留岗位事实，再用筛选、AI 判断与人工状态逐步收敛下一步行动。</p>
+  <section class="jobs-workspace">
+    <header class="jobs-workspace-header">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 text-xs font-medium text-content-muted">
+          <BriefcaseBusiness class="h-3.5 w-3.5" aria-hidden="true" />
+          求职研究 · 职位库工作台
+        </div>
+        <div class="mt-1 flex flex-wrap items-end gap-x-3 gap-y-1">
+          <h1 class="text-2xl font-semibold tracking-[-0.035em] text-content-primary">职位库</h1>
+          <span class="pb-0.5 text-sm tabular-nums text-content-muted">{{ displayedJobsTotal }} 个岗位</span>
+        </div>
+        <p class="mt-1 max-w-2xl text-sm leading-5 text-content-muted">自动采集先保留岗位事实，再集中查看 AI 判断、沟通状态和简历准备情况。</p>
       </div>
-      <div class="ui-page-actions">
-          <JobsExportPanel />
-          <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || displayedJobsLoading" @click="refreshCandidates">
-            <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
-            {{ displayedJobsLoading ? "刷新中…" : "刷新" }}
-          </button>
+      <div class="flex shrink-0 items-center gap-2">
+        <JobsExportPanel />
+        <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || displayedJobsLoading" @click="refreshCandidates">
+          <RefreshCw class="h-3.5 w-3.5" :class="displayedJobsLoading ? 'animate-spin' : ''" aria-hidden="true" />
+          {{ displayedJobsLoading ? "刷新中" : "刷新" }}
+        </button>
       </div>
     </header>
 
-    <div v-if="!tauri" class="ui-status-warning p-4 text-sm">当前是浏览器模式（非 Tauri）。查询命令不可用。</div>
-    <div v-if="error" class="ui-status-danger p-4 text-sm">{{ error }}</div>
+    <div v-if="!tauri" class="ui-status-warning px-3 py-2 text-xs">浏览器预览模式：查询与写入命令不可用。</div>
+    <div v-if="error" class="ui-status-danger px-3 py-2 text-xs">{{ error }}</div>
 
-    <section class="ui-panel overflow-hidden">
-      <div class="ui-section-header">
-        <div class="flex items-center gap-2">
-          <Filter class="h-4 w-4 text-content-muted" aria-hidden="true" />
-          <div>
-            <h2 class="ui-section-title">视图筛选</h2>
-            <p class="ui-section-copy">在当前分区内继续按时间、来源、状态和采集方式收窄。</p>
-          </div>
+    <section class="jobs-command-surface">
+      <nav class="jobs-view-tabs" aria-label="职位视图">
+        <button
+          v-for="bucket in bucketOptions"
+          :key="bucket.value"
+          type="button"
+          class="jobs-view-tab"
+          :class="activeJobLibraryBucket === bucket.value ? 'jobs-view-tab-active' : ''"
+          :aria-current="activeJobLibraryBucket === bucket.value ? 'page' : undefined"
+          @click="applyBucket(bucket.value)"
+        >
+          {{ bucket.label }}
+        </button>
+      </nav>
+
+      <div class="jobs-search-row">
+        <label class="relative min-w-0 flex-1">
+          <span class="sr-only">搜索职位、公司或职位描述</span>
+          <Search class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" aria-hidden="true" />
+          <input
+            v-model="jobCandidateSearch"
+            class="ui-input h-11 w-full pl-10 pr-4 text-sm"
+            placeholder="搜索职位、公司或 JD，按 Enter 查询"
+            @keydown.enter="reloadCandidatesFromFirstPage"
+          />
+        </label>
+        <div class="grid grid-cols-2 gap-2 sm:flex">
+          <UiSelect v-model="jobCandidateTimeRangeModel" class="sm:w-36" aria-label="时间范围">
+            <option v-for="option in JOB_TIME_RANGE_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </UiSelect>
+          <UiSelect v-model="jobCandidateProcessedFilterModel" class="sm:w-36" aria-label="处理状态">
+            <option v-for="option in PROCESSED_FILTER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </UiSelect>
         </div>
-        <button v-if="hasActiveFilters" class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" @click="clearCurrentViewFilters">
-          <X class="h-3.5 w-3.5" aria-hidden="true" />
-          清除筛选
+        <button
+          type="button"
+          class="ui-btn-secondary inline-flex h-10 shrink-0 items-center gap-2 px-3 text-xs"
+          :aria-expanded="advancedFiltersOpen"
+          @click="advancedFiltersOpen = !advancedFiltersOpen"
+        >
+          <SlidersHorizontal class="h-3.5 w-3.5" aria-hidden="true" />
+          视图筛选
+          <span v-if="activeAdvancedFilterCount" class="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] font-semibold text-white">{{ activeAdvancedFilterCount }}</span>
+          <ChevronDown class="h-3.5 w-3.5 transition-transform" :class="advancedFiltersOpen ? 'rotate-180' : ''" aria-hidden="true" />
         </button>
       </div>
 
-      <div class="grid gap-4 p-4 xl:grid-cols-[1.2fr_1fr]">
-        <div class="grid gap-3 sm:grid-cols-4">
-          <label class="space-y-1 text-xs text-content-muted sm:col-span-2">
-            <span>搜索职位/公司/JD</span>
-            <div class="relative">
-              <Search class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-muted" aria-hidden="true" />
-              <input v-model="jobCandidateSearch" class="ui-input w-full pl-9" placeholder="输入关键词后刷新" @keydown.enter="reloadCandidatesFromFirstPage" />
-            </div>
-          </label>
-          <label class="space-y-1 text-xs text-content-muted">
-            <span>时间范围</span>
-            <UiSelect v-model="jobCandidateTimeRangeModel">
-              <option v-for="option in JOB_TIME_RANGE_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiSelect>
-          </label>
-          <label class="space-y-1 text-xs text-content-muted">
-            <span>处理状态</span>
-            <UiSelect v-model="jobCandidateProcessedFilterModel">
-              <option v-for="option in PROCESSED_FILTER_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiSelect>
-          </label>
-        </div>
-
-        <div v-if="jobCandidateTimeRange === 'custom'" class="grid gap-3 sm:grid-cols-2">
-          <label class="space-y-1 text-xs text-content-muted">
-            <span>开始日期</span>
-            <input v-model="jobCandidateCustomStartDate" type="date" class="ui-input w-full" @change="reloadCandidatesFromFirstPage" />
-          </label>
-          <label class="space-y-1 text-xs text-content-muted">
-            <span>结束日期</span>
-            <input v-model="jobCandidateCustomEndDate" type="date" class="ui-input w-full" @change="reloadCandidatesFromFirstPage" />
-          </label>
-        </div>
+      <div v-if="jobCandidateTimeRange === 'custom'" class="grid gap-3 border-t border-border px-4 py-3 sm:grid-cols-2">
+        <label class="space-y-1 text-xs text-content-muted">
+          <span>开始日期</span>
+          <input v-model="jobCandidateCustomStartDate" type="date" class="ui-input w-full" @change="reloadCandidatesFromFirstPage" />
+        </label>
+        <label class="space-y-1 text-xs text-content-muted">
+          <span>结束日期</span>
+          <input v-model="jobCandidateCustomEndDate" type="date" class="ui-input w-full" @change="reloadCandidatesFromFirstPage" />
+        </label>
       </div>
 
-      <div class="border-t border-border/90 bg-surface-secondary p-4">
-        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <label class="space-y-1.5 text-xs text-content-muted">
-            <span class="font-semibold text-content-secondary">岗位状态</span>
-            <UiMultiSelect
-              v-model="selectedJobStatusFilterModel"
-              variant="filter"
-              empty-label="全部岗位状态"
-              empty-badge-label="全部"
-            >
-              <option v-for="option in JOB_STATUS_FILTER_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiMultiSelect>
-          </label>
+      <div v-if="advancedFiltersOpen" class="jobs-advanced-filters">
+        <label class="space-y-1.5 text-xs text-content-muted">
+          <span>岗位状态</span>
+          <UiMultiSelect v-model="selectedJobStatusFilterModel" variant="filter" empty-label="全部岗位状态" empty-badge-label="全部">
+            <option v-for="option in JOB_STATUS_FILTER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </UiMultiSelect>
+        </label>
+        <label class="space-y-1.5 text-xs text-content-muted">
+          <span>AI 结果</span>
+          <UiMultiSelect v-model="selectedAiAuditFilterModel" variant="filter" empty-label="全部 AI 结果" empty-badge-label="全部">
+            <option v-for="option in AI_AUDIT_FILTER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </UiMultiSelect>
+        </label>
+        <label class="space-y-1.5 text-xs text-content-muted">
+          <span>岗位平台</span>
+          <UiMultiSelect v-model="selectedSourcePlatformFilterModel" variant="filter" empty-label="全部岗位平台" empty-badge-label="全部">
+            <option v-for="option in SOURCE_PLATFORM_FILTER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </UiMultiSelect>
+        </label>
+        <label class="space-y-1.5 text-xs text-content-muted">
+          <span>采集方式</span>
+          <UiMultiSelect v-model="selectedCollectionMethodFilterModel" variant="filter" empty-label="全部采集方式" empty-badge-label="全部">
+            <option v-for="option in COLLECTION_METHOD_FILTER_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
+          </UiMultiSelect>
+        </label>
+      </div>
 
-          <label class="space-y-1.5 text-xs text-content-muted">
-            <span class="font-semibold text-content-secondary">AI 结果</span>
-            <UiMultiSelect
-              v-model="selectedAiAuditFilterModel"
-              variant="filter"
-              empty-label="全部 AI 结果"
-              empty-badge-label="全部"
-            >
-              <option v-for="option in AI_AUDIT_FILTER_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiMultiSelect>
-          </label>
-
-          <label class="space-y-1.5 text-xs text-content-muted">
-            <span class="font-semibold text-content-secondary">岗位平台</span>
-            <UiMultiSelect
-              v-model="selectedSourcePlatformFilterModel"
-              variant="filter"
-              empty-label="全部岗位平台"
-              empty-badge-label="全部"
-            >
-              <option v-for="option in SOURCE_PLATFORM_FILTER_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiMultiSelect>
-          </label>
-
-          <label class="space-y-1.5 text-xs text-content-muted">
-            <span class="font-semibold text-content-secondary">采集方式</span>
-            <UiMultiSelect
-              v-model="selectedCollectionMethodFilterModel"
-              variant="filter"
-              empty-label="全部采集方式"
-              empty-badge-label="全部"
-            >
-              <option v-for="option in COLLECTION_METHOD_FILTER_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </UiMultiSelect>
-          </label>
-        </div>
+      <div v-if="hasActiveFilters" class="flex items-center justify-between gap-3 border-t border-border bg-surface-alt/35 px-4 py-2 text-xs text-content-muted">
+        <span>当前视图已应用筛选条件</span>
+        <button class="inline-flex items-center gap-1 font-medium text-content-primary hover:underline" type="button" @click="clearCurrentViewFilters">
+          <X class="h-3.5 w-3.5" aria-hidden="true" />
+          清除全部
+        </button>
       </div>
     </section>
 
-    <section class="ui-panel overflow-hidden">
-      <div class="ui-section-header">
-        <div class="flex items-center gap-2">
-          <Database class="h-4 w-4 text-content-muted" aria-hidden="true" />
-          <div>
-            <h2 class="ui-section-title">{{ activeBucket.label }}</h2>
-            <p class="ui-section-copy">{{ activeBucket.description }}</p>
+    <section class="jobs-results-surface">
+      <header class="jobs-results-header">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold text-content-primary">{{ activeBucket.label }}</h2>
+            <span class="text-xs tabular-nums text-content-muted">{{ displayedJobsTotal }} 条</span>
           </div>
+          <p class="mt-1 truncate text-xs text-content-muted">{{ activeBucket.description }}</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2 text-xs text-content-muted">
-          <span v-if="showPagination" class="ui-badge">第 {{ jobCandidatePage }} / {{ jobCandidateTotalPages }} 页</span>
-          <span class="ui-badge">{{ displayedJobsTotal }} 个岗位</span>
-        </div>
-      </div>
+        <span v-if="showPagination" class="text-xs tabular-nums text-content-muted">第 {{ jobCandidatePage }} / {{ jobCandidateTotalPages }} 页</span>
+      </header>
 
       <div v-if="displayedJobsLoading" class="ui-loading-state">
         <div class="mb-4 flex items-center gap-2 text-sm font-medium text-content-secondary">
@@ -440,10 +433,10 @@ watch(
           </div>
         </div>
       </div>
-      <div v-else-if="displayedJobs.length === 0" class="px-4 py-5">
+      <div v-else-if="displayedJobs.length === 0" class="px-4 py-6">
         <div class="ui-empty-state">
           <div class="ui-empty-icon">
-            <Database class="h-6 w-6" aria-hidden="true" />
+            <BriefcaseBusiness class="h-5 w-5" aria-hidden="true" />
           </div>
           <h3 class="ui-empty-title">当前分区暂无岗位</h3>
           <p class="ui-empty-copy">
@@ -461,7 +454,7 @@ watch(
           </div>
         </div>
       </div>
-      <div v-else class="divide-y divide-border/10">
+      <div v-else class="divide-y divide-border">
         <JobsJobItem
           v-for="job in displayedJobs"
           :key="`candidate-${job.encrypt_job_id}`"
@@ -474,6 +467,8 @@ watch(
           :greeting-loading="greetingLoading === job.encrypt_job_id"
           :optimized-resume-generating="optimizedResumeGeneratingJobId === job.encrypt_job_id"
           :resume-status="resumeStatusByJobId.get(job.encrypt_job_id)"
+          row-padding-class="px-4 sm:px-5"
+          detail-padding-class="px-4 sm:px-10"
           @toggle-detail="(jobId) => toggleDetail(jobId)"
           @copy-link="(job) => copy(jobSourceUrl(job))"
           @open-source-url="(job) => openJobSourceUrl(job)"
@@ -489,7 +484,7 @@ watch(
         />
       </div>
 
-      <div v-if="showPagination" class="flex flex-wrap items-center justify-between gap-3 border-t border-border/90 px-4 py-3">
+      <div v-if="showPagination" class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
         <div class="flex flex-wrap items-center gap-2">
           <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="jobCandidatePage <= 1 || jobCandidatesLoading" @click="goJobCandidatePage(jobCandidatePage - 1)">
             <ChevronLeft class="h-3.5 w-3.5" aria-hidden="true" />
@@ -511,7 +506,7 @@ watch(
           </UiSelect>
         </label>
       </div>
-      <div v-else-if="activeJobLibraryBucket === 'filtered'" class="border-t border-border/90 px-4 py-3 text-xs text-content-muted">
+      <div v-else-if="activeJobLibraryBucket === 'filtered'" class="border-t border-border px-4 py-3 text-xs text-content-muted">
         已过滤岗位仍保留在职位库里，可通过当前规则调整后重算。
       </div>
     </section>
