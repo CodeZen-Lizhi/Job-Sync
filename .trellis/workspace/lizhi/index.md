@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 46
+- **Total Sessions**: 47
 - **Last Active**: 2026-07-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1535 | Active |
+| `journal-1.md` | ~1568 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 47 | 2026-07-11 | 修正采集候选日志文案 | `fc76c6f` | `remote-job-intelligence` |
 | 46 | 2026-07-11 | 清理重复设置页任务 | `9ce1237` | `remote-job-intelligence` |
 | 45 | 2026-07-11 | 彻底重构全站产品 UI | `9ce1237` | `remote-job-intelligence` |
 | 44 | 2026-07-11 | 完成 shadcn 全页面重构 | `86fe4db` | `remote-job-intelligence` |

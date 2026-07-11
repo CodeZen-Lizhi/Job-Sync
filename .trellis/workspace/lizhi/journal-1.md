@@ -1533,3 +1533,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 47: 修正采集候选日志文案
+
+**Date**: 2026-07-11
+**Task**: 修正采集候选日志文案
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+核对数据库确认本轮 62 条均非新增；将 V2EX/LinuxDo 的 captured 完成日志从入库改为采集候选，更新回归测试与采集契约。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc76c6f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
