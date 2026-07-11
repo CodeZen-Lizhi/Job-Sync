@@ -1401,3 +1401,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 43: 重构全页面前端布局
+
+**Date**: 2026-07-11
+**Task**: 重构全页面前端布局
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+重构 JobPilot 应用外壳与五个前端页面，建立深墨导航、暖白画布和统一组件视觉；完成桌面与窄屏烟测、契约测试、生产构建及 Hash Router 页面内导航规范沉淀。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ae6653c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
