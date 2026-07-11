@@ -47,13 +47,14 @@ const {
 </script>
 
 <template>
-  <section class="flex min-h-[calc(100vh-5.25rem)] flex-col gap-3">
-    <header class="shrink-0 space-y-2">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div class="min-w-0 space-y-1">
-          <h1 class="text-xl font-semibold text-content-primary">岗位采集</h1>
-          <p class="text-xs text-content-muted [overflow-wrap:anywhere]">只写入职位库，后续判断另算。</p>
-        </div>
+  <section class="ui-page flex min-h-[calc(100vh-6rem)] flex-col !space-y-0 gap-4">
+    <header class="ui-page-header shrink-0">
+      <div class="ui-page-heading">
+        <div class="ui-page-eyebrow">Live Collection</div>
+        <h1 class="ui-page-title">岗位采集</h1>
+        <p class="ui-page-description">只写入职位库，后续判断另算；来源控制、批次结果和运行日志集中在同一工作台。</p>
+      </div>
+      <div class="ui-page-actions">
         <RouterLink class="ui-btn-secondary px-3 py-1.5 text-xs" to="/crawl-config">
           <Settings2 class="h-4 w-4" aria-hidden="true" />
           采集配置
@@ -69,15 +70,15 @@ const {
       <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div class="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
           <div class="min-w-0">
-            <div class="text-[11px] font-semibold text-content-muted">自动采集</div>
-            <div class="mt-1 text-sm font-semibold text-content-primary">运行控制</div>
-            <div class="mt-1 text-xs text-content-muted [overflow-wrap:anywhere]" :title="selectedCollectionSourceLabel">
-              本轮来源：<span class="font-medium text-content-secondary">{{ selectedCollectionSourceLabel }}</span>
+            <div class="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-300">Automatic Run</div>
+            <div class="mt-1 text-base font-semibold text-white">运行控制</div>
+            <div class="mt-1 text-xs text-slate-400 [overflow-wrap:anywhere]" :title="selectedCollectionSourceLabel">
+              本轮来源：<span class="font-medium text-slate-200">{{ selectedCollectionSourceLabel }}</span>
             </div>
           </div>
 
           <label class="block min-w-0">
-            <span class="ui-field-label">延迟 (ms)</span>
+            <span class="ui-field-label !text-slate-300">延迟 (ms)</span>
             <input v-model.number="delayMs" type="number" min="0" class="ui-input mt-1.5 w-full" />
           </label>
         </div>

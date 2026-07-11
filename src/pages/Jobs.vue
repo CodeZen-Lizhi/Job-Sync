@@ -276,23 +276,19 @@ watch(
 </script>
 
 <template>
-  <section class="space-y-5">
-    <header class="space-y-2">
-      <div class="ui-section-kicker">Job Library</div>
-      <div class="flex flex-wrap items-end justify-between gap-3">
-        <div class="min-w-0">
-          <h1 class="text-xl font-semibold text-content-primary">职位库工作台</h1>
-          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary [overflow-wrap:anywhere]">
-            自动采集先保留岗位事实，再由采后判断规则生成推荐、待确认和已过滤视图；默认展示全部入库岗位。
-          </p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
+  <section class="ui-page">
+    <header class="ui-page-header">
+      <div class="ui-page-heading">
+        <div class="ui-page-eyebrow">Job Intelligence</div>
+        <h1 class="ui-page-title">职位库工作台</h1>
+        <p class="ui-page-description">自动采集先保留岗位事实，再用筛选、AI 判断与人工状态逐步收敛下一步行动。</p>
+      </div>
+      <div class="ui-page-actions">
           <JobsExportPanel />
           <button class="ui-btn-secondary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri || displayedJobsLoading" @click="refreshCandidates">
             <RefreshCw class="h-3.5 w-3.5" aria-hidden="true" />
             {{ displayedJobsLoading ? "刷新中…" : "刷新" }}
           </button>
-        </div>
       </div>
     </header>
 

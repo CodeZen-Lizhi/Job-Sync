@@ -175,16 +175,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="space-y-5">
-    <header class="space-y-2">
-      <div class="ui-section-kicker">Resume Library</div>
-      <div class="flex flex-wrap items-end justify-between gap-3">
-        <div class="min-w-0">
-          <h1 class="text-xl font-semibold text-content-primary">简历库</h1>
-          <p class="mt-1 max-w-3xl text-sm leading-6 text-content-secondary [overflow-wrap:anywhere]">
-            维护 Markdown 简历、默认简历和岗位关联。
-          </p>
-        </div>
+  <section class="ui-page">
+    <header class="ui-page-header">
+      <div class="ui-page-heading">
+        <div class="ui-page-eyebrow">Resume Atelier</div>
+        <h1 class="ui-page-title">简历库</h1>
+        <p class="ui-page-description">集中维护 Markdown 简历、默认版本与岗位关联，保持编辑和预览上下文连续。</p>
+      </div>
+      <div class="ui-page-actions">
         <button class="ui-btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs" :disabled="!tauri" @click="startCreate">
           <Plus class="h-3.5 w-3.5" aria-hidden="true" />
           新建简历

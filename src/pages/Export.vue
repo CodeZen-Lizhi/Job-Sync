@@ -37,14 +37,12 @@ async function exportJson(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-5">
-    <header class="space-y-2">
-      <div class="ui-section-kicker">Export</div>
-      <div class="flex flex-wrap items-end justify-between gap-3">
-        <div class="min-w-0">
-          <h1 class="text-xl font-semibold text-content-primary">导出</h1>
-          <p class="mt-1 text-sm text-content-secondary [overflow-wrap:anywhere]">导出本地职位库数据到 CSV / JSON。</p>
-        </div>
+  <section class="ui-page">
+    <header class="ui-page-header">
+      <div class="ui-page-heading">
+        <div class="ui-page-eyebrow">Data Export</div>
+        <h1 class="ui-page-title">导出</h1>
+        <p class="ui-page-description">将本地职位库整理为 CSV 或 JSON 文件。</p>
       </div>
     </header>
 

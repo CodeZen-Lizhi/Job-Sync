@@ -143,6 +143,26 @@ export function useCrawlPage(): CrawlPageState {
 
 **Related**: If resume file import is needed elsewhere, keep it in the dedicated resume workspace instead of reintroducing it into settings.
 
+### Convention: Keep In-Page Navigation Inside Hash Routes
+
+**What**: On pages rendered by `createWebHashHistory`, use buttons that call `scrollIntoView` for page-local section navigation. Do not use bare links such as `href="#section-id"` inside a route.
+
+**Why**: The URL hash is already owned by Vue Router (`#/settings`). A bare fragment replaces that route hash with `#section-id`, navigates away from the active route, and can leave the app on an unmatched path.
+
+**Example**:
+```vue
+<button type="button" @click="scrollToSection('settings-model')">模型服务</button>
+```
+
+```ts
+function scrollToSection(sectionId: string): void {
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  document.getElementById(sectionId)?.scrollIntoView({ behavior, block: "start" });
+}
+```
+
+**Related**: Browser-smoke the interaction and assert the URL remains on the current route after scrolling. Keep section ids unique and add `scroll-margin` when a sticky local navigation bar is present.
+
 ---
 
 ## Accessibility
@@ -159,3 +179,4 @@ export function useCrawlPage(): CrawlPageState {
 
 - Keeping mobile navigation as horizontally scrolling fixed-width groups. This can push labels such as `设置` outside the viewport even when the main content is responsive.
 - Treating a Chrome headless `--window-size=390,...` screenshot as proof that the CSS viewport is 390px. Chrome may use a larger minimum layout viewport and crop the screenshot, which can make wrapped text look clipped or hide the real overflow source. For mobile shell checks, verify `document.documentElement.scrollWidth <= document.documentElement.clientWidth` with browser/device emulation and only use screenshots as visual confirmation.
+- Using `<a href="#section-id">` for settings-page section navigation while the app uses Vue Router hash history. This replaces `#/settings` instead of scrolling within the route; use a button plus `scrollIntoView` and verify the route URL does not change.

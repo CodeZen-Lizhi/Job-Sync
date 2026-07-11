@@ -601,14 +601,36 @@ watch(
     void refreshSupportedLoginStatuses();
   },
 );
+
+function scrollToSettingsSection(sectionId: string): void {
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  document.getElementById(sectionId)?.scrollIntoView({ behavior, block: "start" });
+}
 </script>
 
 <template>
-  <section class="space-y-6">
-    <header class="space-y-1">
-      <h1 class="text-xl font-semibold text-content-primary">设置</h1>
-      <p class="text-sm text-content-secondary">浏览器路径、模型供应商与 OpenAI-compatible API 配置。</p>
+  <section class="ui-page">
+    <header class="ui-page-header">
+      <div class="ui-page-heading">
+        <div class="ui-page-eyebrow">System Settings</div>
+        <h1 class="ui-page-title">设置</h1>
+        <p class="ui-page-description">管理平台能力、本机浏览器、网络代理、模型服务和通知诊断。</p>
+      </div>
+      <div class="ui-page-actions">
+        <button class="ui-btn-primary" :disabled="!tauri || saving" @click="save">
+          {{ saving ? "保存中…" : "保存设置" }}
+        </button>
+      </div>
     </header>
+
+    <nav class="ui-toolbar sticky top-0 z-20 grid grid-cols-3 gap-1 p-2 backdrop-blur sm:flex sm:gap-2 sm:overflow-x-auto" aria-label="设置分区">
+      <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-platforms')">平台能力</button>
+      <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-browser')">浏览器</button>
+      <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-network')">网络代理</button>
+      <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-model')">模型服务</button>
+      <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-notifications')">外部通知</button>
+      <button class="ui-segmented-button" type="button" @click="scrollToSettingsSection('settings-diagnostics')">诊断</button>
+    </nav>
 
     <div
       v-if="!tauri"
@@ -618,8 +640,8 @@ watch(
     </div>
 
     <!-- Platform Capability Model -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">平台能力</div>
+    <div id="settings-platforms" class="ui-settings-section">
+      <div class="ui-section-label">平台能力</div>
       <div class="ui-panel-muted p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -707,8 +729,8 @@ watch(
     </div>
 
     <!-- Browser Config -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">浏览器</div>
+    <div id="settings-browser" class="ui-settings-section">
+      <div class="ui-section-label">浏览器</div>
       <div class="ui-panel-muted p-5">
         <label class="block space-y-1">
           <div class="text-xs font-medium text-content-muted">浏览器路径（用于 Puppeteer）</div>
@@ -723,8 +745,8 @@ watch(
     </div>
 
     <!-- Network Proxy Config -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">网络代理</div>
+    <div id="settings-network" class="ui-settings-section">
+      <div class="ui-section-label">网络代理</div>
       <div class="ui-panel-muted p-5">
         <label class="block space-y-1">
           <div class="text-xs font-medium text-content-muted">网络代理 URL（可选）</div>
@@ -741,8 +763,8 @@ watch(
     </div>
 
     <!-- AI Provider Config -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">模型供应商</div>
+    <div id="settings-model" class="ui-settings-section">
+      <div class="ui-section-label">模型供应商</div>
 
       <div class="ui-panel-muted grid gap-4 p-5 md:grid-cols-2">
         <label class="block space-y-1 md:col-span-2">
@@ -887,8 +909,8 @@ watch(
     </div>
 
     <!-- External Notification Config -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">外部通知</div>
+    <div id="settings-notifications" class="ui-settings-section">
+      <div class="ui-section-label">外部通知</div>
       <div class="ui-panel-muted grid gap-4 p-5 md:grid-cols-2">
         <label class="block space-y-1">
           <div class="flex items-center justify-between gap-2">
@@ -930,8 +952,8 @@ watch(
     </div>
 
     <!-- External Diagnostics -->
-    <div class="space-y-3">
-      <div class="text-[10px] font-semibold uppercase tracking-[0.24em] text-content-muted">外部依赖诊断</div>
+    <div id="settings-diagnostics" class="ui-settings-section">
+      <div class="ui-section-label">外部依赖诊断</div>
       <div class="ui-panel-muted p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
