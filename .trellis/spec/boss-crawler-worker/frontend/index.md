@@ -23,12 +23,14 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
 | [External Dependency Diagnostics](./external-dependency-diagnostics.md) | Settings IPC contract for local dependency diagnostics | Active |
 | [Collection Source Contracts](./collection-source-contracts.md) | Cross-layer automatic collection source contracts | Active |
+| [AI Prompt Contracts](./ai-prompt-contracts.md) | User-owned prompt sources and worker injection boundaries | Active |
 
 ---
 
 ## Pre-Development Checklist
 
 - For collection source selection, platform capabilities, `crawl_auto_start`, worker collection events, or unified job writes, read [Collection Source Contracts](./collection-source-contracts.md).
+- For AI settings, prompt assembly, structured output contracts, or post-collection judgement, read [AI Prompt Contracts](./ai-prompt-contracts.md).
 - For Jobs/Resume library list payloads, large JSON movement, projection refresh,
   cursor pagination, or resume body-on-demand work, read
   [Performance Boundary Contracts](./performance-boundary-contracts.md).

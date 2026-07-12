@@ -133,6 +133,7 @@ const {
   aiRejectedText,
   aiRiskText,
   aiUncertainStrategy,
+  applyAiPrecisionTemplate,
   bossMetaSyncedAt,
   bossCityGroups,
   bossHotCities,
@@ -849,6 +850,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
                 <div class="mt-1 text-xs text-content-muted">改完保存，必要时重算。</div>
               </div>
               <div class="flex flex-wrap items-center gap-2">
+                <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="sidecarRunning" @click="applyAiPrecisionTemplate">应用精准模板</button>
                 <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || sidecarRunning" @click="saveActiveFilterProfile">保存配置</button>
                 <button class="ui-btn-secondary px-3 py-1.5 text-xs" :disabled="!tauri || filterRecomputing || sidecarRunning" @click="recomputeDefaultFilterProfile">
                   {{ filterRecomputing ? "重算中…" : "保存并重算普通+AI" }}
@@ -860,6 +862,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
           <div class="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_minmax(11rem,14rem)]">
             <label class="space-y-1">
               <div class="ui-field-label">我想看的岗位</div>
+              <div class="text-[11px] leading-4 text-content-muted">写目标方向、必须条件和加分项。</div>
               <textarea
                 v-model="aiPreferredText"
                 class="ui-textarea h-28 w-full"
@@ -867,7 +870,8 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
               />
             </label>
             <label class="space-y-1">
-              <div class="ui-field-label">AI 软排除</div>
+              <div class="ui-field-label">AI 排除条件</div>
+              <div class="text-[11px] leading-4 text-content-muted">岗位原文明确命中任一项时直接过滤。</div>
               <textarea
                 v-model="aiRejectedText"
                 class="ui-textarea h-28 w-full"
@@ -876,6 +880,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
             </label>
             <label class="space-y-1">
               <div class="ui-field-label">风险关注点</div>
+              <div class="text-[11px] leading-4 text-content-muted">只写信息不足、矛盾或需要核实的情况。</div>
               <textarea
                 v-model="aiRiskText"
                 class="ui-textarea h-28 w-full"
@@ -892,7 +897,7 @@ function toggleCollectionSource(value: JobSourcePlatform): void {
               <div class="text-[11px] leading-5 text-content-muted">按配置落点。</div>
             </label>
           </div>
-          <div class="text-xs leading-5 text-content-muted">黑名单和沟通状态仍会硬拦。</div>
+          <div class="text-xs leading-5 text-content-muted">岗位方向、英语、远程、学历等个人偏好只读取以上三个文本框；代码仅保留“必须是真实招聘/内推内容”的通用门禁。黑名单和沟通状态仍会硬拦。</div>
           <div v-if="filterRecomputeMessage" class="text-xs font-medium text-emerald-700">{{ filterRecomputeMessage }}</div>
         </div>
       </section>

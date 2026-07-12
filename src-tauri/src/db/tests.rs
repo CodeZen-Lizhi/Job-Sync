@@ -19,6 +19,15 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
     let conn = init_db(&app_data_dir).expect("init db");
 
     let profile = models::load_default_filter_profile(&conn).expect("load default profile");
+    assert!(profile.profile_json["aiPreferredText"]
+        .as_str()
+        .is_some_and(|value| value.contains("AI Agent") && value.contains("长期全远程")));
+    assert!(profile.profile_json["aiRejectedText"]
+        .as_str()
+        .is_some_and(|value| value.contains("全英面试") && value.contains("AI 模拟面试")));
+    assert!(profile.profile_json["aiRiskText"]
+        .as_str()
+        .is_some_and(|value| value.contains("明确排除证据时不要放入待确认")));
     let must_not_keywords = profile
         .profile_json
         .get("mustNotKeywords")

@@ -1032,7 +1032,9 @@ describe("review workflow contract", () => {
     const crawlTypes = readProjectFile("src/lib/crawl.ts");
 
     assert.match(crawlConfig, /默认采后规则/);
-    assert.match(crawlConfig, /AI 软排除/);
+    assert.match(crawlConfig, /AI 排除条件/);
+    assert.match(crawlConfig, /应用精准模板/);
+    assert.match(crawlConfig, /个人偏好只读取以上三个文本框/);
     assert.match(crawlConfig, /不确定策略/);
     for (const legacyHardLabel of [
       "必须命中的正文信号",
@@ -1063,6 +1065,7 @@ describe("review workflow contract", () => {
     assert.match(filterProfile, /aiRejectedText/);
     assert.match(filterProfile, /aiRiskText/);
     assert.match(filterProfile, /aiUncertainStrategy/);
+    assert.match(filterProfile, /function applyAiPrecisionTemplate/);
     assert.match(crawlTypes, /DEFAULT_AI_PREFERRED_TEXT/);
     assert.match(crawlTypes, /DEFAULT_AI_REJECTED_TEXT/);
     assert.match(crawlTypes, /DEFAULT_AI_RISK_TEXT/);
@@ -1962,32 +1965,22 @@ describe("review workflow contract", () => {
     assert.match(settingsCore, /apply_worker_env_injects_saved_proxy_url/);
   });
 
-  it("keeps first-class model provider, temperature and prompt-extra settings wired end to end", () => {
+  it("keeps first-class model provider and temperature settings wired end to end", () => {
     const settingsPage = readProjectFile("src/pages/Settings.vue");
     const settingsCommand = readProjectFile("src-tauri/src/commands/settings.rs");
     const aiConfig = readProjectFile("src-tauri/src/commands/ai/config.rs");
     const aiWorker = readProjectFile("src-tauri/src/commands/ai/worker.rs");
-    const promptExtra = readProjectFile("packages/boss-crawler-worker/src/ai/promptExtra.ts");
 
     assert.match(settingsPage, /OpenAI Compatible/);
     assert.match(settingsPage, /DeepSeek/);
     assert.match(settingsPage, /Ollama（本地）/);
     assert.match(settingsPage, /openaiTemperature: clampTemperature\(temperature\.value\)/);
-    assert.match(settingsPage, /openaiPromptExtra: promptExtra\.value\.trim\(\) \|\| null/);
-    assert.match(settingsPage, /openaiSchemaExtra: schemaExtra\.value\.trim\(\) \|\| null/);
-    assert.match(settingsPage, /结构化输出 Schema 补充/);
-    assert.match(settingsPage, /不能删除内置必填字段/);
+    assert.doesNotMatch(settingsPage, /通用 AI 补充提示|结构化输出 Schema 补充/);
     assert.match(settingsCommand, /openai_temperature: Option<f64>/);
-    assert.match(settingsCommand, /openai_prompt_extra: Option<String>/);
-    assert.match(settingsCommand, /openai_schema_extra: Option<String>/);
-    assert.match(aiConfig, /saved_temperature_prompt_extra_and_schema_extra_are_part_of_effective_request/);
+    assert.doesNotMatch(settingsCommand, /openai_prompt_extra|openai_schema_extra/);
+    assert.match(aiConfig, /saved_temperature_is_part_of_effective_request/);
     assert.match(aiWorker, /OPENAI_TEMPERATURE/);
-    assert.match(aiWorker, /OPENAI_PROMPT_EXTRA/);
-    assert.match(aiWorker, /OPENAI_SCHEMA_EXTRA/);
-    assert.match(aiWorker, /openai_temperature_prompt_extra_and_schema_extra_are_written_to_worker_env/);
-    assert.match(promptExtra, /【用户补充提示】/);
-    assert.match(promptExtra, /【用户结构化输出 Schema 补充】/);
-    assert.match(promptExtra, /不能覆盖严格 JSON 输出/);
-    assert.match(promptExtra, /不能删除内置必填字段/);
+    assert.doesNotMatch(aiWorker, /OPENAI_PROMPT_EXTRA|OPENAI_SCHEMA_EXTRA/);
+    assert.match(aiWorker, /openai_temperature_is_written_to_worker_env/);
   });
 });

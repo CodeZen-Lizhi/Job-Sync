@@ -575,7 +575,7 @@ fn ai_status_label(status: &str, bucket: &str) -> &'static str {
 }
 
 fn normalize_worker_bucket(bucket: &str, confidence: f64) -> &'static str {
-    if confidence < LOW_CONFIDENCE_THRESHOLD {
+    if bucket == "recommended" && confidence < LOW_CONFIDENCE_THRESHOLD {
         return "pending_confirmation";
     }
     match bucket {
@@ -832,12 +832,17 @@ mod tests {
     }
 
     #[test]
-    fn low_confidence_maps_to_pending() {
+    fn low_confidence_only_downgrades_recommendations() {
         assert_eq!(
             normalize_worker_bucket("recommended", 0.64),
             "pending_confirmation"
         );
         assert_eq!(normalize_worker_bucket("recommended", 0.65), "recommended");
+        assert_eq!(normalize_worker_bucket("filtered", 0.2), "filtered");
+        assert_eq!(
+            normalize_worker_bucket("pending_confirmation", 0.2),
+            "pending_confirmation"
+        );
     }
 
     #[test]

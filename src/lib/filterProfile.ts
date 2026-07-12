@@ -113,6 +113,7 @@ export type FilterProfileState = {
   setBossOnlySourcePlatforms: () => void;
   setManualImportSourcePlatforms: () => void;
   setAllSourcePlatforms: () => void;
+  applyAiPrecisionTemplate: () => void;
   loadDefaultFilterProfile: () => Promise<FilterProfileRecord | null>;
   saveDefaultFilterProfile: () => Promise<FilterProfileRecord | null>;
   recomputeDefaultFilterProfile: () => Promise<RecomputeFilterProfileResult | null>;
@@ -191,6 +192,12 @@ export function useFilterProfile() {
     if (selected.length > 0) return `当前允许来源：${selected.join("、")}；保存并重算后生效。`;
     return "来源为空时不会按来源限制岗位；保存并重算后生效。";
   });
+
+  function applyAiPrecisionTemplate(): void {
+    aiPreferredText.value = DEFAULT_AI_PREFERRED_TEXT;
+    aiRejectedText.value = DEFAULT_AI_REJECTED_TEXT;
+    aiRiskText.value = DEFAULT_AI_RISK_TEXT;
+  }
 
   const filterProfile = computed<FilterProfilePayload>(() => ({
     aiPreferredText: aiPreferredText.value.trim(),
@@ -490,6 +497,7 @@ export function useFilterProfile() {
     setBossOnlySourcePlatforms,
     setManualImportSourcePlatforms,
     setAllSourcePlatforms,
+    applyAiPrecisionTemplate,
     loadDefaultFilterProfile,
     saveDefaultFilterProfile,
     recomputeDefaultFilterProfile,

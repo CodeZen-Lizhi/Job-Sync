@@ -38,8 +38,6 @@ pub struct PublicAppSettings {
     pub openai_model: Option<String>,
     pub openai_api_mode: Option<String>,
     pub openai_temperature: Option<f64>,
-    pub openai_prompt_extra: String,
-    pub openai_schema_extra: String,
     pub ai_greeting_prompt_extra: String,
     pub telegram_bot_token: Option<String>,
     pub has_telegram_bot_token: bool,
@@ -122,8 +120,6 @@ impl From<settings::AppSettings> for PublicAppSettings {
             openai_model: settings.openai_model,
             openai_api_mode: settings.openai_api_mode,
             openai_temperature: settings.openai_temperature,
-            openai_prompt_extra: settings.openai_prompt_extra,
-            openai_schema_extra: settings.openai_schema_extra,
             ai_greeting_prompt_extra: settings.ai_greeting_prompt_extra,
             telegram_bot_token: None,
             has_telegram_bot_token,
@@ -546,8 +542,6 @@ pub fn save_settings(
     openai_model: Option<String>,
     openai_api_mode: Option<String>,
     openai_temperature: Option<f64>,
-    openai_prompt_extra: Option<String>,
-    openai_schema_extra: Option<String>,
     ai_greeting_prompt_extra: Option<String>,
     telegram_bot_token: Option<String>,
     telegram_chat_id: Option<String>,
@@ -570,12 +564,6 @@ pub fn save_settings(
     current.openai_model = opt_trimmed(openai_model);
     current.openai_api_mode = opt_trimmed(openai_api_mode);
     current.openai_temperature = clamp_temperature(openai_temperature);
-    if let Some(value) = openai_prompt_extra {
-        current.openai_prompt_extra = opt_trimmed(Some(value)).unwrap_or_default();
-    }
-    if let Some(value) = openai_schema_extra {
-        current.openai_schema_extra = opt_trimmed(Some(value)).unwrap_or_default();
-    }
     current.ai_greeting_prompt_extra = opt_trimmed(ai_greeting_prompt_extra).unwrap_or_default();
     if let Some(bot_token) = telegram_bot_token {
         current.telegram_bot_token = opt_trimmed(Some(bot_token));

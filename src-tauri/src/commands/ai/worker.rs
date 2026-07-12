@@ -95,12 +95,6 @@ fn apply_openai_overrides(cmd: &mut Command, config: &ResolvedOpenAiRequest) {
         "OPENAI_TEMPERATURE",
         format!("{}", config.effective_temperature),
     );
-    if !config.effective_prompt_extra.trim().is_empty() {
-        cmd.env("OPENAI_PROMPT_EXTRA", config.effective_prompt_extra.trim());
-    }
-    if !config.effective_schema_extra.trim().is_empty() {
-        cmd.env("OPENAI_SCHEMA_EXTRA", config.effective_schema_extra.trim());
-    }
 }
 
 fn write_worker_input(child: &mut Child, input: &CommandIn) -> Result<(), String> {
@@ -189,8 +183,6 @@ mod tests {
             effective_model: "qwen2.5:7b".to_string(),
             effective_api_mode: "chat_completions".to_string(),
             effective_temperature: 0.2,
-            effective_prompt_extra: String::new(),
-            effective_schema_extra: String::new(),
         };
 
         apply_openai_overrides(&mut cmd, &config);
@@ -211,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_temperature_prompt_extra_and_schema_extra_are_written_to_worker_env() {
+    fn openai_temperature_is_written_to_worker_env() {
         let mut cmd = Command::new("node");
         let config = ResolvedOpenAiRequest {
             api_key: Some("sk-test".to_string()),
@@ -219,8 +211,6 @@ mod tests {
             effective_model: "custom-model".to_string(),
             effective_api_mode: "chat_completions".to_string(),
             effective_temperature: 0.65,
-            effective_prompt_extra: "只接受有 JD 证据的结论".to_string(),
-            effective_schema_extra: "额外输出 evidenceLevel 字段".to_string(),
         };
 
         apply_openai_overrides(&mut cmd, &config);
@@ -232,14 +222,6 @@ mod tests {
         assert_eq!(
             env_value(&cmd, "OPENAI_TEMPERATURE").as_deref(),
             Some("0.65")
-        );
-        assert_eq!(
-            env_value(&cmd, "OPENAI_PROMPT_EXTRA").as_deref(),
-            Some("只接受有 JD 证据的结论")
-        );
-        assert_eq!(
-            env_value(&cmd, "OPENAI_SCHEMA_EXTRA").as_deref(),
-            Some("额外输出 evidenceLevel 字段")
         );
     }
 }

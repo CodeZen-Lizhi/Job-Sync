@@ -37,12 +37,6 @@ pub struct AppSettings {
     pub openai_temperature: Option<f64>,
     #[serde(default)]
     #[serde(skip_serializing_if = "String::is_empty")]
-    pub openai_prompt_extra: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub openai_schema_extra: String,
-    #[serde(default)]
-    #[serde(skip_serializing_if = "String::is_empty")]
     pub ai_greeting_prompt_extra: String,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,8 +83,6 @@ impl AppSettings {
             openai_model: None,
             openai_api_mode: None,
             openai_temperature: None,
-            openai_prompt_extra: String::new(),
-            openai_schema_extra: String::new(),
             ai_greeting_prompt_extra: String::new(),
             telegram_bot_token: None,
             telegram_chat_id: None,
@@ -285,12 +277,6 @@ pub fn apply_worker_env(cmd: &mut Command, app_data_dir: &Path) {
         }
         if let Some(v) = settings.openai_temperature {
             cmd.env("OPENAI_TEMPERATURE", format!("{}", v.clamp(0.0, 2.0)));
-        }
-        if let Some(v) = opt_trimmed(Some(settings.openai_prompt_extra)) {
-            cmd.env("OPENAI_PROMPT_EXTRA", v);
-        }
-        if let Some(v) = opt_trimmed(Some(settings.openai_schema_extra)) {
-            cmd.env("OPENAI_SCHEMA_EXTRA", v);
         }
     }
 }

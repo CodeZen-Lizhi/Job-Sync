@@ -16,8 +16,6 @@ interface AppSettings {
   openai_model?: string | null;
   openai_api_mode?: string | null;
   openai_temperature?: number | null;
-  openai_prompt_extra?: string | null;
-  openai_schema_extra?: string | null;
   ai_greeting_prompt_extra?: string | null;
   telegram_bot_token?: string | null;
   has_telegram_bot_token?: boolean | null;
@@ -105,8 +103,6 @@ const baseUrl = ref("");
 const model = ref("");
 const apiMode = ref("chat_completions");
 const temperature = ref(0.2);
-const promptExtra = ref("");
-const schemaExtra = ref("");
 const greetingPromptExtra = ref("");
 const telegramBotToken = ref("");
 const hasSavedTelegramBotToken = ref(false);
@@ -207,8 +203,6 @@ async function loadSettings(): Promise<void> {
     baseUrl.value = settings.openai_base_url ?? "";
     model.value = settings.openai_model ?? "";
     temperature.value = clampTemperature(settings.openai_temperature ?? 0.2);
-    promptExtra.value = settings.openai_prompt_extra ?? "";
-    schemaExtra.value = settings.openai_schema_extra ?? "";
     greetingPromptExtra.value = settings.ai_greeting_prompt_extra ?? "";
     telegramBotToken.value = "";
     hasSavedTelegramBotToken.value = typeof settings.has_telegram_bot_token === "boolean"
@@ -532,8 +526,6 @@ async function save(): Promise<void> {
       openaiModel: model.value.trim() || null,
       openaiApiMode: apiMode.value,
       openaiTemperature: clampTemperature(temperature.value),
-      openaiPromptExtra: promptExtra.value.trim() || null,
-      openaiSchemaExtra: schemaExtra.value.trim() || null,
       aiGreetingPromptExtra: greetingPromptExtra.value.trim() || null,
       telegramBotToken: telegramBotToken.value.trim() || (hasSavedTelegramBotToken.value ? null : ""),
       telegramChatId: telegramChatId.value.trim() || (hasSavedTelegramChatId.value ? null : ""),
@@ -789,20 +781,10 @@ watch(
           <details class="group rounded-md border border-border bg-surface-alt/35 md:col-span-2">
             <summary class="flex cursor-pointer select-none items-center justify-between px-3 py-2.5 text-xs font-medium text-content-primary outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-glow/40">
               高级提示
-              <span class="text-[10px] font-normal text-content-muted group-open:hidden">3 项，默认收起</span>
+              <span class="text-[10px] font-normal text-content-muted group-open:hidden">1 项，默认收起</span>
               <span class="hidden text-[10px] font-normal text-content-muted group-open:inline">收起</span>
             </summary>
             <div class="grid gap-3 border-t border-border p-3">
-              <label class="block space-y-1">
-                <span class="ui-field-label">通用 AI 补充提示</span>
-                <textarea v-model="promptExtra" class="ui-textarea min-h-20 w-full resize-y" placeholder="补充通用判断偏好" />
-                <span class="block text-[11px] text-content-muted">用于简历匹配、岗位版简历和公司评分。</span>
-              </label>
-              <label class="block space-y-1">
-                <span class="ui-field-label">结构化输出 Schema 补充</span>
-                <textarea v-model="schemaExtra" class="ui-textarea min-h-20 w-full resize-y" placeholder="只新增兼容字段" />
-                <span class="block text-[11px] text-content-muted">不能删除内置必填字段，也不能改变严格 JSON 输出。</span>
-              </label>
               <label class="block space-y-1">
                 <span class="ui-field-label">打招呼文案补充提示</span>
                 <textarea v-model="greetingPromptExtra" class="ui-textarea min-h-20 w-full resize-y" placeholder="补充语气和内容偏好" />

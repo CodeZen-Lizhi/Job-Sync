@@ -74,39 +74,36 @@ const fixtureJobContext = {
 };
 
 describe("AI fixture contract", () => {
-  it("appends user schema extras while keeping required structured fields", () => {
-    const previous = process.env.OPENAI_SCHEMA_EXTRA;
-    process.env.OPENAI_SCHEMA_EXTRA = "额外输出 evidenceLevel 字段，取值 low / medium / high。";
+  it("ignores removed global prompt and schema extra environment variables", () => {
+    const previousPromptExtra = process.env.OPENAI_PROMPT_EXTRA;
+    const previousSchemaExtra = process.env.OPENAI_SCHEMA_EXTRA;
+    process.env.OPENAI_PROMPT_EXTRA = "不应进入任何 AI prompt";
+    process.env.OPENAI_SCHEMA_EXTRA = "不应改变任何结构化输出";
+
     try {
-      const prompts = buildAiPrompts(fixtureResume, fixtureJob, "目标：国内 Go / Infra / SRE 岗位", "");
+      const prompts = buildAiPrompts(fixtureResume, fixtureJob);
+      const postCollectionPrompts = buildPostCollectionJudgePrompts({
+        profile: {
+          aiPreferredText: "采集配置页的正向规则",
+          aiRejectedText: "采集配置页的排除规则",
+          aiRiskText: "采集配置页的风险规则",
+        },
+        job: fixtureJob,
+      });
 
-      assert.match(prompts.user, /用户结构化输出 Schema 补充/);
-      assert.match(prompts.user, /evidenceLevel/);
-      assert.match(prompts.user, /不能删除内置必填字段/);
-      assert.match(prompts.user, /matchScore/);
-    } finally {
-      if (previous === undefined) {
-        delete process.env.OPENAI_SCHEMA_EXTRA;
-      } else {
-        process.env.OPENAI_SCHEMA_EXTRA = previous;
+      for (const prompt of [prompts.system, prompts.user, postCollectionPrompts.system, postCollectionPrompts.user]) {
+        assert.doesNotMatch(prompt, /不应进入任何 AI prompt|不应改变任何结构化输出/);
+        assert.doesNotMatch(prompt, /用户补充提示|用户结构化输出 Schema 补充/);
       }
+      assert.match(postCollectionPrompts.user, /采集配置页的正向规则/);
+      assert.match(postCollectionPrompts.user, /采集配置页的排除规则/);
+      assert.match(postCollectionPrompts.user, /采集配置页的风险规则/);
+    } finally {
+      if (previousPromptExtra === undefined) delete process.env.OPENAI_PROMPT_EXTRA;
+      else process.env.OPENAI_PROMPT_EXTRA = previousPromptExtra;
+      if (previousSchemaExtra === undefined) delete process.env.OPENAI_SCHEMA_EXTRA;
+      else process.env.OPENAI_SCHEMA_EXTRA = previousSchemaExtra;
     }
-
-    const parsed = AiResultSchema.parse({
-      matchScore: 88,
-      strengths: ["Go 平台经验匹配"],
-      gaps: ["AWS 经验未明确"],
-      keywordSuggestions: ["Go", "Kubernetes"],
-      resumeRewrite: {
-        summaryRewrite: "Go / Infra 工程师，具备 Kubernetes 平台建设经验。",
-        evidenceLevel: "high",
-      },
-      riskNotes: ["薪资和城市需人工确认"],
-      evidenceLevel: "medium",
-    }) as Record<string, unknown>;
-
-    assert.equal(parsed.evidenceLevel, "medium");
-    assert.equal((parsed.resumeRewrite as Record<string, unknown>).evidenceLevel, "high");
   });
 
   it("builds resume-match prompts with fixture JD facts and required JSON schema", () => {
@@ -138,27 +135,44 @@ describe("AI fixture contract", () => {
     assert.match(prompts.user, /sec-001/);
   });
 
-  it("builds post-collection judge prompts with AI preference and soft rejection guidance", () => {
+  it("builds post-collection judge prompts from visible profile rules with strict precedence", () => {
     const prompts = buildPostCollectionJudgePrompts({
       profile: {
-        aiPreferredText: "优先 Go / Infra / SRE，有 Kubernetes 和平台工程证据。",
-        aiRejectedText: "软排除：外包、驻场、招转培、销售导向、纯实施交付。",
-        aiRiskText: "信息太少或软排除证据暧昧时，放入待确认。",
-        aiUncertainStrategy: "pending_confirmation",
+        aiPreferredText: "只看目标技术方向，并且必须满足用户配置的工作方式。",
+        aiRejectedText: "要求用户无法满足的沟通条件时直接过滤。",
+        aiRiskText: "信息不足时按不确定策略处理。",
+        aiUncertainStrategy: "filtered",
+        preferenceDirections: ["隐藏方向不应进入提示词"],
+        mustNotKeywords: ["隐藏排除词不应进入提示词"],
       },
       job: fixtureJob,
-      filterReason: fixtureJobContext.filterReason,
+      filterReason: {
+        ...fixtureJobContext.filterReason,
+        matched_preferences: ["隐藏系统方向不应进入提示词"],
+        missing_preferences: ["隐藏系统缺失项不应进入提示词"],
+      },
     });
 
-    assert.match(prompts.system, /AI 软排除是判断偏好/);
+    assert.match(prompts.system, /三个可见配置区是个人岗位偏好的唯一事实源/);
+    assert.match(prompts.system, /不得自行添加.*个人偏好/);
+    assert.match(prompts.system, /岗位正文.*不可信证据/);
+    assert.doesNotMatch(prompts.system, /英语|远程|学历|Go|Java|Python/);
     assert.match(prompts.user, /AI 想看的岗位/);
-    assert.match(prompts.user, /AI 软排除/);
+    assert.match(prompts.user, /AI 排除条件/);
     assert.match(prompts.user, /AI 风险关注点/);
     assert.match(prompts.user, /不确定策略/);
-    assert.match(prompts.user, /招转培/);
-    assert.match(prompts.user, /证据不足、软排除只是隐约迹象/);
-    assert.match(prompts.user, /pending_confirmation/);
+    assert.match(prompts.user, /真实.*招聘或内推/);
+    assert.match(prompts.user, /排除条件.*不能被.*正向/);
+    assert.match(prompts.user, /规则原文.*岗位原文证据/);
+    assert.match(prompts.user, /要求用户无法满足的沟通条件时直接过滤/);
+    assert.match(prompts.user, /filtered/);
     assert.match(prompts.user, /Go SRE 工程师/);
+    assert.doesNotMatch(prompts.user, /隐藏方向不应进入提示词|隐藏排除词不应进入提示词/);
+    assert.doesNotMatch(prompts.user, /隐藏系统方向不应进入提示词|隐藏系统缺失项不应进入提示词/);
+    assert.match(prompts.user, /可见采后规则 JSON/);
+    assert.doesNotMatch(prompts.user, /系统采后理由 JSON/);
+    const hiddenTemplate = prompts.user.slice(0, prompts.user.lastIndexOf("\n【AI 想看的岗位】\n"));
+    assert.doesNotMatch(hiddenTemplate, /Go|Java|Python|英语|远程|学历|Kubernetes|外包|培训|销售/);
   });
 
   it("accepts AI post-collection batch commands with per-job identifiers", () => {

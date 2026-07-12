@@ -25,8 +25,6 @@ pub(super) struct ResolvedOpenAiRequest {
     pub effective_model: String,
     pub effective_api_mode: String,
     pub effective_temperature: f64,
-    pub effective_prompt_extra: String,
-    pub effective_schema_extra: String,
 }
 
 pub(super) fn opt_trimmed(value: Option<String>) -> Option<String> {
@@ -125,31 +123,12 @@ pub(super) fn resolve_openai_request(
         })
         .or_else(|| parse_temperature(std::env::var("OPENAI_TEMPERATURE").ok()))
         .unwrap_or(0.2);
-    let effective_prompt_extra = saved_settings
-        .and_then(|settings| opt_trimmed(Some(settings.openai_prompt_extra.clone())))
-        .or_else(|| {
-            std::env::var("OPENAI_PROMPT_EXTRA")
-                .ok()
-                .and_then(|v| opt_trimmed(Some(v)))
-        })
-        .unwrap_or_default();
-    let effective_schema_extra = saved_settings
-        .and_then(|settings| opt_trimmed(Some(settings.openai_schema_extra.clone())))
-        .or_else(|| {
-            std::env::var("OPENAI_SCHEMA_EXTRA")
-                .ok()
-                .and_then(|v| opt_trimmed(Some(v)))
-        })
-        .unwrap_or_default();
-
     ResolvedOpenAiRequest {
         api_key,
         effective_api_mode,
         effective_model,
         effective_base_url,
         effective_temperature,
-        effective_prompt_extra,
-        effective_schema_extra,
     }
 }
 
@@ -213,24 +192,14 @@ mod tests {
     }
 
     #[test]
-    fn saved_temperature_prompt_extra_and_schema_extra_are_part_of_effective_request() {
+    fn saved_temperature_is_part_of_effective_request() {
         let mut settings = AppSettings::platform_default();
         settings.openai_provider = Some("deepseek".to_string());
         settings.openai_temperature = Some(2.8);
-        settings.openai_prompt_extra = "优先关注 Go / Kubernetes 证据".to_string();
-        settings.openai_schema_extra = "额外输出 evidenceLevel 字段".to_string();
 
         let resolved = resolve_openai_request(Some(&settings), OpenAiOverrides::default());
 
         assert_eq!(resolved.effective_temperature, 2.0);
-        assert_eq!(
-            resolved.effective_prompt_extra,
-            "优先关注 Go / Kubernetes 证据"
-        );
-        assert_eq!(
-            resolved.effective_schema_extra,
-            "额外输出 evidenceLevel 字段"
-        );
     }
 
     #[test]
