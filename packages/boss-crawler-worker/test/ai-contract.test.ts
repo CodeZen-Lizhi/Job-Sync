@@ -163,6 +163,9 @@ describe("AI fixture contract", () => {
     assert.match(prompts.user, /不确定策略/);
     assert.match(prompts.user, /真实.*招聘或内推/);
     assert.match(prompts.user, /排除条件.*不能被.*正向/);
+    assert.match(prompts.user, /岗位证据闭包/);
+    assert.match(prompts.user, /禁止跨岗位拼接证据/);
+    assert.match(prompts.user, /同一个具体岗位满足.*全部必须条件/);
     assert.match(prompts.user, /规则原文.*岗位原文证据/);
     assert.match(prompts.user, /要求用户无法满足的沟通条件时直接过滤/);
     assert.match(prompts.user, /filtered/);

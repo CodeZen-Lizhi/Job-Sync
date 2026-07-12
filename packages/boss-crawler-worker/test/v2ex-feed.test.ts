@@ -259,6 +259,23 @@ describe("V2EX feed collector", () => {
     assert.equal(result.hasHiringSignal, false);
   });
 
+  it("rejects personal introductions and project cooperation posts without employment hiring", () => {
+    const cooperationPost: V2exFeedEntry = {
+      title: "新人自我介绍，寻项目合作 | Linux 资深软件工程师 | AI agent",
+      url: "https://www.v2ex.com/t/1223803",
+      topicId: "1223803",
+      author: "developer",
+      contentHtml: "",
+      contentText: "熟悉 Linux、Go、AI Agent 和 CI/CD，希望寻找项目合作或兼职合作，可联系微信沟通。",
+    };
+
+    const result = classifyV2exJobEntry(cooperationPost, ["Go", "AI Agent"], []);
+
+    assert.equal(result.isJobPosting, false);
+    assert.equal(result.hasHiringSignal, false);
+    assert.ok(result.nonHiringMatches.some((item) => item === "自我介绍" || item === "寻项目合作"));
+  });
+
   it("rejects negated hiring statements even though the text contains the word hiring", () => {
     const nonHiring: V2exFeedEntry = {
       title: "不是招聘，只是分享一个求职工具",

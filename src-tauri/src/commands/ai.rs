@@ -72,6 +72,7 @@ pub async fn recompute_ai_post_collection_judgement(
     app: tauri::AppHandle,
     job_ids: Option<Vec<String>>,
     limit: Option<u32>,
+    notify_telegram: Option<bool>,
     api_key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
@@ -79,7 +80,15 @@ pub async fn recompute_ai_post_collection_judgement(
     debug: Option<bool>,
 ) -> Result<Value, String> {
     post_collection_judge::recompute_ai_post_collection_judgement(
-        app, job_ids, limit, api_key, base_url, model, api_mode, debug,
+        app,
+        job_ids,
+        limit,
+        notify_telegram,
+        api_key,
+        base_url,
+        model,
+        api_mode,
+        debug,
     )
     .await
 }

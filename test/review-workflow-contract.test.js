@@ -175,6 +175,7 @@ describe("review workflow contract", () => {
     const greeting = readProjectFile("src-tauri/src/commands/ai/greeting.rs");
     const aiCommand = readProjectFile("src-tauri/src/commands/ai.rs");
     const postCollectionJudge = readProjectFile("src-tauri/src/commands/ai/post_collection_judge.rs");
+    const aiRecompute = readProjectFile("src/lib/aiRecompute.ts");
     const workerProtocol = readProjectFile("packages/boss-crawler-worker/src/protocol.ts");
     const workerPrompt = readProjectFile("packages/boss-crawler-worker/src/ai/prompt.ts");
     const workerSingle = readProjectFile("packages/boss-crawler-worker/src/modes/ai/single.ts");
@@ -201,6 +202,8 @@ describe("review workflow contract", () => {
 
     assert.match(aiCommand, /generate_greeting_message/);
     assert.match(aiCommand, /recompute_ai_post_collection_judgement/);
+    assert.match(aiCommand, /notify_telegram: Option<bool>/);
+    assert.match(aiRecompute, /notifyTelegram: options\.notifyTelegram \?\? false/);
     assert.match(aiCommand, /generate_ai_company_scores/);
     assert.match(postCollectionJudge, /recompute_default_filter_profile_for_job_on_conn/);
     assert.match(postCollectionJudge, /recompute_default_filter_profile_on_conn/);
@@ -1030,6 +1033,7 @@ describe("review workflow contract", () => {
     const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
     const filterProfile = readProjectFile("src/lib/filterProfile.ts");
     const crawlTypes = readProjectFile("src/lib/crawl.ts");
+    const rustFilterProfile = readProjectFile("src-tauri/src/db/models/filter_results.rs");
 
     assert.match(crawlConfig, /默认采后规则/);
     assert.match(crawlConfig, /AI 排除条件/);
@@ -1070,6 +1074,10 @@ describe("review workflow contract", () => {
     assert.match(crawlTypes, /DEFAULT_AI_REJECTED_TEXT/);
     assert.match(crawlTypes, /DEFAULT_AI_RISK_TEXT/);
     assert.match(crawlTypes, /DEFAULT_AI_UNCERTAIN_STRATEGY/);
+    for (const preciseRule of ["不得从不同岗位拼接证据", "产品经理\/产品运营", "智能合约或 Web3", "个人寻合作\/接项目"]) {
+      assert.match(crawlTypes, new RegExp(preciseRule));
+      assert.match(rustFilterProfile, new RegExp(preciseRule));
+    }
   });
 
   it("recomputes filter explanations when blacklist rules change", () => {
@@ -1129,7 +1137,7 @@ describe("review workflow contract", () => {
     assert.match(crawlLogic, /const batchId = `batch_\$\{crypto\.randomUUID\(\)\}`/);
     assert.match(crawlLogic, /batchId,/);
     assert.match(crawlLogic, /loadCollectionRunInsertedJobIds\(runId\)/);
-    assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForJobIds\(\[\.\.\.insertedJobIds\]\)/);
+    assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForJobIds\(\[\.\.\.insertedJobIds\],[\s\S]{0,100}notifyTelegram: true/);
     assert.match(crawlLogic, /get_collection_batch_summary/);
     assert.match(collectionModel, /WHERE batch_id = \?1/);
     assert.match(collectionModel, /SELECT DISTINCT crj\.encrypt_job_id/);
@@ -1139,6 +1147,7 @@ describe("review workflow contract", () => {
     assert.match(crawlPanel, /summary\.not_inserted/);
     assert.match(crawlPanel, /summary\.passed/);
     assert.match(crawlLogic, /recomputeAiPostCollectionJudgementForAllJobs\(\)/);
+    assert.match(crawlLogic, /notifyWhenEmpty: true,[\s\S]{0,80}notifyTelegram: true/);
     assert.doesNotMatch(sidecar, /auto_recompute_ai_after_collection/);
     assert.doesNotMatch(sidecar, /commands::\{ai,/);
     assert.doesNotMatch(sidecar, /EventOut::Finished[\s\S]{0,260}recompute_ai_post_collection_judgement/);

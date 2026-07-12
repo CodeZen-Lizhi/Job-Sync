@@ -1103,11 +1103,14 @@ function createCrawlPageState() {
         appendRuntimeLog("info", `自动采集已结束：完成 ${completedSources} 个平台，跳过 ${skippedSources} 个平台。`);
       }
       if (!stopRequested.value && insertedJobIds.size > 0) {
-        const aiResult = await recomputeAiPostCollectionJudgementForJobIds([...insertedJobIds]);
+        const aiResult = await recomputeAiPostCollectionJudgementForJobIds([...insertedJobIds], {
+          notifyTelegram: true,
+        });
         appendRuntimeLog("info", formatAiPostCollectionJudgeSummary(aiResult));
       } else if (!stopRequested.value && completedSources > 0) {
         const aiResult = await recomputeAiPostCollectionJudgementForJobIds([], {
           notifyWhenEmpty: true,
+          notifyTelegram: true,
         });
         appendRuntimeLog("info", `本次采集没有新入库岗位；${formatAiPostCollectionJudgeSummary(aiResult)}`);
       }

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="core" x1="432" y1="408" x2="600" y2="624" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#72F1EE"/>
+      <stop offset="1" stop-color="#21C7E7"/>
+    </linearGradient>
+  </defs>
+
+  <!--
+    macOS artwork canvas: the icon body sits inside the 1024 px canvas with
+    transparent padding. The continuous cubic corners avoid a CSS-style
+    rounded rectangle and no extra outline or baked drop shadow is applied.
+  -->
+  <path
+    d="M512 92C292 92 206 92 154 120C106 146 84 190 84 512C84 834 106 878 154 904C206 932 292 932 512 932C732 932 818 932 870 904C918 878 940 834 940 512C940 190 918 146 870 120C818 92 732 92 512 92Z"
+    fill="#FFFFFF"
+  />
+
+  <!-- Simplified JobPilot mark, designed to remain legible at Dock size. -->
+  <g>
+    <path
+      d="M512 250L724 372V616L512 738L300 616V372L512 250Z"
+      fill="#FFFFFF"
+      fill-opacity="0.97"
+    />
+    <path
+      d="M512 318L665 406V582L512 670L359 582V406L512 318Z"
+      fill="#EAF2FF"
+      stroke="#8CB9FF"
+      stroke-width="16"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M512 405L600 456V558L512 609L424 558V456L512 405Z"
+      fill="url(#core)"
+      stroke="#FFFFFF"
+      stroke-width="14"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M480 476H544V540H480Z"
+      fill="#FFFFFF"
+      rx="8"
+    />
+  </g>
+
+  <!-- Small status spark retained from the original identity. -->
+  <circle cx="682" cy="350" r="34" fill="#FFB82E"/>
+  <circle cx="682" cy="350" r="18" fill="#FFF0BC"/>
+</svg>

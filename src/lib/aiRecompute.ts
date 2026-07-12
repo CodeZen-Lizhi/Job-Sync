@@ -12,6 +12,7 @@ export interface AiPostCollectionJudgeResult {
 
 type AiPostCollectionJudgeOptions = {
   notifyWhenEmpty?: boolean;
+  notifyTelegram?: boolean;
 };
 
 export function formatAiPostCollectionJudgeSummary(result: AiPostCollectionJudgeResult | null): string {
@@ -66,5 +67,6 @@ export async function recomputeAiPostCollectionJudgementForJobIds(
   return invoke<AiPostCollectionJudgeResult>("recompute_ai_post_collection_judgement", {
     jobIds,
     limit: jobIds.length,
+    notifyTelegram: options.notifyTelegram ?? false,
   });
 }

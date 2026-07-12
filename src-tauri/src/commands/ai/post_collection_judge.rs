@@ -77,6 +77,7 @@ pub async fn recompute_ai_post_collection_judgement(
     app: AppHandle,
     job_ids: Option<Vec<String>>,
     limit: Option<u32>,
+    notify_telegram: Option<bool>,
     api_key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
@@ -88,6 +89,7 @@ pub async fn recompute_ai_post_collection_judgement(
             app,
             job_ids,
             limit,
+            notify_telegram == Some(true),
             api_key,
             base_url,
             model,
@@ -103,6 +105,7 @@ fn run_recompute_ai_post_collection_judgement(
     app: AppHandle,
     job_ids: Option<Vec<String>>,
     limit: Option<u32>,
+    notify_telegram: bool,
     api_key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
@@ -137,7 +140,7 @@ fn run_recompute_ai_post_collection_judgement(
                 0,
                 0,
                 &[],
-                true,
+                notify_telegram,
             ));
         }
         return Err("暂无可进行 AI 采后判断的岗位。请先采集岗位或切换职位库分区。".to_string());
@@ -249,7 +252,7 @@ fn run_recompute_ai_post_collection_judgement(
         hard_skipped,
         failed,
         &telegram_jobs,
-        ai_judged > 0,
+        notify_telegram && ai_judged > 0,
     ))
 }
 
@@ -1024,5 +1027,22 @@ mod tests {
             .contains("通过：0 个；推荐 41 / 待确认 130 / 已过滤 224 / 已处理 1 / 全部 396"));
         assert!(messages[0].contains("本轮没有采集到新增岗位，因此没有岗位列表。"));
         assert!(!messages[0].contains("成功岗位分批发送"));
+    }
+
+    #[test]
+    fn maintenance_recompute_can_disable_telegram_side_effects() {
+        let counts = crate::db::models::BucketCounts {
+            recommended: 2,
+            pending: 1,
+            filtered: 4,
+            processed: 0,
+            all: 7,
+        };
+
+        let result =
+            send_ai_post_collection_telegram_summary(None, &counts, 3, 3, 0, 0, &[], false);
+
+        assert_eq!(result["telegram_sent"], false);
+        assert!(result["telegram_error"].is_null());
     }
 }

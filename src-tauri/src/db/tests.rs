@@ -21,13 +21,20 @@ fn default_filter_profile_includes_common_blacklist_keywords() {
     let profile = models::load_default_filter_profile(&conn).expect("load default profile");
     assert!(profile.profile_json["aiPreferredText"]
         .as_str()
-        .is_some_and(|value| value.contains("AI Agent") && value.contains("长期全远程")));
+        .is_some_and(|value| value.contains("AI Agent")
+            && value.contains("不要求逐字出现“全职”")
+            && value.contains("不要求逐字出现“长期、无条件”")
+            && value.contains("不得从不同岗位拼接证据")));
     assert!(profile.profile_json["aiRejectedText"]
         .as_str()
-        .is_some_and(|value| value.contains("全英面试") && value.contains("AI 模拟面试")));
+        .is_some_and(|value| value.contains("全英面试")
+            && value.contains("产品经理/产品运营")
+            && value.contains("智能合约或 Web3")
+            && value.contains("个人寻合作/接项目")));
     assert!(profile.profile_json["aiRiskText"]
         .as_str()
-        .is_some_and(|value| value.contains("明确排除证据时不要放入待确认")));
+        .is_some_and(|value| value.contains("归属于同一个具体岗位")
+            && value.contains("明确排除证据时不要放入待确认")));
     let must_not_keywords = profile
         .profile_json
         .get("mustNotKeywords")
