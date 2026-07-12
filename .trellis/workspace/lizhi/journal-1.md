@@ -1699,3 +1699,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 52: 修复打招呼文案配置回填
+
+**Date**: 2026-07-12
+**Task**: 修复打招呼文案配置回填
+**Branch**: `main`
+
+### Summary
+
+修复 release 应用从仓库目录启动时误读开发数据的问题，保留 debug 数据目录行为与显式覆盖优先级；设置读取失败改为可见提示，恢复本机开发数据中的打招呼文案，并通过全量测试和真实 release UI 验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cf19a66` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
