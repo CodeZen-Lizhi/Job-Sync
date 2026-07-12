@@ -10,8 +10,8 @@
 - [x] 运行 `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` 和 `git diff --check`。
 - [x] 使用 `trellis-check` / `code-review-and-quality` 检查合并结果和验证证据。
 - [x] 提交本任务 Trellis 记录。
-- [ ] 推送 `main` 到 `origin/main`，验证本地/远端 HEAD 一致。
-- [ ] 归档任务并记录 session。
+- [x] 推送 `main` 到 `origin/main`，验证本地/远端 HEAD 一致。
+- [x] 归档任务并记录 session。
 
 ## 验证证据
 
@@ -24,3 +24,4 @@
 - 差异检查：当前工作树 `git diff --check` 通过。旧 main 到新 main 的历史范围存在早期文件行尾/尾空格提示，但不是本次 fast-forward 新产生的未提交改动，因此未重写历史修正。
 - Spec 判断：本任务只同步既有提交，没有新增或改变代码契约，不需要更新 `.trellis/spec/`。
 - Review：按 `trellis-check` 与 `code-review-and-quality` 检查正确性、架构、安全、性能和验证证据，未发现当前同步范围内的阻断问题。
+- 推送：`git push origin main` 成功，本地与远端首次核对均为 `dcb9c41b30b885b5436063d935c045f328af001e`；归档和 journal 产生的后续 Trellis 提交将在最终再次推送并核对。

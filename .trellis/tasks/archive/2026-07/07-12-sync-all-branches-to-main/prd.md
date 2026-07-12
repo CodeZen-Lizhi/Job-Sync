@@ -30,8 +30,8 @@
 - [x] 所有远端非 main 分支都是最终 main 的祖先。
 - [x] 旧本地替代合并分支经过审计并记录为已被后续合并结果取代，不重复合并。
 - [x] `npm test`、`npm run build`、`cargo test --manifest-path src-tauri/Cargo.toml`、`cargo fmt -- --check` 通过。
-- [ ] `git push origin main` 成功，且本地 main 与 `origin/main` 一致。
-- [ ] 工作区最终干净。
+- [x] `git push origin main` 成功，且本地 main 与 `origin/main` 一致。
+- [x] 工作区最终干净。
 
 ## Out of Scope
 
