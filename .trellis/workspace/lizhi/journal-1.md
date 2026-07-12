@@ -1666,3 +1666,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 51: 升级 JobPilot 0.1.8 并完成 macOS 打包
+
+**Date**: 2026-07-12
+**Task**: 升级 JobPilot 0.1.8 并完成 macOS 打包
+**Branch**: `main`
+
+### Summary
+
+同步 npm 与 Cargo 桌面端版本至 0.1.8，修复空数据目录首次启动时迁移前访问 collection_run 的崩溃，完成全量测试、macOS arm64 正式打包、签名与 DMG 校验，并通过隔离数据目录 UI 烟测。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ff857f1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
