@@ -7,16 +7,13 @@ import type { Browser, Page } from "puppeteer";
 import { launchBrowser } from "../browser/launch.js";
 import { blockNavigation } from "../browser/navigationLock.js";
 import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { classifyJobPostingContent, type JobPostingClassification } from "../feed/jobPostingClassifier.js";
 import { normalizePositiveInteger } from "../feed/numbers.js";
 import type { EventOut } from "../protocol.js";
 import { delayWithJitter } from "../utils/delay.js";
 import type { CrawlAutoStartPayload, ModeContext } from "../modes/auto/types.js";
 
-type Classification = {
-  isJobPosting: boolean;
-  hasHiringSignal: boolean;
-  matched: string[];
-};
+type Classification = JobPostingClassification;
 
 export type LinuxDoTopicEntry = {
   topicId: string;
@@ -168,27 +165,13 @@ export function isLinuxDoCloudflareChallengeText(text: string): boolean {
   );
 }
 
-function normalizeText(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function includesAny(text: string, terms: readonly string[]): string[] {
-  const haystack = normalizeText(text);
-  return terms.filter((term) => haystack.includes(normalizeText(term)));
-}
-
 export function classifyLinuxDoTopic(entry: LinuxDoTopicEntry, keywords: readonly string[] = []): Classification {
-  const text = `${entry.title}\n${entry.excerptText ?? ""}\n${entry.contentText ?? ""}`;
-  const strongHiring = includesAny(text, STRONG_HIRING_TERMS);
-  const supportingHiring = includesAny(text, SUPPORTING_HIRING_TERMS);
-  const keywordMatches = includesAny(text, keywords);
-  const matched = [...strongHiring, ...supportingHiring, ...keywordMatches];
-  const hasHiringSignal = strongHiring.length > 0 || supportingHiring.length >= 2;
-  return {
-    isJobPosting: hasHiringSignal,
-    hasHiringSignal,
-    matched,
-  };
+  return classifyJobPostingContent({
+    text: `${entry.title}\n${entry.excerptText ?? ""}\n${entry.contentText ?? ""}`,
+    keywords,
+    strongHiringTerms: STRONG_HIRING_TERMS,
+    supportingHiringTerms: SUPPORTING_HIRING_TERMS,
+  });
 }
 
 export function parseLinuxDoCategoryJson(value: unknown, baseUrl = "https://linux.do"): LinuxDoTopicEntry[] {
@@ -845,6 +828,9 @@ function inferPositionName(title: string): string {
 }
 
 function buildSkipReason(classification: Classification): string {
+  if (classification.nonHiringMatches.length > 0) {
+    return `明确为非招聘内容：${classification.nonHiringMatches.join("、")}`;
+  }
   if (!classification.hasHiringSignal) return "缺少招聘信号词";
   return "未满足 LinuxDo 岗位帖判定";
 }

@@ -4,6 +4,7 @@ import * as https from "node:https";
 import { ProxyAgent } from "proxy-agent";
 
 import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { classifyJobPostingContent, type JobPostingClassification } from "../feed/jobPostingClassifier.js";
 import { normalizePositiveInteger } from "../feed/numbers.js";
 import type { ModeContext } from "../modes/auto/types.js";
 
@@ -24,11 +25,7 @@ type V2exCollectedEntry = V2exFeedEntry & {
   sourceKind?: string;
 };
 
-type Classification = {
-  isJobPosting: boolean;
-  hasHiringSignal: boolean;
-  matched: string[];
-};
+type Classification = JobPostingClassification;
 
 type V2exFeedSortBy = "published_desc" | "updated_desc";
 
@@ -277,27 +274,13 @@ export function parseV2exJobsPage(html: string, baseUrl = "https://www.v2ex.com"
   return out;
 }
 
-function normalizeText(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function includesAny(text: string, terms: readonly string[]): string[] {
-  const haystack = normalizeText(text);
-  return terms.filter((term) => haystack.includes(normalizeText(term)));
-}
-
 export function classifyV2exJobEntry(entry: V2exFeedEntry, keywords: readonly string[], _excludedKeywords: readonly string[] = []): Classification {
-  const text = `${entry.title}\n${entry.contentText}`;
-  const strongHiring = includesAny(text, STRONG_HIRING_TERMS);
-  const supportingHiring = includesAny(text, SUPPORTING_HIRING_TERMS);
-  const keywordMatches = includesAny(text, keywords);
-  const matched = [...strongHiring, ...supportingHiring, ...keywordMatches];
-  const hasHiringSignal = strongHiring.length > 0 || supportingHiring.length >= 2;
-  return {
-    isJobPosting: hasHiringSignal,
-    hasHiringSignal,
-    matched,
-  };
+  return classifyJobPostingContent({
+    text: `${entry.title}\n${entry.contentText}`,
+    keywords,
+    strongHiringTerms: STRONG_HIRING_TERMS,
+    supportingHiringTerms: SUPPORTING_HIRING_TERMS,
+  });
 }
 
 function asStringList(value: unknown): string[] {
@@ -690,6 +673,9 @@ function inferPositionName(title: string): string {
 }
 
 function buildSkipReason(_entry: V2exFeedEntry, classification: Classification): string {
+  if (classification.nonHiringMatches.length > 0) {
+    return `明确为非招聘内容：${classification.nonHiringMatches.join("、")}`;
+  }
   if (!classification.hasHiringSignal) {
     return "缺少招聘信号词";
   }

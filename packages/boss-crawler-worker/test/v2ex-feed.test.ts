@@ -243,6 +243,35 @@ describe("V2EX feed collector", () => {
     assert.equal(keywordResult.hasHiringSignal, false);
   });
 
+  it("rejects AI interview tools and project introductions without a real hiring action", () => {
+    const interviewTool: V2exFeedEntry = {
+      title: "搞了一个 AI 模拟面试，提升自己找工作面试能力，根据简历自动追问和生成面试报告",
+      url: "https://www.v2ex.com/t/1225603",
+      topicId: "1225603",
+      author: "builder",
+      contentHtml: "",
+      contentText: "产品网址：https://example.com。后续大概率会开源，欢迎体验。支持根据简历和岗位生成面试题，面试结束后生成报告。反馈邮箱 hi@example.com，微信 demo-tool。",
+    };
+
+    const result = classifyV2exJobEntry(interviewTool, ["AI"], []);
+
+    assert.equal(result.isJobPosting, false);
+    assert.equal(result.hasHiringSignal, false);
+  });
+
+  it("rejects negated hiring statements even though the text contains the word hiring", () => {
+    const nonHiring: V2exFeedEntry = {
+      title: "不是招聘，只是分享一个求职工具",
+      url: "https://www.v2ex.com/t/1225604",
+      topicId: "1225604",
+      author: "builder",
+      contentHtml: "",
+      contentText: "不招人，产品问题可以发邮箱 hi@example.com 或加微信交流。",
+    };
+
+    assert.equal(classifyV2exJobEntry(nonHiring, ["AI"], []).isJobPosting, false);
+  });
+
   it("does not block clear hiring posts only because they mention a boss", () => {
     const hiringWithBoss: V2exFeedEntry = {
       title: "招聘 Go 后端工程师",

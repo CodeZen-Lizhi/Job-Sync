@@ -147,6 +147,14 @@ describe("LinuxDo feed collector", () => {
       contentText: "大家觉得 Go 后端还有必要学吗",
     };
     assert.equal(classifyLinuxDoTopic(discussion, ["Go"]).isJobPosting, false);
+
+    const interviewTool: LinuxDoTopicEntry = {
+      topicId: "3",
+      title: "开源一个 AI 模拟面试工具",
+      url: "https://linux.do/t/3",
+      contentText: "根据简历和岗位生成面试题，面试结束后生成报告，欢迎大家体验项目。",
+    };
+    assert.equal(classifyLinuxDoTopic(interviewTool, ["AI"]).isJobPosting, false);
   });
 
   it("builds normalized payload for title-level fallback jobs", () => {

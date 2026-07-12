@@ -82,7 +82,8 @@
   - stores `encrypt_job_id = "v2ex:<topicId>"`
   - stores `dedup_key = <topicId>`
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains the fetched topic detail body so `get_job_detail` can render the V2EX post without a Boss detail fetch
-  - only uses positive hiring signals before writing to `job`; default discussion/exclusion keywords must not pre-filter V2EX entries
+  - uses the shared content-type classifier before writing to `job`: explicit hiring/referral intent or actionable hiring evidence can pass; clear tool/product/project introductions such as an AI interview simulator without a hiring actor, concrete opening, or application action emit `JOB_FILTERED` and do not enter the library
+  - the content-type classifier must not read filter-profile personal preferences; direction, language, education, location, work mode, and other user-owned rules remain post-collection profile/AI decisions
   - post-collection profile and AI judgement own soft exclusion decisions after V2EX entries are written
 - LinuxDo:
   - `source_platform = "linuxdo"`
@@ -101,7 +102,8 @@
   - stores `encrypt_job_id = "linuxdo:<topicId>"`
   - stores `dedup_key = <topicId>`
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains the topic title plus detail text or the missing-detail marker
-  - only uses positive hiring signals before writing to `job`; configured keywords may add matches but must not alone turn a discussion thread into a job
+  - uses the same shared content-type classifier as V2EX; configured keywords may add matches but must not alone turn a discussion or tool/project introduction into a job
+  - clear non-hiring intent emits `JOB_FILTERED`; ambiguous low-information content may continue to post-collection AI instead of being rejected by hidden personal preferences
   - post-collection profile and AI judgement own soft exclusion decisions after LinuxDo entries are written
 - Zhilian:
   - `source_platform = "zhilian"`
@@ -150,7 +152,8 @@
   - stores `encrypt_job_id = "maimai:article:<stableId>"`
   - stores `dedup_key = "article:<stableId>"`
   - stores a `job_detail_raw.zp_data_json` projection whose `jobInfo.postDescription` contains title, article body, visible hiring evidence, and missing standard-field notes
-  - only uses positive hiring/referral signals before writing to `job`; configured keywords may add matches but must not alone turn an article into a job
+  - uses the same shared content-type classifier as V2EX/LinuxDo; configured keywords may add matches but must not alone turn an article, product introduction, or interview tool into a job
+  - content-type rejection is limited to universal library validity and must not encode profile-owned personal preferences
   - if no stable article is parsed because the page requires login, verification, redirects to `/platform/login`, returns WAF/rate-limit statuses such as 418 or 429, or exposes no detail links, the worker emits an explicit `ERROR` instead of reporting success
   - post-collection profile and AI judgement own soft exclusion decisions after Maimai entries are written
 - Collection limits:
@@ -227,6 +230,7 @@
 - Maimai selected with a non-`maimai.cn` URL -> frontend blocks start with a clear domain message; worker also ignores non-Maimai URLs.
 - Maimai article/list page returns login, verification, 302 to `/platform/login`, 403, WAF 418, or 429 and no stable article is parsed -> worker emits an explicit error instead of reporting success.
 - Maimai article lacks positive hiring/referral signals -> emit `JOB_FILTERED` with `缺少招聘或内推信号词`; do not insert `job`.
+- V2EX/LinuxDo/Maimai content clearly describes a tool, product, open-source project, course, or experience-sharing post and lacks explicit hiring intent/actionable hiring evidence -> emit `JOB_FILTERED` with a readable `明确为非招聘内容` reason; do not insert `job`.
 - Boss + V2EX selected -> Boss validates keywords and browser login readiness; V2EX still runs with optional Boss session.
 - No collectable source selected -> frontend blocks start with a clear message.
 - V2EX feed HTTP non-OK -> worker emits an explicit error and does not write partial fake success.
@@ -237,7 +241,7 @@
 - V2EX feed URL -> worker must request only the feed URL once and must not append `p=N` or rewrite it to a node URL.
 - V2EX page URL -> worker may append/update `p=N` and stop at the page cap or first empty parsed page.
 - V2EX entry lacks positive hiring signals -> emit `JOB_FILTERED` with `缺少招聘信号词`; do not insert `job`.
-- V2EX entry matches default discussion words, collection excluded keywords, or profile `mustNotKeywords` -> do not pre-filter at feed stage; let post-collection rules and AI judgement decide after ingest.
+- V2EX entry matches profile direction/exclusion terms -> do not pre-filter from those personal rules at feed stage; only the universal content-type classifier may reject a clear non-job post before ingest.
 - Worker emits malformed normalized payload -> Rust IPC deserialization rejects it before DB write.
 - Automatic post-collection AI request returns provider/model/network error -> runtime log shows `AI 采后判断失败：...` so the user can distinguish "not run" from "AI provider failed".
 - Per-job AI provider/output failure -> persist `ai_judgement.status = "failed"` and show the job badge as `审核失败`; do not collapse this into ordinary `待确认`.
@@ -247,6 +251,7 @@
 - Good: user selects V2EX, worker reads Atom entries, classifies clear hiring posts, emits normalized jobs, sidecar upserts `source_platform = "v2ex"`, and default filter profile recomputes candidate eligibility.
 - Good: user sets V2EX max pages to 3, and the worker can process all qualifying jobs from those pages instead of stopping at a hidden fixed count.
 - Good: user enters `https://www.v2ex.com/feed/jobs.json` and `https://www.v2ex.com/go/meet`; the feed is fetched once, the page URL is paginated, and duplicated topic ids are inserted once.
+- Good: an AI interview simulator product post mentions resumes and positions but has no hiring actor or application action; V2EX/LinuxDo/Maimai emit `JOB_FILTERED` and do not insert it.
 - Good: AI provider fails after collection, and the run log shows the provider error instead of leaving only `AI 结果：未判定` in the job list.
 - Good: user selects Boss + V2EX, frontend runs Boss then V2EX sequentially while each source keeps its adapter contract.
 - Good: user selects LinuxDo, worker requests `https://linux.do/c/job/27.json` through the Discourse API, carries saved LinuxDo cookies when available, emits normalized `linuxdo:<topicId>` jobs, and post-collection AI judgement runs.
@@ -290,6 +295,7 @@
   - HTML entity decoding handles `&nbsp;`.
   - classifier accepts clear hiring posts from positive signals only.
   - classifier does not let search keywords alone make a feed entry a job posting.
+  - shared classifier rejects AI interview tools and project/product introductions without explicit hiring intent or actionable hiring evidence across V2EX, LinuxDo, and Maimai.
   - classifier ignores excluded keywords at feed stage so post-collection rules and AI judgement can handle soft exclusion.
   - LinuxDo category JSON parser extracts topic id, title, topic URL, author, excerpt, and timestamps.
   - LinuxDo direct API requester fetches category and topic JSON without launching a browser and carries the saved LinuxDo cookie header when provided.

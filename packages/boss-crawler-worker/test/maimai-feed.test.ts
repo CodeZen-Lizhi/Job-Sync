@@ -137,6 +137,15 @@ describe("Maimai feed collector", () => {
     assert.equal(discussionResult.isJobPosting, false);
     assert.equal(discussionResult.hasHiringSignal, false);
     assert.ok(discussionResult.keywordMatches.includes("Go"));
+
+    const interviewTool: MaimaiArticle = {
+      ...hiring,
+      articleId: "tool-1",
+      title: "AI 模拟面试产品介绍",
+      url: "https://maimai.cn/article/detail?fid=tool-1",
+      contentText: "根据简历和岗位生成面试题，支持面试报告和求职训练，欢迎注册体验。",
+    };
+    assert.equal(classifyMaimaiArticle(interviewTool, ["AI"]).isJobPosting, false);
   });
 
   it("builds normalized payload using the maimai article contract", () => {

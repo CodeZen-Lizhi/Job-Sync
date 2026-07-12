@@ -6,6 +6,7 @@ import { ProxyAgent } from "proxy-agent";
 
 import type { EventOut } from "../protocol.js";
 import { htmlToText as sharedHtmlToText } from "../feed/html.js";
+import { classifyJobPostingContent, type JobPostingClassification } from "../feed/jobPostingClassifier.js";
 import { normalizePositiveInteger } from "../feed/numbers.js";
 import type { ModeContext } from "../modes/auto/types.js";
 
@@ -27,14 +28,7 @@ type MaimaiCollectedArticle = MaimaiArticle & {
   detailStatus: "ok" | "missing" | "blocked";
 };
 
-type MaimaiClassification = {
-  isJobPosting: boolean;
-  hasHiringSignal: boolean;
-  matched: string[];
-  strongMatches: string[];
-  supportingMatches: string[];
-  keywordMatches: string[];
-};
+type MaimaiClassification = JobPostingClassification;
 
 type MaimaiFeedSortBy = "published_desc" | "updated_desc";
 
@@ -118,15 +112,6 @@ function cleanTitle(value: string): string {
     .replace(/\s*[-_｜|]\s*脉脉.*$/u, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function normalizeText(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function includesAny(text: string, terms: readonly string[]): string[] {
-  const haystack = normalizeText(text);
-  return terms.filter((term) => haystack.includes(normalizeText(term)));
 }
 
 function isMaimaiHost(hostname: string): boolean {
@@ -417,19 +402,12 @@ function dedupeMaimaiArticles<T extends MaimaiCollectedArticle>(articles: readon
 }
 
 export function classifyMaimaiArticle(article: MaimaiArticle, keywords: readonly string[] = []): MaimaiClassification {
-  const text = `${article.title}\n${article.author ?? ""}\n${article.company ?? ""}\n${article.contentText}`;
-  const strongMatches = includesAny(text, STRONG_HIRING_TERMS);
-  const supportingMatches = includesAny(text, SUPPORTING_HIRING_TERMS);
-  const keywordMatches = includesAny(text, keywords);
-  const hasHiringSignal = strongMatches.length > 0 || supportingMatches.length >= 2;
-  return {
-    isJobPosting: hasHiringSignal,
-    hasHiringSignal,
-    matched: [...strongMatches, ...supportingMatches, ...keywordMatches],
-    strongMatches,
-    supportingMatches,
-    keywordMatches,
-  };
+  return classifyJobPostingContent({
+    text: `${article.title}\n${article.author ?? ""}\n${article.company ?? ""}\n${article.contentText}`,
+    keywords,
+    strongHiringTerms: STRONG_HIRING_TERMS,
+    supportingHiringTerms: SUPPORTING_HIRING_TERMS,
+  });
 }
 
 function inferPositionName(title: string): string {
@@ -618,6 +596,9 @@ async function collectArticleUrlsFromList(listUrl: string, maxPages: number, del
 }
 
 function buildSkipReason(_article: MaimaiArticle, classification: MaimaiClassification): string {
+  if (classification.nonHiringMatches.length > 0) {
+    return `明确为非招聘内容：${classification.nonHiringMatches.join("、")}`;
+  }
   if (!classification.hasHiringSignal) return "缺少招聘或内推信号词";
   return "未满足脉脉招聘文章判定";
 }
