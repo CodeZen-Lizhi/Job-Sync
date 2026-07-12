@@ -1912,6 +1912,15 @@ describe("review workflow contract", () => {
     assert.match(settingsPage, /已保存，当前不回显/);
   });
 
+  it("keeps saved greeting prompt visible and reports settings load failures", () => {
+    const settingsPage = readProjectFile("src/pages/Settings.vue");
+
+    assert.match(settingsPage, /greetingPromptExtra\.value = settings\.ai_greeting_prompt_extra \?\? ""/);
+    assert.match(settingsPage, /catch \(cause\)/);
+    assert.match(settingsPage, /读取设置失败/);
+    assert.match(settingsPage, /cause instanceof Error \? cause\.message : String\(cause\)/);
+  });
+
   it("keeps external dependency diagnostics manual and redacted", () => {
     const settingsCommand = readProjectFile("src-tauri/src/commands/settings.rs");
     const settingsPage = readProjectFile("src/pages/Settings.vue");

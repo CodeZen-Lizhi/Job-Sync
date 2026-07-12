@@ -149,6 +149,29 @@ seeded the database through the full initializer first, so restart behavior
 passed while a fresh installation crashed. Reusing the canonical initializer
 and adding an empty-directory startup test closed the gap.
 
+### Development / Release Data Directory Checklist
+
+The process working directory is launch-context state, not an application-mode
+signal. A release binary started from a repository directory must not silently
+switch from the installed application's data to development fixtures.
+
+- [ ] Explicit test overrides (`--data-dir`, environment variables) keep the
+      highest priority in every build mode
+- [ ] Repository-local data fallback is gated by the compiled debug/release
+      mode, not only by current working directory detection
+- [ ] Test both policy branches through a helper that accepts the mode as data;
+      a debug-only test process cannot otherwise prove release behavior
+- [ ] Launch the packaged release binary from inside the repository and verify
+      a known saved setting is read from the installed-app data directory
+- [ ] UI configuration loaders must expose read failures instead of rendering
+      default-empty fields that look like user data was deleted
+
+**Real-world example**: JobPilot's release binary inherited the repository as
+its working directory, selected `data/settings.json`, and displayed an empty
+greeting prompt even though the installed-app settings still contained it.
+Gating repository data by `debug_assertions`, retaining explicit overrides,
+and surfacing `get_settings` failures made the data-source boundary visible.
+
 ---
 
 ## Cross-Platform Template Consistency

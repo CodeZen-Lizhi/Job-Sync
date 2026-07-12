@@ -218,8 +218,9 @@ async function loadSettings(): Promise<void> {
       if (m === "responses") apiMode.value = "responses";
       if (m === "chat_completions" || m === "chat" || m === "chat/completions") apiMode.value = "chat_completions";
     }
-  } catch {
-    // ignore
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    error.value = `读取设置失败：${message}`;
   }
 }
 

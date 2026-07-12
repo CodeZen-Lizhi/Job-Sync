@@ -50,6 +50,13 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
+fn project_data_dir(start: &Path, allow_project_data: bool) -> Option<PathBuf> {
+    if !allow_project_data {
+        return None;
+    }
+    find_project_root(start).map(|root| root.join("data"))
+}
+
 fn has_user_data(dir: &Path) -> bool {
     dir.join("settings.json").is_file() || db_has_user_rows(&dir.join("app.db"))
 }
@@ -156,8 +163,7 @@ pub fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     }
 
     if let Ok(cwd) = env::current_dir() {
-        if let Some(root) = find_project_root(&cwd) {
-            let data_dir = root.join("data");
+        if let Some(data_dir) = project_data_dir(&cwd, cfg!(debug_assertions)) {
             fs::create_dir_all(&data_dir).map_err(|e| format!("failed to create data dir: {e}"))?;
             return Ok(data_dir);
         }
@@ -187,6 +193,24 @@ mod tests {
         let nested = root.join("src-tauri").join("src");
 
         assert_eq!(find_project_root(&nested).as_deref(), Some(root.as_path()));
+    }
+
+    #[test]
+    fn project_data_dir_is_only_available_for_debug_builds() {
+        let cwd = env::current_dir().expect("cwd");
+        let root = if cwd.file_name().and_then(|name| name.to_str()) == Some("src-tauri") {
+            cwd.parent().expect("repo root").to_path_buf()
+        } else {
+            cwd
+        };
+        let nested = root.join("src-tauri").join("src");
+        let expected = root.join("data");
+
+        assert_eq!(
+            project_data_dir(&nested, true).as_deref(),
+            Some(expected.as_path()),
+        );
+        assert_eq!(project_data_dir(&nested, false), None);
     }
 
     #[test]
