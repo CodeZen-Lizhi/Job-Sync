@@ -1566,3 +1566,37 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 48: 优化采后岗位 AI 精准过滤
+
+**Date**: 2026-07-12
+**Task**: 优化采后岗位 AI 精准过滤
+**Branch**: `remote-job-intelligence`
+
+### Summary
+
+将个人岗位偏好收敛到三个可见采后规则文本，移除全局隐藏 prompt 注入，修复低置信度覆盖过滤结果的问题；新增通用招聘内容门禁，阻止 AI 模拟面试等非招聘帖子进入职位库，并通过全量测试、浏览器布局和真实模型样本验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34476a0` | (see git log) |
+| `7f92e76` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
