@@ -1031,6 +1031,17 @@ fn finish_collection_run_does_not_overwrite_failed_worker_error() {
 }
 
 #[test]
+fn init_db_for_app_start_initializes_empty_database() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let app_data_dir = tmp.path().join("app-data");
+
+    let conn = init_db_for_app_start(&app_data_dir).expect("app-start init empty db");
+    let runs = models::list_collection_runs(&conn, Some(1)).expect("list runs");
+
+    assert!(runs.is_empty());
+}
+
+#[test]
 fn init_db_for_app_start_marks_stale_running_collection_runs_failed() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let app_data_dir = tmp.path().join("app-data");

@@ -43,7 +43,7 @@ pub fn connect_db(app_data_dir: &Path) -> Result<Connection> {
 }
 
 pub fn init_db_for_app_start(app_data_dir: &Path) -> Result<Connection> {
-    let conn = open_db(app_data_dir)?;
+    let conn = init_db(app_data_dir)?;
     models::fail_stale_running_collection_runs(&conn, "app restarted before collection finished")?;
     Ok(conn)
 }

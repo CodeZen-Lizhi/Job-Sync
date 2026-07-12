@@ -123,6 +123,34 @@ After implementation:
 
 ---
 
+## Application Startup / Database Lifecycle Boundary
+
+Application startup is a boundary between filesystem state, database schema,
+startup recovery, and the UI. Recovery queries must never assume migrations
+have already run, especially for a first launch with an empty data directory.
+
+### Checklist: When Changing Startup Database Initialization
+
+- [ ] Keep one canonical full initializer that opens the database and applies
+      migrations before any query or recovery update runs
+- [ ] Make startup-specific cleanup reuse that initializer instead of opening a
+      raw connection and duplicating initialization order
+- [ ] Preserve a separate explicitly named connection-only helper only for hot
+      paths that intentionally must not run migrations
+- [ ] Add a regression test for an entirely empty data directory
+- [ ] Retain a regression test for an existing database with recoverable stale
+      state so first-launch and restart behavior are both covered
+- [ ] Run the packaged application once with an isolated `--data-dir`; unit
+      tests against pre-initialized fixtures do not prove first launch works
+
+**Real-world example**: `init_db_for_app_start` opened SQLite and immediately
+updated `collection_run` before migrations created the table. Existing tests
+seeded the database through the full initializer first, so restart behavior
+passed while a fresh installation crashed. Reusing the canonical initializer
+and adding an empty-directory startup test closed the gap.
+
+---
+
 ## Cross-Platform Template Consistency
 
 In Trellis, command templates (e.g., `record-session.md`) exist in **multiple platforms** with identical or near-identical content. This is a cross-layer boundary.
