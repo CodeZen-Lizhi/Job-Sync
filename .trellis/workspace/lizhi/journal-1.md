@@ -1633,3 +1633,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 50: 优化岗位过滤规则与 macOS 应用图标
+
+**Date**: 2026-07-12
+**Task**: 优化岗位过滤规则与 macOS 应用图标
+**Branch**: `main`
+
+### Summary
+
+完善岗位证据闭包、非招聘内容门禁和维护重算通知控制，补充跨层测试与规范；同时重做 JobPilot macOS 图标为透明画布上的单层白色 squircle，并生成全套平台图标资产。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21b97eb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

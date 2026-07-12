@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 49
+- **Total Sessions**: 50
 - **Last Active**: 2026-07-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1635 | Active |
+| `journal-1.md` | ~1668 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 50 | 2026-07-12 | 优化岗位过滤规则与 macOS 应用图标 | `21b97eb` | `main` |
 | 49 | 2026-07-12 | 同步所有有效分支到 main | `dcb9c41` | `main` |
 | 48 | 2026-07-12 | 优化采后岗位 AI 精准过滤 | `34476a0`, `7f92e76` | `remote-job-intelligence` |
 | 47 | 2026-07-11 | 修正采集候选日志文案 | `fc76c6f` | `remote-job-intelligence` |
