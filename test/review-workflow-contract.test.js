@@ -725,6 +725,10 @@ describe("review workflow contract", () => {
     const appShell = readProjectFile("src/App.vue");
     const crawlConfig = readProjectFile("src/pages/CrawlConfig.vue");
     const crawlLogic = readProjectFile("src/lib/useCrawlPage.ts");
+    const scheduleContract = readProjectFile("src/lib/scheduler.ts");
+    const rustScheduler = readProjectFile("src-tauri/src/scheduler.rs");
+    const scheduleCommand = readProjectFile("src-tauri/src/commands/schedule.rs");
+    const tauriLib = readProjectFile("src-tauri/src/lib.rs");
 
     assert.match(appShell, /useCrawlPage\(\{ initialize: "schedule" \}\)/);
     assert.match(crawlConfig, /定时采集/);
@@ -748,10 +752,22 @@ describe("review workflow contract", () => {
     assert.match(crawlLogic, /initializeSchedule/);
     assert.match(crawlLogic, /async function initializeSchedule\(\): Promise<void> \{[\s\S]*await Promise\.all\(\[[\s\S]*loadCollectionSources\(\),[\s\S]*loadDefaultFilterProfile\(\),[\s\S]*\]\);[\s\S]*await loadCollectionConfig\(\);[\s\S]*\}/);
     assert.match(crawlLogic, /rescheduleCrawlTimer/);
+    assert.match(crawlLogic, /initializeCrawlScheduleListener/);
+    assert.match(crawlLogic, /listenToCrawlScheduleDue/);
+    assert.match(crawlLogic, /updateCrawlSchedule/);
+    assert.doesNotMatch(crawlLogic, /crawlScheduleTimer/);
     assert.match(crawlLogic, /runScheduledCrawl/);
     assert.match(crawlLogic, /await start\(\)/);
     assert.match(crawlLogic, /采集任务正在运行，本次定时采集已跳过/);
     assert.match(crawlLogic, /collectionConfig: buildCollectionConfigPayload\(\)/);
+    assert.match(scheduleContract, /crawl-schedule:\/\/due/);
+    assert.match(scheduleContract, /update_crawl_schedule/);
+    assert.match(scheduleContract, /isCrawlScheduleDueEvent/);
+    assert.match(rustScheduler, /Condvar/);
+    assert.match(rustScheduler, /crawl-schedule:\/\/due/);
+    assert.match(rustScheduler, /ignores_out_of_order_schedule_updates/);
+    assert.match(scheduleCommand, /update_crawl_schedule/);
+    assert.match(tauriLib, /commands::schedule::update_crawl_schedule/);
     assert.doesNotMatch(crawlLogic, /system scheduler|后台常驻/);
   });
 

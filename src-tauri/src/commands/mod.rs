@@ -5,4 +5,5 @@ pub mod export;
 pub mod filter_profile;
 pub mod jobs;
 pub mod resume_library;
+pub mod schedule;
 pub mod settings;

@@ -64,6 +64,7 @@ import {
 import { runAfterInitialPaint } from "./defer";
 import { useFilterProfile } from "./filterProfile";
 import { appendRuntimeLog, clearLogs, resetCrawlProgress, runtime } from "./runtime";
+import { listenToCrawlScheduleDue, updateCrawlSchedule } from "./scheduler";
 import { invoke, isTauri } from "./tauri";
 
 export type CrawlPageState = ReturnType<typeof createCrawlPageState>;
@@ -296,8 +297,10 @@ function createCrawlPageState() {
   const bossSettingsOpen = ref(false);
   const filterProfileOpen = ref(false);
   let bossMetaSyncTimeout: number | null = null;
-  let crawlScheduleTimer: number | null = null;
   const filterProfileState = useFilterProfile();
+  let crawlScheduleRequestVersion = 0;
+  let crawlScheduleLastHandledGeneration = 0;
+  let crawlScheduleListenerPromise: Promise<void> | null = null;
 
   const bossMetaSyncedAt = computed(() => (runtime.bossMeta as any)?.synced_at as string | undefined);
   const bossCityGroups = computed<BossCityGroup[]>(() => buildBossCityGroups(runtime.bossMeta));
@@ -925,10 +928,16 @@ function createCrawlPageState() {
     });
   }
 
+  function syncCrawlSchedule(nextRunAtMs: number | null): void {
+    if (!tauri) return;
+    const requestVersion = ++crawlScheduleRequestVersion;
+    void updateCrawlSchedule(nextRunAtMs, requestVersion).catch((cause) => {
+      appendRuntimeLog("warn", `后台定时采集唤醒同步失败：${cause instanceof Error ? cause.message : String(cause)}`);
+    });
+  }
+
   function clearCrawlScheduleTimer(): void {
-    if (crawlScheduleTimer === null) return;
-    window.clearTimeout(crawlScheduleTimer);
-    crawlScheduleTimer = null;
+    syncCrawlSchedule(null);
   }
 
   function rescheduleCrawlTimer(): void {
@@ -955,11 +964,7 @@ function createCrawlPageState() {
     }
     crawlScheduleNextRunAt.value = next.toISOString();
     crawlScheduleUpcomingRuns.value = upcoming.map((date) => date.toISOString());
-    const delay = Math.max(0, next.getTime() - Date.now());
-    crawlScheduleTimer = window.setTimeout(() => {
-      crawlScheduleTimer = null;
-      void runScheduledCrawl();
-    }, delay);
+    syncCrawlSchedule(next.getTime());
   }
 
   async function recordCrawlScheduleRun(status: CrawlScheduleRunStatus, message: string): Promise<void> {
@@ -1179,14 +1184,43 @@ function createCrawlPageState() {
     runAfterInitialPaint(() => void loadCollectionSummary());
   }
 
+  async function initializeCrawlScheduleListener(): Promise<void> {
+    if (!tauri) return;
+    if (crawlScheduleListenerPromise) {
+      await crawlScheduleListenerPromise;
+      return;
+    }
+
+    crawlScheduleListenerPromise = listenToCrawlScheduleDue((event) => {
+      if (event.version !== crawlScheduleRequestVersion) return;
+      if (event.generation <= crawlScheduleLastHandledGeneration) return;
+      crawlScheduleLastHandledGeneration = event.generation;
+      void runScheduledCrawl();
+    })
+      .then(() => undefined)
+      .catch((cause) => {
+        crawlScheduleListenerPromise = null;
+        const message = `后台定时采集监听启动失败：${cause instanceof Error ? cause.message : String(cause)}`;
+        appendRuntimeLog("warn", message);
+        throw new Error(message);
+      });
+    await crawlScheduleListenerPromise;
+  }
+
   async function initializeSchedule(): Promise<void> {
     if (scheduleInitialized.value) return;
     scheduleInitialized.value = true;
-    await Promise.all([
-      loadCollectionSources(),
-      loadDefaultFilterProfile(),
-    ]);
-    await loadCollectionConfig();
+    try {
+      await initializeCrawlScheduleListener();
+      await Promise.all([
+        loadCollectionSources(),
+        loadDefaultFilterProfile(),
+      ]);
+      await loadCollectionConfig();
+    } catch (cause) {
+      scheduleInitialized.value = false;
+      error.value = cause instanceof Error ? cause.message : String(cause);
+    }
   }
 
   async function loadCollectionSummary(): Promise<void> {

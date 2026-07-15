@@ -24,6 +24,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [External Dependency Diagnostics](./external-dependency-diagnostics.md) | Settings IPC contract for local dependency diagnostics | Active |
 | [Collection Source Contracts](./collection-source-contracts.md) | Cross-layer automatic collection source contracts | Active |
 | [AI Prompt Contracts](./ai-prompt-contracts.md) | User-owned prompt sources and worker injection boundaries | Active |
+| [Scheduled Crawl Contracts](./scheduled-crawl-contracts.md) | Tauri background wake-up and due-event contract | Active |
 
 ---
 

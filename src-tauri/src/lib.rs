@@ -8,6 +8,7 @@ mod ipc;
 mod paths;
 mod resume_library;
 mod resume_text;
+mod scheduler;
 mod settings;
 mod sidecar;
 mod storage;
@@ -25,6 +26,7 @@ pub fn run() {
             db::init_db_for_app_start(&data_dir)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             app.manage(sidecar::SidecarManager::new(app.handle().clone(), data_dir));
+            app.manage(scheduler::CrawlScheduleManager::new(app.handle().clone()));
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(err) = window.center() {
                     eprintln!("failed to center window: {err}");
@@ -103,6 +105,7 @@ pub fn run() {
             commands::resume_library::get_resume_status_for_job,
             commands::resume_library::get_resume_statuses_for_jobs,
             commands::resume_library::get_resume_job_summaries,
+            commands::schedule::update_crawl_schedule,
             commands::settings::get_settings,
             commands::settings::diagnose_external_dependencies,
             commands::settings::set_browser_executable_path,
