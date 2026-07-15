@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 52
-- **Last Active**: 2026-07-12
+- **Total Sessions**: 53
+- **Last Active**: 2026-07-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1734 | Active |
+| `journal-1.md` | ~1767 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 53 | 2026-07-15 | 实现最小化后台定时采集 | `f8ac6cb` | `main` |
 | 52 | 2026-07-12 | 修复打招呼文案配置回填 | `cf19a66` | `main` |
 | 51 | 2026-07-12 | 升级 JobPilot 0.1.8 并完成 macOS 打包 | `ff857f1` | `main` |
 | 50 | 2026-07-12 | 优化岗位过滤规则与 macOS 应用图标 | `21b97eb` | `main` |

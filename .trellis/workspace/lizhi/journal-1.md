@@ -1732,3 +1732,36 @@ Finished Boss low-risk collection hardening: added page-context GET joblist fall
 ### Next Steps
 
 - None - task complete
+
+
+## Session 53: 实现最小化后台定时采集
+
+**Date**: 2026-07-15
+**Task**: 实现最小化后台定时采集
+**Branch**: `main`
+
+### Summary
+
+完成 Tauri Rust 单次后台唤醒、版本化调度 command 与 crawl-schedule due 事件；前端保留 Cron 解析和现有采集编排，最小化/隐藏时不依赖 WebView timer。通过 npm build、完整 npm test、Rust scheduler 单测、cargo check、rustfmt 和桌面启动/配置入口烟测；clippy 因 toolchain 未安装组件未执行。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8ac6cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
